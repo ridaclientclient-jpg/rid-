@@ -1,0 +1,90 @@
+'use client';
+
+import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { User, Mail, Phone, Shield, Star, CreditCard, FileText, HelpCircle, LogOut, ChevronRight, Camera, Bell, Lock } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
+import { toast } from 'sonner';
+
+export default function ClientProfile() {
+  const router = useRouter();
+  const { user, logout } = useAuthStore();
+
+  const menuItems = [
+    { icon: CreditCard, label: 'Billetera', desc: 'Saldo y metodos de pago', href: '/client/wallet', color: 'text-emerald-400 bg-emerald-500/20' },
+    { icon: FileText, label: 'Documentos', desc: 'Verificacion de identidad', href: '/client/verification', color: 'text-blue-400 bg-blue-500/20' },
+    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', action: () => toast.info('Notificaciones configuradas'), color: 'text-cyan-400 bg-cyan-500/20' },
+    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', action: () => toast.info('Funcion de seguridad'), color: 'text-amber-400 bg-amber-500/20' },
+    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', action: () => toast.info('Mostrando terminos...'), color: 'text-purple-400 bg-purple-500/20' },
+    { icon: HelpCircle, label: 'Soporte', desc: 'Ayuda 24/7', href: '/client/support', color: 'text-pink-400 bg-pink-500/20' },
+  ];
+
+  return (
+    <div className="p-4 space-y-6">
+      {/* Profile Header */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
+        <div className="relative inline-block">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-3xl font-bold text-white mx-auto">
+            {user?.name?.charAt(0) || 'U'}
+          </div>
+          <button onClick={() => toast.info('Función de cámara no disponible en demo')} className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
+            <Camera className="w-4 h-4 text-white" />
+          </button>
+        </div>
+        <h2 className="text-xl font-bold text-white mt-3">{user?.name || 'Usuario'}</h2>
+        <div className="flex items-center justify-center gap-2 mt-1">
+          <span className={`text-xs px-2 py-0.5 rounded-full ${user?.isVerified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+            {user?.isVerified ? 'Verificado' : 'Sin verificar'}
+          </span>
+          <div className="flex items-center gap-1">
+            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+            <span className="text-xs text-gray-400">4.8</span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Info Cards */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-2 gap-3">
+        <div className="glass rounded-xl p-3">
+          <p className="text-xs text-gray-500">Total viajes</p>
+          <p className="text-lg font-bold text-white">47</p>
+        </div>
+        <div className="glass rounded-xl p-3">
+          <p className="text-xs text-gray-500">Miembro desde</p>
+          <p className="text-lg font-bold text-white">Mar</p>
+        </div>
+      </motion.div>
+
+      {/* Menu Items */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-2">
+        {menuItems.map((item, i) => (
+          <button
+            key={i}
+            onClick={() => item.href ? router.push(item.href) : item.action?.()}
+            className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/5 transition-colors"
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}>
+              <item.icon className="w-5 h-5" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-medium text-white">{item.label}</p>
+              <p className="text-xs text-gray-500">{item.desc}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-600" />
+          </button>
+        ))}
+      </motion.div>
+
+      {/* Logout */}
+      <motion.button
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        onClick={() => { logout(); router.push('/client/login'); toast.success('Sesion cerrada'); }}
+        className="w-full bg-red-500/10 border border-red-500/30 text-red-400 font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-red-500/20"
+      >
+        <LogOut className="w-4 h-4" /> Cerrar Sesion
+      </motion.button>
+    </div>
+  );
+}
