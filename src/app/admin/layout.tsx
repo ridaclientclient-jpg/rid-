@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
+import AuthGuard from '@/components/AuthGuard';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -52,14 +53,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return <>{children}</>;
   }
 
-  if (!hydrated || !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-rida-dark flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   const handleLogout = () => {
     logout();
     toast.success('Sesión cerrada');
@@ -72,6 +65,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   return (
+    <AuthGuard requiredRole="admin" authPage="/admin/login">
     <div className="min-h-screen bg-rida-dark flex">
       {/* Mobile overlay */}
       <AnimatePresence>
@@ -212,5 +206,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
     </div>
+    </AuthGuard>
   );
 }

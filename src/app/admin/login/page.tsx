@@ -22,12 +22,12 @@ export default function AdminLoginPage() {
       return;
     }
 
-    const success = await login(email, password);
-    if (success) {
+    const result = await login(email, password);
+    if (result.success) {
       toast.success('Bienvenido al panel de administración');
       router.push('/admin');
     } else {
-      toast.error('Credenciales inválidas. Intenta de nuevo.');
+      toast.error(result.error || 'Error al iniciar sesion');
     }
   };
 

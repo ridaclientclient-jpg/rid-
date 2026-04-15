@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -8,6 +8,7 @@ import {
   Upload, User, LogOut, Menu, X
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import AuthGuard from '@/components/AuthGuard';
 import { toast } from 'sonner';
 
 const navItems = [
@@ -22,43 +23,10 @@ const navItems = [
 export default function MarketplaceLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isLoginPage = pathname === '/marketplace/login';
-
-  const restoreSession = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const savedUser = localStorage.getItem('rida_user');
-    const session = localStorage.getItem('rida_session');
-    if (savedUser && session === 'active') {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed.role === 'vendor') {
-          useAuthStore.setState({
-            user: parsed,
-            isAuthenticated: true,
-          });
-        }
-      } catch {
-        localStorage.removeItem('rida_user');
-        localStorage.removeItem('rida_session');
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
-
-  useEffect(() => {
-    if (!isLoginPage && !isAuthenticated) {
-      router.push('/marketplace/login');
-    }
-    if (isLoginPage && isAuthenticated) {
-      router.push('/marketplace');
-    }
-  }, [isAuthenticated, isLoginPage, router]);
 
   const handleLogout = () => {
     logout();
@@ -78,6 +46,7 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
 
   // Protected pages: show loading or content based on auth
   return (
+    <AuthGuard requiredRole="vendor" authPage="/marketplace/login">
     <div className="min-h-screen bg-rida-dark flex">
       {/* Mobile overlay */}
       <AnimatePresence>
@@ -195,13 +164,10 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
 
         {/* Page content */}
         <div className="p-4 sm:p-6 lg:p-8">
-          {isAuthenticated ? children : (
-            <div className="min-h-[60vh] flex items-center justify-center">
-              <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
-            </div>
-          )}
+          {children}
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }

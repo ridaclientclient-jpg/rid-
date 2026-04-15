@@ -21,11 +21,11 @@ export default function MarketplaceLogin() {
       toast.error('Por favor completa todos los campos');
       return;
     }
-    const success = await login(email, password);
-    if (success) {
+    const result = await login(email, password);
+    if (result.success) {
       toast.success('¡Bienvenido a RIDA MARKET!');
     } else {
-      toast.error('Credenciales incorrectas. Intenta de nuevo.');
+      toast.error(result.error || 'Error al iniciar sesion');
     }
   };
 
@@ -35,9 +35,11 @@ export default function MarketplaceLogin() {
       toast.error('Por favor completa todos los campos');
       return;
     }
-    const success = await register(registerData.name, registerData.email, registerData.phone, registerData.password, 'vendor');
-    if (success) {
+    const result = await register(registerData.name, registerData.email, registerData.phone, registerData.password, 'vendor');
+    if (result.success) {
       toast.success('¡Cuenta creada exitosamente!');
+    } else {
+      toast.error(result.error || 'Error al crear cuenta');
     }
   };
 

@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { Home, MapPin, Clock, User as UserIcon, Zap, ArrowLeft, LogOut, Bell } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const navItems = [
@@ -21,8 +22,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen bg-rida-dark flex flex-col max-w-md mx-auto relative">
-      {!isAuthPage && isAuthenticated && (
-        <>
+      {isAuthPage ? (
+        <>{children}</>
+      ) : (
+        <AuthGuard authPage="/client/login">
           {/* Top Bar */}
           <header className="sticky top-0 z-50 glass-strong border-b border-white/5 px-4 py-3">
             <div className="flex items-center justify-between">
@@ -84,9 +87,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
               })}
             </div>
           </nav>
-        </>
+        </AuthGuard>
       )}
-      {(isAuthPage || !isAuthenticated) && children}
     </div>
   );
 }

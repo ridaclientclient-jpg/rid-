@@ -30,10 +30,12 @@ export default function ClientRegister() {
       return;
     }
 
-    const success = await register(form.name, form.email, form.phone, form.password, 'client');
-    if (success) {
+    const result = await register(form.name, form.email, form.phone, form.password, 'client');
+    if (result.success) {
       toast.success('Cuenta creada exitosamente!');
       router.push('/client');
+    } else {
+      toast.error(result.error || 'Error al crear cuenta');
     }
   };
 

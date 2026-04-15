@@ -3,8 +3,8 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { Home, Car, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect } from 'react';
 import { toast } from 'sonner';
 
 const navItems = [
@@ -17,24 +17,16 @@ const navItems = [
 export default function DriverLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
 
   const isAuthPage = pathname?.includes('/driver/login') || pathname?.includes('/driver/register') || pathname?.includes('/driver/recovery');
 
-  useEffect(() => {
-    if (!isAuthPage && !isAuthenticated) {
-      router.replace('/driver/login');
-    }
-  }, [isAuthPage, isAuthenticated, router, pathname]);
-
-  if (!isAuthPage && !isAuthenticated) {
-    return null;
-  }
-
   return (
     <div className="min-h-screen bg-rida-dark flex flex-col max-w-md mx-auto relative">
-      {!isAuthPage && isAuthenticated && (
-        <>
+      {isAuthPage ? (
+        <>{children}</>
+      ) : (
+        <AuthGuard authPage="/driver/login">
           {/* Top Bar */}
           <header className="sticky top-0 z-50 glass-strong border-b border-white/5 px-4 py-3">
             <div className="flex items-center justify-between">
@@ -96,9 +88,8 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
               })}
             </div>
           </nav>
-        </>
+        </AuthGuard>
       )}
-      {(isAuthPage || !isAuthenticated) && children}
     </div>
   );
 }

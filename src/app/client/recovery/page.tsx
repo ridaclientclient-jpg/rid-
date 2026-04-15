@@ -15,10 +15,24 @@ export default function ClientRecovery() {
   const handleRecovery = async () => {
     if (!email) { toast.error('Ingresa tu correo'); return; }
     setIsLoading(true);
-    await new Promise(r => setTimeout(r, 1500));
-    setSent(true);
-    setIsLoading(false);
-    toast.success('Email enviado!');
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Error al enviar email');
+        return;
+      }
+      setSent(true);
+      toast.success('Email enviado!');
+    } catch {
+      toast.error('Error de conexion');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

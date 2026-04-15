@@ -37,10 +37,12 @@ export default function DriverRegister() {
       return;
     }
 
-    const success = await register(form.name, form.email, form.phone, form.password, 'driver');
-    if (success) {
+    const result = await register(form.name, form.email, form.phone, form.password, 'driver');
+    if (result.success) {
       toast.success('Cuenta de conductor creada exitosamente!');
       router.push('/driver');
+    } else {
+      toast.error(result.error || 'Error al crear cuenta');
     }
   };
 

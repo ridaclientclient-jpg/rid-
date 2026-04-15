@@ -20,14 +20,12 @@ export default function DriverLogin() {
       return;
     }
 
-    const success = await login(email, password);
-    if (success) {
+    const result = await login(email, password);
+    if (result.success) {
       toast.success('Bienvenido conductor!');
       router.push('/driver');
-    } else if (isLocked) {
-      toast.error('Cuenta bloqueada. Intenta en 15 minutos.');
     } else {
-      toast.error(`Credenciales incorrectas. Intentos restantes: ${5 - loginAttempts}`);
+      toast.error(result.error || 'Error al iniciar sesion');
     }
   };
 

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
+import { supabase, type Profile } from '@/lib/supabase';
+import type { User as SupaUser, Session } from '@supabase/supabase-js';
 
-interface User {
+interface AuthUser {
   id: string;
   name: string;
   email: string;
@@ -11,98 +13,239 @@ interface User {
 }
 
 interface AuthState {
-  user: User | null;
+  user: AuthUser | null;
+  supaUser: SupaUser | null;
+  session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   loginAttempts: number;
   isLocked: boolean;
   lockedUntil: Date | null;
-  
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, phone: string, password: string, role: string) => Promise<boolean>;
-  logout: () => void;
+
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, phone: string, password: string, role: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  initAuth: () => Promise<void>;
   setLoading: (loading: boolean) => void;
-  resetLoginAttempts: () => void;
+  updateProfile: (updates: Partial<AuthUser>) => Promise<void>;
 }
 
-// Demo users for preview
-const DEMO_USERS: Record<string, { password: string; user: User }> = {
-  'cliente@rida.com': { password: '123456', user: { id: '1', name: 'Maria Rodriguez', email: 'cliente@rida.com', phone: '+506 8888 0001', role: 'client', isVerified: true } },
-  'conductor@rida.com': { password: '123456', user: { id: '2', name: 'Carlos Mendez', email: 'conductor@rida.com', phone: '+506 8888 0002', role: 'driver', isVerified: true } },
-  'admin@rida.com': { password: 'admin123', user: { id: '3', name: 'Admin RIDA', email: 'admin@rida.com', phone: '+506 8888 0000', role: 'admin', isVerified: true } },
-  'vendedor@rida.com': { password: '123456', user: { id: '4', name: 'Farmacia Central', email: 'vendedor@rida.com', phone: '+506 8888 0003', role: 'vendor', isVerified: true } },
-};
+function profileToUser(profile: Profile): AuthUser {
+  return {
+    id: profile.id,
+    name: profile.name,
+    email: profile.email,
+    phone: profile.phone,
+    role: profile.role,
+    avatar: profile.avatar,
+    isVerified: profile.is_verified,
+  };
+}
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  supaUser: null,
+  session: null,
   isAuthenticated: false,
-  isLoading: false,
+  isLoading: true,
   loginAttempts: 0,
   isLocked: false,
   lockedUntil: null,
+
+  initAuth: async () => {
+    set({ isLoading: true });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile) {
+          set({
+            user: profileToUser(profile),
+            supaUser: session.user,
+            session,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        } else {
+          set({ isLoading: false });
+        }
+      } else {
+        set({ isLoading: false });
+      }
+    } catch (error) {
+      console.error('Auth init error:', error);
+      set({ isLoading: false });
+    }
+
+    // Listen for auth changes
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        if (profile) {
+          set({
+            user: profileToUser(profile),
+            supaUser: session.user,
+            session,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        }
+      } else if (event === 'SIGNED_OUT') {
+        set({
+          user: null,
+          supaUser: null,
+          session: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
+      }
+    });
+  },
 
   login: async (email: string, password: string) => {
     const state = get();
     if (state.isLocked) {
       const now = new Date();
       if (state.lockedUntil && now < state.lockedUntil) {
-        return false;
+        return { success: false, error: `Cuenta bloqueada. Intenta en ${Math.ceil((state.lockedUntil.getTime() - now.getTime()) / 60000)} minutos.` };
       }
       set({ isLocked: false, lockedUntil: null, loginAttempts: 0 });
     }
 
     set({ isLoading: true });
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    const demoUser = DEMO_USERS[email.toLowerCase()];
-    if (demoUser && demoUser.password === password) {
-      set({ user: demoUser.user, isAuthenticated: true, isLoading: false, loginAttempts: 0 });
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('rida_user', JSON.stringify(demoUser.user));
-        localStorage.setItem('rida_session', 'active');
+      if (error) {
+        const newAttempts = state.loginAttempts + 1;
+        if (newAttempts >= 5) {
+          set({
+            loginAttempts: newAttempts,
+            isLocked: true,
+            lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
+            isLoading: false,
+          });
+          return { success: false, error: 'Cuenta bloqueada por 15 minutos. Demasiados intentos.' };
+        }
+        set({ loginAttempts: newAttempts, isLoading: false });
+        return { success: false, error: error.message === 'Invalid login credentials'
+          ? `Credenciales incorrectas. Intentos restantes: ${5 - newAttempts}`
+          : error.message
+        };
       }
-      return true;
-    }
 
-    const newAttempts = state.loginAttempts + 1;
-    if (newAttempts >= 5) {
-      const lockUntil = new Date(Date.now() + 15 * 60 * 1000);
-      set({ loginAttempts: newAttempts, isLocked: true, lockedUntil: lockUntil, isLoading: false });
-    } else {
-      set({ loginAttempts: newAttempts, isLoading: false });
+      if (data.session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.session.user.id)
+          .single();
+
+        if (profile) {
+          set({
+            user: profileToUser(profile),
+            supaUser: data.session.user,
+            session: data.session,
+            isAuthenticated: true,
+            isLoading: false,
+            loginAttempts: 0,
+          });
+          return { success: true };
+        }
+      }
+
+      set({ isLoading: false });
+      return { success: false, error: 'Error al obtener perfil' };
+    } catch (err) {
+      set({ isLoading: false });
+      return { success: false, error: 'Error de conexion' };
     }
-    return false;
   },
 
   register: async (name: string, email: string, phone: string, password: string, role: string) => {
     set({ isLoading: true });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const newUser: User = {
-      id: Date.now().toString(),
-      name,
-      email,
-      phone,
-      role: role as User['role'],
-      isVerified: false,
-    };
-    
-    set({ user: newUser, isAuthenticated: true, isLoading: false });
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('rida_user', JSON.stringify(newUser));
-      localStorage.setItem('rida_session', 'active');
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            phone,
+            role,
+          },
+        },
+      });
+
+      if (error) {
+        set({ isLoading: false });
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        set({
+          user: {
+            id: data.user.id,
+            name,
+            email,
+            phone,
+            role: role as AuthUser['role'],
+            isVerified: false,
+          },
+          supaUser: data.user,
+          session: data.session,
+          isAuthenticated: !!data.session,
+          isLoading: false,
+        });
+        return { success: true };
+      }
+
+      set({ isLoading: false });
+      return { success: false, error: 'Error al crear cuenta' };
+    } catch (err) {
+      set({ isLoading: false });
+      return { success: false, error: 'Error de conexion' };
     }
-    return true;
   },
 
-  logout: () => {
-    set({ user: null, isAuthenticated: false, loginAttempts: 0 });
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('rida_user');
-      localStorage.removeItem('rida_session');
-    }
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({
+      user: null,
+      supaUser: null,
+      session: null,
+      isAuthenticated: false,
+      loginAttempts: 0,
+    });
   },
 
   setLoading: (loading: boolean) => set({ isLoading: loading }),
-  resetLoginAttempts: () => set({ loginAttempts: 0, isLocked: false, lockedUntil: null }),
+
+  updateProfile: async (updates: Partial<AuthUser>) => {
+    const state = get();
+    if (!state.user) return;
+
+    const updatesDB: Record<string, unknown> = {};
+    if (updates.name) updatesDB.name = updates.name;
+    if (updates.phone) updatesDB.phone = updates.phone;
+    if (updates.avatar) updatesDB.avatar = updates.avatar;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updatesDB)
+      .eq('id', state.user.id);
+
+    if (!error) {
+      set({ user: { ...state.user, ...updates } });
+    }
+  },
 }));
