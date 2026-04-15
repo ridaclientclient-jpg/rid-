@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import {
   Users, MapPin, Car, DollarSign, TrendingUp, Activity,
-  AlertTriangle, CheckCircle2, Clock, Eye
+  AlertTriangle, CheckCircle2, Clock, Eye, Trophy, Star
 } from 'lucide-react';
 
 const stats = [
@@ -180,7 +180,7 @@ export default function AdminDashboardPage() {
               <Activity className="w-5 h-5 text-cyan-400" />
               Viajes Recientes
             </h2>
-            <button className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">Ver todos</button>
+            <button onClick={() => window.location.href = '/admin/rides'} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">Ver todos</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">

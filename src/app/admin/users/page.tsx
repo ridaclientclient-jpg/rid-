@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Shield, ShieldOff, Eye, Users, Mail, Phone,
   ChevronDown, MoreHorizontal, Ban, CheckCircle2, XCircle,
-  UserCheck, Filter
+  UserCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 

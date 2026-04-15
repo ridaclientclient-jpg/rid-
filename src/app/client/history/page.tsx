@@ -54,11 +54,11 @@ export default function ClientHistory() {
               </div>
             </div>
             {ride.status === 'completed' && (
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
+              <button onClick={() => toast.success('Calificacion enviada! Gracias por tu opinion.')} className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5 w-full text-left">
                 <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
                 <span className="text-xs text-gray-400">Calificar conductor</span>
                 <ChevronRight className="w-3 h-3 text-gray-600 ml-auto" />
-              </div>
+              </button>
             )}
           </motion.div>
         ))}

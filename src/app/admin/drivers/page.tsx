@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Car, Star, CheckCircle2, XCircle, Clock,
   Eye, ShieldCheck, ShieldX, MoreHorizontal, FileCheck,
-  AlertCircle, ChevronDown, Filter
+  AlertCircle, ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 

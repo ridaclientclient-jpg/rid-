@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, FileText, AlertTriangle, Shield, AlertCircle,
   MessageSquare, CheckCircle2, Eye, Clock, ChevronDown,
-  ChevronUp, Filter
+  ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 

@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Store, Mail, Lock, Eye, EyeOff, ArrowRight, Zap } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 
 export default function MarketplaceLogin() {
+  const router = useRouter();
   const [email, setEmail] = useState('vendedor@rida.com');
   const [password, setPassword] = useState('123456');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,6 +26,8 @@ export default function MarketplaceLogin() {
     const result = await login(email, password);
     if (result.success) {
       toast.success('¡Bienvenido a RIDA MARKET!');
+      window.location.href = '/marketplace';
+      return;
     } else {
       toast.error(result.error || 'Error al iniciar sesion');
     }
@@ -38,6 +42,8 @@ export default function MarketplaceLogin() {
     const result = await register(registerData.name, registerData.email, registerData.phone, registerData.password, 'vendor');
     if (result.success) {
       toast.success('¡Cuenta creada exitosamente!');
+      window.location.href = '/marketplace';
+      return;
     } else {
       toast.error(result.error || 'Error al crear cuenta');
     }
@@ -123,7 +129,7 @@ export default function MarketplaceLogin() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => toast.info('Función de recuperación próximamente')}
+                  onClick={() => router.push('/marketplace/recovery')}
                   className="text-cyan-400 hover:text-cyan-300 transition-colors"
                 >
                   ¿Olvidaste tu contraseña?

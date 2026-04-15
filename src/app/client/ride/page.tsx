@@ -53,7 +53,11 @@ export default function ClientRide() {
       return;
     }
 
-    await createRide(origin, destination);
+    await createRide(
+      origin, destination,
+      originCoords?.lat, originCoords?.lng,
+      destCoords?.lat, destCoords?.lng
+    );
     toast.success('Buscando conductor...');
 
     // Show third party popup after a delay
@@ -82,7 +86,6 @@ export default function ClientRide() {
           showDirections={!!(originCoords && destCoords)}
           showUserLocation={true}
           className="absolute inset-0"
-          height="100%"
         />
       </div>
 

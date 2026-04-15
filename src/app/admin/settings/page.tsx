@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon, Shield, Globe, Key, Server,
-  Save, Info, AlertTriangle, Zap, ToggleLeft, ToggleRight,
+  Save, Info, AlertTriangle, Zap,
   Eye, EyeOff, Copy, CheckCircle2, Clock, Cpu
 } from 'lucide-react';
 import { toast } from 'sonner';
