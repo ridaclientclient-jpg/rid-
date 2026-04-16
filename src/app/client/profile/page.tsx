@@ -2,13 +2,65 @@
 
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Phone, Shield, Star, CreditCard, FileText, HelpCircle, LogOut, ChevronRight, Camera, Bell, Lock } from 'lucide-react';
+import { User, Mail, Phone, Shield, Star, CreditCard, FileText, HelpCircle, LogOut, ChevronRight, Camera, Bell, Lock, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { useState, useEffect, useCallback } from 'react';
+
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 export default function ClientProfile() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
+  const [loading, setLoading] = useState(true);
+  const [totalRides, setTotalRides] = useState(0);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [memberSince, setMemberSince] = useState('');
+
+  const fetchProfileStats = useCallback(async (userId: string) => {
+    try {
+      // Query rides for count and average rating
+      const { data: rideData, error: rideError } = await supabase
+        .from('rides')
+        .select('rider_rating')
+        .eq('rider_id', userId)
+        .eq('status', 'completed');
+
+      if (!rideError && rideData) {
+        setTotalRides(rideData.length);
+        const ratedRides = rideData.filter(r => r.rider_rating != null);
+        if (ratedRides.length > 0) {
+          const avg = ratedRides.reduce((sum, r) => sum + (r.rider_rating || 0), 0) / ratedRides.length;
+          setAvgRating(Math.round(avg * 10) / 10);
+        }
+      }
+
+      // Get member since date from profiles
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('created_at')
+        .eq('id', userId)
+        .single();
+
+      if (!profileError && profileData?.created_at) {
+        const date = new Date(profileData.created_at);
+        const month = MONTH_NAMES[date.getMonth()];
+        const year = date.getFullYear();
+        setMemberSince(`${month} ${year}`);
+      }
+    } catch (err) {
+      console.error('Profile stats error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfileStats(user.id);
+    }
+  }, [user?.id, fetchProfileStats]);
 
   const menuItems = [
     { icon: CreditCard, label: 'Billetera', desc: 'Saldo y metodos de pago', href: '/client/wallet', color: 'text-emerald-400 bg-emerald-500/20' },
@@ -19,6 +71,18 @@ export default function ClientProfile() {
     { icon: HelpCircle, label: 'Soporte', desc: 'Ayuda 24/7', href: '/client/support', color: 'text-pink-400 bg-pink-500/20' },
   ];
 
+  if (loading) {
+    return (
+      <div className="p-4 space-y-6">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  const displayRating = avgRating !== null ? avgRating.toFixed(1) : '--';
+
   return (
     <div className="p-4 space-y-6">
       {/* Profile Header */}
@@ -27,7 +91,7 @@ export default function ClientProfile() {
           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-3xl font-bold text-white mx-auto">
             {user?.name?.charAt(0) || 'U'}
           </div>
-          <button onClick={() => toast.info('Función de cámara no disponible en demo')} className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
+          <button onClick={() => toast.info('Funcion de camara no disponible en demo')} className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
             <Camera className="w-4 h-4 text-white" />
           </button>
         </div>
@@ -38,7 +102,7 @@ export default function ClientProfile() {
           </span>
           <div className="flex items-center gap-1">
             <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-            <span className="text-xs text-gray-400">4.8</span>
+            <span className="text-xs text-gray-400">{displayRating}</span>
           </div>
         </div>
       </motion.div>
@@ -47,11 +111,11 @@ export default function ClientProfile() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid grid-cols-2 gap-3">
         <div className="glass rounded-xl p-3">
           <p className="text-xs text-gray-500">Total viajes</p>
-          <p className="text-lg font-bold text-white">47</p>
+          <p className="text-lg font-bold text-white">{totalRides}</p>
         </div>
         <div className="glass rounded-xl p-3">
           <p className="text-xs text-gray-500">Miembro desde</p>
-          <p className="text-lg font-bold text-white">Mar</p>
+          <p className="text-lg font-bold text-white">{memberSince || '--'}</p>
         </div>
       </motion.div>
 

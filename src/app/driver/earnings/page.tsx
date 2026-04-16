@@ -1,56 +1,272 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
+import { supabase, type Driver, type Ride, type Wallet, type Transaction } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
-  Wallet, TrendingUp, Clock, ChevronRight, ArrowDownCircle,
-  Info, Calendar, CreditCard, Banknote,
+  Wallet as WalletIcon, TrendingUp, Clock, ChevronRight, ArrowDownCircle,
+  Info, Calendar, CreditCard, Banknote, Loader2,
 } from 'lucide-react';
 
-const weeklyData = [
-  { day: 'Lun', amount: 18000, color: 'from-blue-600 to-cyan-500' },
-  { day: 'Mar', amount: 22000, color: 'from-blue-600 to-cyan-500' },
-  { day: 'Mie', amount: 25000, color: 'from-blue-600 to-cyan-500' },
-  { day: 'Jue', amount: 20000, color: 'from-blue-600 to-cyan-500' },
-  { day: 'Vie', amount: 28000, color: 'from-blue-600 to-cyan-500' },
-  { day: 'Sab', amount: 35000, color: 'from-blue-600 to-cyan-500' },
-  { day: 'Dom', amount: 15000, color: 'from-blue-600 to-cyan-500' },
-];
+interface WeeklyDay {
+  day: string;
+  amount: number;
+  color: string;
+}
 
-const transactions = [
-  { id: 'T-001', desc: 'Viaje Maria S. → Aerouerto', amount: 4500, time: 'Hace 2h', type: 'ride' },
-  { id: 'T-002', desc: 'Viaje Luis R. → Cartago', amount: 3200, time: 'Hace 3h', type: 'ride' },
-  { id: 'T-003', desc: 'Viaje Ana G. → Heredia', amount: 2800, time: 'Hace 5h', type: 'ride' },
-  { id: 'T-004', desc: 'Viaje Pedro M. → Santa Ana', amount: 5100, time: 'Hace 6h', type: 'ride' },
-  { id: 'T-005', desc: 'Viaje Laura J. → Alajuela', amount: 3900, time: 'Hace 7h', type: 'ride' },
-  { id: 'T-006', desc: 'Retiro a banco', amount: -20000, time: 'Ayer', type: 'withdraw' },
-];
+interface TxDisplay {
+  id: string;
+  desc: string;
+  amount: number;
+  time: string;
+  type: 'ride' | 'withdraw';
+}
 
-const maxAmount = Math.max(...weeklyData.map(d => d.amount));
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+
+function formatRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'Ahora';
+  if (diffMins < 60) return `Hace ${diffMins}m`;
+  if (diffHours < 24) return `Hace ${diffHours}h`;
+  if (diffDays === 1) return 'Ayer';
+  return `Hace ${diffDays} dias`;
+}
+
+function formatCurrency(amount: number): string {
+  return `₡${Math.round(amount).toLocaleString()}`;
+}
 
 export default function DriverEarnings() {
   const { user } = useAuthStore();
+  const [loading, setLoading] = useState(true);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
-  const [hasWithdrawnToday] = useState(false);
+  const [hasWithdrawnToday, setHasWithdrawnToday] = useState(false);
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [todayEarnings, setTodayEarnings] = useState(0);
+  const [totalWeekly, setTotalWeekly] = useState(0);
+  const [weeklyData, setWeeklyData] = useState<WeeklyDay[]>([]);
+  const [workHours, setWorkHours] = useState(0);
+  const [transactions, setTransactions] = useState<TxDisplay[]>([]);
+  const [walletBalance, setWalletBalance] = useState(0);
 
-  const handleWithdraw = () => {
+  const maxAmount = Math.max(...weeklyData.map(d => d.amount), 1);
+  const maxHours = 12;
+
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+
+    try {
+      // Fetch driver record
+      const { data: driver } = await supabase
+        .from('drivers')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (driver) {
+        setTotalEarnings(driver.total_earnings || 0);
+        setWorkHours(driver.work_hours_today || 0);
+      }
+
+      // Fetch wallet
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (wallet) {
+        setWalletBalance(wallet.balance || 0);
+      }
+
+      // Fetch completed rides for the last 7 days
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const { data: recentRides } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('driver_id', driver?.id || user.id)
+        .in('status', ['completed'])
+        .gte('created_at', sevenDaysAgo.toISOString())
+        .order('created_at', { ascending: true });
+
+      const rides = recentRides || [];
+
+      // Build weekly data (last 7 days)
+      const weekMap: Record<string, number> = {};
+      const today = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        weekMap[key] = 0;
+      }
+
+      let todaySum = 0;
+      let weekSum = 0;
+      const todayStr = today.toISOString().slice(0, 10);
+
+      for (const ride of rides) {
+        const rideDate = new Date(ride.created_at);
+        const dateKey = rideDate.toISOString().slice(0, 10);
+        const earnings = ride.driver_earnings || ride.price * 0.85;
+        if (weekMap.hasOwnProperty(dateKey)) {
+          weekMap[dateKey] += earnings;
+        }
+        if (dateKey === todayStr) {
+          todaySum += earnings;
+        }
+        weekSum += earnings;
+      }
+
+      setTodayEarnings(todaySum);
+      setTotalWeekly(weekSum);
+
+      const builtWeeklyData: WeeklyDay[] = Object.entries(weekMap).map(([dateKey, amount]) => {
+        const d = new Date(dateKey + 'T12:00:00');
+        return {
+          day: DAY_NAMES[d.getDay()],
+          amount,
+          color: 'from-blue-600 to-cyan-500',
+        };
+      });
+      setWeeklyData(builtWeeklyData);
+
+      // Check for today's withdrawals
+      const { data: todayWithdrawals } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('type', 'withdrawal')
+        .gte('created_at', new Date(todayStr + 'T00:00:00').toISOString())
+        .limit(1);
+      setHasWithdrawnToday((todayWithdrawals?.length || 0) > 0);
+
+      // Fetch transactions (wallet + transactions)
+      if (wallet) {
+        const { data: txData } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('wallet_id', wallet.id)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (txData && txData.length > 0) {
+          const mapped: TxDisplay[] = txData.map((tx: Transaction) => ({
+            id: tx.id,
+            desc: tx.description || (tx.type === 'withdrawal' ? 'Retiro a banco' : `Viaje ${tx.ride_id?.slice(0, 8) || ''}`),
+            amount: tx.type === 'withdrawal' ? -Math.abs(tx.amount) : tx.amount,
+            time: formatRelativeTime(tx.created_at),
+            type: tx.type === 'withdrawal' ? 'withdraw' : 'ride',
+          }));
+          setTransactions(mapped);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching earnings data:', err);
+      toast.error('Error al cargar datos de ganancias');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleWithdraw = async () => {
+    if (!user?.id) return;
+
     if (hasWithdrawnToday) {
       toast.error('Ya realizaste un retiro hoy. Puedes retirar de nuevo manana.');
       return;
     }
+
+    if (walletBalance < 10000) {
+      toast.error('Saldo insuficiente. El minimo de retiro es ₡10,000');
+      return;
+    }
+
     setIsWithdrawing(true);
-    setTimeout(() => {
+    try {
+      // Get wallet
+      const { data: wallet, error: walletErr } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (walletErr || !wallet) {
+        toast.error('No se encontro la billetera');
+        setIsWithdrawing(false);
+        return;
+      }
+
+      // Insert withdrawal transaction
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .insert({
+          wallet_id: wallet.id,
+          amount: walletBalance,
+          type: 'withdrawal',
+          status: 'processing',
+          description: 'Retiro a banco',
+        });
+
+      if (txErr) {
+        toast.error('Error al procesar retiro');
+        setIsWithdrawing(false);
+        return;
+      }
+
+      // Update wallet balance
+      const { error: updateErr } = await supabase
+        .from('wallets')
+        .update({
+          balance: 0,
+          total_withdrawn: (wallet.total_withdrawn || 0) + walletBalance,
+        })
+        .eq('id', wallet.id);
+
+      if (updateErr) {
+        toast.error('Error al actualizar billetera');
+        setIsWithdrawing(false);
+        return;
+      }
+
+      setHasWithdrawnToday(true);
+      setWalletBalance(0);
+      toast.success('Retiro solicitado! Procesamiento: 24 horas.');
+      fetchData();
+    } catch (err) {
+      console.error('Withdrawal error:', err);
+      toast.error('Error al procesar retiro');
+    } finally {
       setIsWithdrawing(false);
-      toast.success('Retiro solicitado! Procesamiento: 24 horas. Minimo: ₡10,000');
-    }, 1500);
+    }
   };
 
-  const todayEarnings = weeklyData[weeklyData.length - 1].amount;
-  const totalWeekly = weeklyData.reduce((sum, d) => sum + d.amount, 0);
-  const workHours = 6.5;
-  const maxHours = 12;
+  if (loading) {
+    return (
+      <div className="p-4 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+          <p className="text-sm text-gray-400">Cargando ganancias...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-6">
@@ -68,19 +284,19 @@ export default function DriverEarnings() {
         className="glass-strong rounded-2xl p-6 bg-gradient-to-br from-blue-600/20 to-cyan-500/10 border border-cyan-500/20"
       >
         <div className="flex items-center gap-2 mb-2">
-          <Wallet className="w-4 h-4 text-cyan-400" />
+          <WalletIcon className="w-4 h-4 text-cyan-400" />
           <span className="text-sm text-gray-400">Ganancias Totales</span>
         </div>
-        <p className="text-4xl font-bold text-white glow-text">₡125,500</p>
+        <p className="text-4xl font-bold text-white glow-text">{formatCurrency(totalEarnings)}</p>
         <div className="flex items-center gap-4 mt-3">
           <div>
             <p className="text-xs text-gray-500">Hoy</p>
-            <p className="text-sm font-semibold text-emerald-400">+₡{todayEarnings.toLocaleString()}</p>
+            <p className="text-sm font-semibold text-emerald-400">+{formatCurrency(todayEarnings)}</p>
           </div>
           <div className="w-px h-6 bg-white/10" />
           <div>
             <p className="text-xs text-gray-500">Esta semana</p>
-            <p className="text-sm font-semibold text-cyan-400">₡{totalWeekly.toLocaleString()}</p>
+            <p className="text-sm font-semibold text-cyan-400">{formatCurrency(totalWeekly)}</p>
           </div>
         </div>
       </motion.div>
@@ -125,22 +341,28 @@ export default function DriverEarnings() {
             <Calendar className="w-4 h-4 text-cyan-400" />
             <span className="text-sm font-semibold text-white">Esta Semana</span>
           </div>
-          <span className="text-xs text-gray-500">₡{totalWeekly.toLocaleString()} total</span>
+          <span className="text-xs text-gray-500">{formatCurrency(totalWeekly)} total</span>
         </div>
-        <div className="flex items-end gap-2 h-36">
-          {weeklyData.map((data, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-[10px] text-gray-500">₡{(data.amount / 1000).toFixed(0)}k</span>
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: `${(data.amount / maxAmount) * 100}%` }}
-                transition={{ duration: 0.6, delay: i * 0.08 }}
-                className={`w-full rounded-t-lg bg-gradient-to-t ${data.color} opacity-80 hover:opacity-100 transition-opacity cursor-pointer`}
-              />
-              <span className="text-[10px] text-gray-400 font-medium">{data.day}</span>
-            </div>
-          ))}
-        </div>
+        {weeklyData.length > 0 ? (
+          <div className="flex items-end gap-2 h-36">
+            {weeklyData.map((data, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <span className="text-[10px] text-gray-500">₡{(data.amount / 1000).toFixed(0)}k</span>
+                <motion.div
+                  initial={{ height: 0 }}
+                  animate={{ height: `${(data.amount / maxAmount) * 100}%` }}
+                  transition={{ duration: 0.6, delay: i * 0.08 }}
+                  className={`w-full rounded-t-lg bg-gradient-to-t ${data.color} opacity-80 hover:opacity-100 transition-opacity cursor-pointer`}
+                />
+                <span className="text-[10px] text-gray-400 font-medium">{data.day}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-36 text-gray-500 text-sm">
+            Sin viajes esta semana
+          </div>
+        )}
       </motion.div>
 
       {/* Withdraw Button */}
@@ -183,26 +405,32 @@ export default function DriverEarnings() {
         transition={{ delay: 0.25 }}
       >
         <h2 className="text-sm font-semibold text-gray-400 mb-3">Transacciones Recientes</h2>
-        <div className="space-y-2 max-h-72 overflow-y-auto">
-          {transactions.map((tx) => (
-            <div key={tx.id} className="glass rounded-xl p-3 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tx.type === 'ride' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
-                {tx.type === 'ride' ? (
-                  <CreditCard className="w-5 h-5 text-emerald-400" />
-                ) : (
-                  <ArrowDownCircle className="w-5 h-5 text-red-400" />
-                )}
+        {transactions.length > 0 ? (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {transactions.map((tx) => (
+              <div key={tx.id} className="glass rounded-xl p-3 flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tx.type === 'ride' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+                  {tx.type === 'ride' ? (
+                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                  ) : (
+                    <ArrowDownCircle className="w-5 h-5 text-red-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{tx.desc}</p>
+                  <p className="text-xs text-gray-500">{tx.time}</p>
+                </div>
+                <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {tx.amount > 0 ? '+' : ''}₡{Math.abs(tx.amount).toLocaleString()}
+                </p>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{tx.desc}</p>
-                <p className="text-xs text-gray-500">{tx.time}</p>
-              </div>
-              <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {tx.amount > 0 ? '+' : ''}₡{Math.abs(tx.amount).toLocaleString()}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500 text-sm">
+            Sin transacciones recientes
+          </div>
+        )}
       </motion.div>
     </div>
   );

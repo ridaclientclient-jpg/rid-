@@ -2,8 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Clock, Star, ChevronRight, Car } from 'lucide-react';
+import { MapPin, Star, ChevronRight, Car, Loader2 } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
+import { useAuthStore } from '@/store/authStore';
+import { useState, useEffect } from 'react';
 
 const rideTypeNames: Record<string, string> = {
   standard: 'Economico',
@@ -17,14 +19,21 @@ const rideTypeNames: Record<string, string> = {
 
 export default function ClientHistory() {
   const router = useRouter();
-  const { rideHistory } = useRideStore();
+  const { user } = useAuthStore();
+  const { rideHistory, fetchRideHistory } = useRideStore();
+  const [loading, setLoading] = useState(true);
 
-  const demoHistory = rideHistory.length > 0 ? rideHistory : [
-    { id: 'R-001', origin: 'San Jose Centro', destination: 'Escazu', price: 2800, status: 'completed' as const, date: '2026-04-14', ride_type: 'standard', distance: 8 },
-    { id: 'R-002', origin: 'Santa Ana', destination: 'Heredia', price: 3500, status: 'completed' as const, date: '2026-04-13', ride_type: 'premium', distance: 12 },
-    { id: 'R-003', origin: 'Alajuela', destination: 'San Jose Centro', price: 1800, status: 'cancelled' as const, date: '2026-04-12', ride_type: 'standard', distance: 5 },
-    { id: 'R-004', origin: 'Cartago', destination: 'Curridabat', price: 4200, status: 'completed' as const, date: '2026-04-11', ride_type: 'suv', distance: 15 },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    if (user?.id) {
+      fetchRideHistory(user.id).then(() => {
+        if (!cancelled) setLoading(false);
+      }).catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [user?.id, fetchRideHistory]);
 
   const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
     completed: { label: 'Completado', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
@@ -35,15 +44,28 @@ export default function ClientHistory() {
     started: { label: 'En viaje', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
   };
 
+  if (loading) {
+    return (
+      <div className="p-4 space-y-4">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="text-xl font-bold text-white">Historial de Viajes</h1>
+        </motion.div>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 space-y-4">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-xl font-bold text-white">Historial de Viajes</h1>
-        <p className="text-sm text-gray-400 mt-1">{demoHistory.length} viajes</p>
+        <p className="text-sm text-gray-400 mt-1">{rideHistory.length} viajes</p>
       </motion.div>
 
       <div className="space-y-3">
-        {demoHistory.map((ride: any, i: number) => {
+        {rideHistory.map((ride: any, i: number) => {
           const sc = statusConfig[ride.status] || statusConfig.completed;
           const typeName = rideTypeNames[ride.ride_type || ''] || 'Economico';
           return (
@@ -109,7 +131,7 @@ export default function ClientHistory() {
         })}
       </div>
 
-      {demoHistory.length === 0 && (
+      {rideHistory.length === 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

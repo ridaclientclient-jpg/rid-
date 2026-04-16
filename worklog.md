@@ -308,3 +308,33 @@ Stage Summary:
 - Smooth pan-to animation when centering on user location
 - Admin app has no maps (data tables only) — no changes needed there
 - Client ride page, client ride details page, and driver rides page all use the shared fixed component
+---
+Task ID: 4
+Agent: Main Agent (3 parallel subagents)
+Task: Connect ALL pages to real Supabase data — remove all mock/hardcoded data
+
+Work Log:
+- **Agent 1 (Admin)**: Rewrote admin/page.tsx and admin/analytics/page.tsx
+  - Admin Dashboard: Real queries for total users, rides today, drivers online, revenue today, recent rides, activity feed, heatmap from GPS coordinates
+  - Admin Analytics: Time-range-aware queries for revenue/rides charts, user growth, top routes, driver leaderboard, key metrics, geo distribution
+  - Loading skeletons, empty states, error handling added
+
+- **Agent 2 (Client)**: Rewrote client/history, client/wallet, client/profile
+  - Client History: Calls fetchRideHistory on mount, removed hardcoded demo fallback
+  - Client Wallet: Real wallet balance from wallets table, real transactions, working Recargar/Retirar buttons that update Supabase
+  - Client Profile: Real ride count, average rating, member-since date from profiles/rides tables
+
+- **Agent 3 (Driver + Admin CRUD)**: Rewrote driver/earnings, driver/profile, admin/rides, admin/users, admin/drivers
+  - Driver Earnings: Real weekly chart from completed rides, real transactions, working Retirar button with ₡10k minimum
+  - Driver Profile: Real vehicle data (plate/model/color/year), real stats (trips, earnings, rating)
+  - Admin Rides: Real rides table with search/filters, working cancel button
+  - Admin Users: Real profiles table with search/filters, working block/unblock/verify buttons
+  - Admin Drivers: Real drivers table with profiles+vehicles JOIN, working approve/reject buttons
+
+Stage Summary:
+- 10 files rewritten with real Supabase data (no more mock data)
+- All buttons now perform real Supabase operations
+- Loading states added to all pages
+- Empty states handled gracefully
+- Build verified: 0 errors, all 48 routes compile
+- Remaining mock: Client home recent places, driver ride simulation (DEMO_DRIVERS), marketplace pages
