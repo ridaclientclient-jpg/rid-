@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, GripVertical, CircleDot } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2 } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
+import { reverseGeocode } from '@/lib/googleMaps';
 
 interface CoordData {
   lat: number;
@@ -33,6 +34,7 @@ export default function ClientRide() {
   const [rideType, setRideType] = useState<string>('standard');
   const [showThirdParty, setShowThirdParty] = useState(false);
   const [stops, setStops] = useState<Stop[]>([]);
+  const [gettingLocation, setGettingLocation] = useState(false);
 
   const handleOriginChange = (val: string, _placeId?: string, lat?: number, lng?: number) => {
     setOrigin(val);
@@ -45,6 +47,33 @@ export default function ClientRide() {
     setDestination(val);
     if (lat !== undefined && lng !== undefined) {
       setDestCoords({ lat, lng });
+    }
+  };
+
+  // Use my location as origin
+  const useMyLocation = async () => {
+    if (!navigator.geolocation) {
+      toast.error('GPS no disponible en este dispositivo');
+      return;
+    }
+    setGettingLocation(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 60000
+        });
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const address = await reverseGeocode(lat, lng);
+      const displayAddress = address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      setOrigin(displayAddress);
+      setOriginCoords({ lat, lng });
+      toast.success('Ubicacion actual establecida');
+    } catch {
+      toast.error('No se pudo obtener tu ubicacion. Verifica que el GPS este habilitado.');
+    } finally {
+      setGettingLocation(false);
     }
   };
 
@@ -165,11 +194,32 @@ export default function ClientRide() {
           >
             {/* Location Inputs */}
             <div className="space-y-2">
+              {/* Use My Location Button */}
+              <button
+                onClick={useMyLocation}
+                disabled={gettingLocation}
+                className="w-full flex items-center gap-2.5 p-2.5 rounded-xl glass hover:bg-white/10 transition-all text-left disabled:opacity-50"
+              >
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  {gettingLocation ? (
+                    <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                  ) : (
+                    <Crosshair className="w-4 h-4 text-emerald-400" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-emerald-400">
+                    {gettingLocation ? 'Obteniendo ubicacion...' : 'Mi ubicacion'}
+                  </p>
+                  <p className="text-[10px] text-gray-500">Usar posicion actual como punto de partida</p>
+                </div>
+              </button>
+
               {/* Origin */}
               <PlacesAutocomplete
                 value={origin}
                 onChange={handleOriginChange}
-                placeholder="Punto de partida"
+                placeholder="O escribe una direccion de partida"
                 dotColor="bg-emerald-400"
               />
 
