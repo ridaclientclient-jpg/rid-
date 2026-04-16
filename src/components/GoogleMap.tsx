@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMaps';
-import { MapPin } from 'lucide-react';
+import { MapPin, Crosshair, Navigation } from 'lucide-react';
 
 interface MarkerData {
   lat: number;
@@ -48,14 +48,66 @@ export default function GoogleMap({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const userMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const directionsRendererRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const userMarkerRef = useRef<any>(null);
+  const watchIdRef = useRef<number | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'searching' | 'found' | 'denied' | 'unavailable'>('searching');
+
+  const addUserMarker = useCallback((google: typeof window.google, map: google.maps.Map, position: { lat: number; lng: number }) => {
+    // Remove old marker
+    if (userMarkerRef.current) {
+      try { userMarkerRef.current.map = null; } catch {}
+      userMarkerRef.current = null;
+    }
+
+    try {
+      const { AdvancedMarkerElement } = google.maps.marker;
+      const pinElement = document.createElement('div');
+      pinElement.style.cssText = `
+        width: 20px; height: 20px; border-radius: 50%;
+        background: #06b6d4; border: 3px solid #fff;
+        box-shadow: 0 0 14px rgba(6,182,212,0.7), 0 0 40px rgba(6,182,212,0.3);
+        animation: pulse-ring 2s ease-out infinite;
+      `;
+      const userMarker = new AdvancedMarkerElement({
+        map,
+        position,
+        title: 'Tu ubicacion',
+        content: pinElement,
+      });
+      userMarkerRef.current = userMarker;
+    } catch {
+      // Fallback to basic marker
+      const m = new google.maps.Marker({
+        map,
+        position,
+        title: 'Tu ubicacion',
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#06b6d4',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 3,
+          scale: 10,
+        },
+        zIndex: 1000,
+      });
+      userMarkerRef.current = m;
+    }
+  }, []);
 
   // Initialize map
   useEffect(() => {
     if (!mapRef.current) return;
+
+    // Cleanup previous
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
 
     loadGoogleMaps()
       .then((google) => {
@@ -87,63 +139,47 @@ export default function GoogleMap({
           streetViewControl: false,
           fullscreenControl: false,
           gestureHandling: 'greedy',
-          // No mapId — uses default renderer (no cloud configuration needed)
         });
 
         mapInstanceRef.current = map;
         setIsLoaded(true);
 
-        // Get user location
+        // Get user location with watchPosition (continuous)
         if (showUserLocation && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
+          setLocationStatus('searching');
+
+          watchIdRef.current = navigator.geolocation.watchPosition(
             (position) => {
               const userPos = {
                 lat: position.coords.latitude,
                 lng: position.coords.longitude,
               };
+              setUserLocation(userPos);
+              setLocationStatus('found');
 
               if (mapInstanceRef.current) {
                 mapInstanceRef.current.setCenter(userPos);
+                mapInstanceRef.current.setZoom(14);
               }
 
-              // Add user location marker with AdvancedMarkerElement
-              try {
-                const { AdvancedMarkerElement } = google.maps.marker;
-                const pinElement = document.createElement('div');
-                pinElement.style.cssText = `
-                  width: 18px; height: 18px; border-radius: 50%;
-                  background: #06b6d4; border: 3px solid #fff;
-                  box-shadow: 0 0 12px rgba(6,182,212,0.6);
-                `;
-                const userMarker = new AdvancedMarkerElement({
-                  map,
-                  position: userPos,
-                  title: 'Tu ubicacion',
-                  content: pinElement,
-                });
-                userMarkerRef.current = userMarker;
-              } catch {
-                // Fallback to basic marker
-                new google.maps.Marker({
-                  map,
-                  position: userPos,
-                  title: 'Tu ubicacion',
-                  icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    fillColor: '#06b6d4',
-                    fillOpacity: 1,
-                    strokeColor: '#fff',
-                    strokeWeight: 2,
-                    scale: 8,
-                  },
-                });
+              addUserMarker(google, map, userPos);
+            },
+            (error) => {
+              console.warn('Geolocation error:', error.message, error.code);
+              if (error.code === 1) {
+                setLocationStatus('denied');
+              } else {
+                setLocationStatus('unavailable');
               }
             },
-            () => {
-              console.warn('Geolocation error, using default center');
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 60000,
+            }
           );
+        } else if (!navigator.geolocation) {
+          setLocationStatus('unavailable');
         }
 
         // Map click handler
@@ -162,15 +198,20 @@ export default function GoogleMap({
       });
 
     return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
       }
-      // Cleanup map instance on unmount
       if (mapInstanceRef.current) {
         mapInstanceRef.current = null;
         markersRef.current = [];
         userMarkerRef.current = null;
       }
+      setUserLocation(null);
+      setLocationStatus('searching');
     };
   }, []);
 
@@ -178,9 +219,8 @@ export default function GoogleMap({
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
-    // Clear existing markers
     markersRef.current.forEach((m) => {
-      try { m.map = null; } catch { /* ignore */ }
+      try { m.map = null; } catch {}
     });
     markersRef.current = [];
 
@@ -202,7 +242,6 @@ export default function GoogleMap({
           });
           markersRef.current.push(marker);
         } catch {
-          // Fallback to basic markers
           new google.maps.Marker({
             map: mapInstanceRef.current,
             position: { lat: markerData.lat, lng: markerData.lng },
@@ -275,7 +314,7 @@ export default function GoogleMap({
           <div className="w-20 h-20 rounded-full bg-cyan-500/10 flex items-center justify-center mx-auto mb-3 animate-pulse-glow">
             <MapPin className="w-10 h-10 text-cyan-400" />
           </div>
-          <p className="text-sm text-gray-400">GPS Activo — Costa Rica</p>
+          <p className="text-sm text-gray-400">GPS Activo - Costa Rica</p>
           <p className="text-xs text-gray-600 mt-1">Precision: alta</p>
         </div>
         <svg className="absolute inset-0 w-full h-full opacity-5" xmlns="http://www.w3.org/2000/svg">
@@ -291,10 +330,60 @@ export default function GoogleMap({
   }
 
   return (
-    <div
-      ref={mapRef}
-      className={`w-full ${className}`}
-      style={{ height, borderRadius: '16px', overflow: 'hidden', ...style }}
-    />
+    <div className="relative">
+      <div
+        ref={mapRef}
+        className={`w-full ${className}`}
+        style={{ height, borderRadius: '16px', overflow: 'hidden', ...style }}
+      />
+
+      {/* Location status indicator */}
+      {showUserLocation && (
+        <div className="absolute top-3 left-3 z-10">
+          {locationStatus === 'searching' && (
+            <div className="glass-strong rounded-lg px-3 py-1.5 flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[10px] text-gray-300">Obteniendo ubicacion...</span>
+            </div>
+          )}
+          {locationStatus === 'found' && userLocation && (
+            <div className="glass-strong rounded-lg px-3 py-1.5 flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-emerald-400" />
+              <span className="text-[10px] text-emerald-400">
+                {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
+              </span>
+            </div>
+          )}
+          {locationStatus === 'denied' && (
+            <div className="glass-strong rounded-lg px-3 py-1.5 flex items-center gap-2 border border-red-500/30">
+              <Crosshair className="w-3 h-3 text-red-400" />
+              <span className="text-[10px] text-red-400">Ubicacion denegada - Habilita GPS</span>
+            </div>
+          )}
+          {locationStatus === 'unavailable' && (
+            <div className="glass-strong rounded-lg px-3 py-1.5 flex items-center gap-2 border border-amber-500/30">
+              <Navigation className="w-3 h-3 text-amber-400" />
+              <span className="text-[10px] text-amber-400">GPS no disponible</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Re-center button when location found */}
+      {locationStatus === 'found' && userLocation && (
+        <button
+          onClick={() => {
+            if (mapInstanceRef.current) {
+              mapInstanceRef.current.setCenter(userLocation);
+              mapInstanceRef.current.setZoom(14);
+            }
+          }}
+          className="absolute bottom-3 right-3 z-10 glass-strong rounded-xl p-2.5 text-gray-400 hover:text-cyan-400 transition-colors"
+          title="Mi ubicacion"
+        >
+          <Crosshair className="w-5 h-5" />
+        </button>
+      )}
+    </div>
   );
 }
