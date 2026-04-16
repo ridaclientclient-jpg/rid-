@@ -105,18 +105,37 @@ export default function ClientRide() {
     setStops(stops.filter(s => s.id !== stopId));
   };
 
-  // Build marker array for the map
+  // Build marker array for the map — use currentRide data when active, local state when filling form
   const mapMarkers: { lat: number; lng: number; label: string; color: string }[] = [];
-  if (originCoords) mapMarkers.push({ ...originCoords, label: 'A', color: '#10b981' });
-  stops.forEach((stop, i) => {
-    if (stop.coords) {
-      mapMarkers.push({ ...stop.coords, label: STOP_LABELS[i], color: STOP_COLORS[i] });
-    }
-  });
-  if (destCoords) mapMarkers.push({ ...destCoords, label: 'B', color: '#ef4444' });
+  const activeRideOrigin = currentRide?.origin_lat && currentRide?.origin_lng
+    ? { lat: currentRide.origin_lat, lng: currentRide.origin_lng }
+    : null;
+  const activeRideDest = currentRide?.dest_lat && currentRide?.dest_lng
+    ? { lat: currentRide.dest_lat, lng: currentRide.dest_lng }
+    : null;
+  const activeWaypoints = (currentRide?.stops || [])
+    .filter((s: any) => s.lat && s.lng)
+    .map((s: any) => ({ lat: s.lat, lng: s.lng }));
 
-  // Build waypoints for the route
-  const waypoints = stops.filter(s => s.coords).map(s => ({ lat: s.coords!.lat, lng: s.coords!.lng }));
+  const mapOrigin = currentRide ? activeRideOrigin : originCoords;
+  const mapDest = currentRide ? activeRideDest : destCoords;
+  const mapWaypoints = currentRide ? activeWaypoints : stops.filter(s => s.coords).map(s => ({ lat: s.coords!.lat, lng: s.coords!.lng }));
+
+  if (mapOrigin) mapMarkers.push({ ...mapOrigin, label: 'A', color: '#10b981' });
+  if (currentRide) {
+    (currentRide.stops || []).forEach((stop: any, i: number) => {
+      if (stop.lat && stop.lng) {
+        mapMarkers.push({ lat: stop.lat, lng: stop.lng, label: STOP_LABELS[i], color: STOP_COLORS[i] });
+      }
+    });
+  } else {
+    stops.forEach((stop, i) => {
+      if (stop.coords) {
+        mapMarkers.push({ ...stop.coords, label: STOP_LABELS[i], color: STOP_COLORS[i] });
+      }
+    });
+  }
+  if (mapDest) mapMarkers.push({ ...mapDest, label: 'B', color: '#ef4444' });
 
   const handleCreateRide = async () => {
     if (!origin || !destination) {
@@ -140,16 +159,24 @@ export default function ClientRide() {
       lng: s.coords?.lng,
     }));
 
-    await createRide(
-      origin, destination,
-      originCoords?.lat, originCoords?.lng,
-      destCoords?.lat, destCoords?.lng,
-      rideType, stopsData
-    );
-    toast.success('Buscando conductor...');
-
-    // Show third party popup after a delay
-    setTimeout(() => setShowThirdParty(true), 2000);
+    try {
+      const rideId = await createRide(
+        origin, destination,
+        originCoords?.lat, originCoords?.lng,
+        destCoords?.lat, destCoords?.lng,
+        rideType, stopsData
+      );
+      if (rideId) {
+        toast.success('Viaje creado! Buscando conductor...');
+        // Show third party popup after a delay
+        setTimeout(() => setShowThirdParty(true), 2000);
+      } else {
+        toast.error('No se pudo crear el viaje. Intenta de nuevo.');
+      }
+    } catch (error: any) {
+      console.error('Ride creation failed:', error);
+      toast.error('Error al crear viaje: ' + (error?.message || 'Intenta de nuevo'));
+    }
   };
 
   const rideTypes = [
@@ -167,16 +194,16 @@ export default function ClientRide() {
       {/* Google Map Area */}
       <div className="flex-1 relative">
         <GoogleMap
-          center={{ lat: 9.7489, lng: -83.7534 }}
-          zoom={13}
+          center={mapOrigin || { lat: 9.7489, lng: -83.7534 }}
+          zoom={mapOrigin && mapDest ? 13 : 14}
           markers={mapMarkers}
-          waypoints={waypoints.length > 0 ? waypoints : undefined}
+          waypoints={mapWaypoints.length > 0 ? mapWaypoints : undefined}
           showRoute={
-            originCoords && destCoords
-              ? { origin: originCoords, destination: destCoords }
+            mapOrigin && mapDest
+              ? { origin: mapOrigin, destination: mapDest }
               : undefined
           }
-          showDirections={!!(originCoords && destCoords)}
+          showDirections={!!(mapOrigin && mapDest)}
           showUserLocation={true}
           className="absolute inset-0"
         />

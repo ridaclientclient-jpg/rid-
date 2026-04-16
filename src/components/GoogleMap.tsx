@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMaps';
 import { MapPin, Crosshair, Navigation } from 'lucide-react';
 
@@ -219,14 +219,27 @@ export default function GoogleMap({
     });
   }, [markers, isLoaded]);
 
+  // Stable key for route — only changes when actual coordinates change
+  const routeKey = useMemo(() => {
+    if (!showRoute) return '';
+    return `${showRoute.origin.lat},${showRoute.origin.lng}-${showRoute.destination.lat},${showRoute.destination.lng}-${JSON.stringify(waypoints)}`;
+  }, [showRoute, waypoints]);
+
   // Show directions
   useEffect(() => {
-    if (!mapInstanceRef.current || !showRoute || !showDirections || !isLoaded) return;
+    // Clear previous directions renderer
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+      directionsRendererRef.current = null;
+    }
+
+    if (!mapInstanceRef.current || !showRoute || !showDirections || !isLoaded || !routeKey) return;
 
     loadGoogleMaps().then((google) => {
+      if (!mapInstanceRef.current) return;
       const directionsService = new google.maps.DirectionsService();
       const directionsRenderer = new google.maps.DirectionsRenderer({
-        map: mapInstanceRef.current!,
+        map: mapInstanceRef.current,
         polylineOptions: {
           strokeColor: '#06b6d4',
           strokeWeight: 4,
@@ -262,7 +275,14 @@ export default function GoogleMap({
         }
       );
     });
-  }, [showRoute, showDirections, waypoints, isLoaded]);
+
+    return () => {
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+        directionsRendererRef.current = null;
+      }
+    };
+  }, [routeKey, showRoute, showDirections, waypoints, isLoaded]);
 
   // Error fallback
   if (hasError) {

@@ -204,3 +204,24 @@ Stage Summary:
 - Admin register uses role='admin' in the shared authStore.register()
 - Recovery page sends `redirectTo: '/admin/login'` so password reset returns to admin login
 - Layout bypass updated with `publicPaths` array for clean extensibility
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix ride not showing on map + infinite driver search
+
+Work Log:
+- Analyzed rideStore.createRide — found that ride_type and stops columns may not exist in Supabase DB
+- Added fallback insert logic: tries full insert first, then retries without ride_type/stops if column error detected
+- Changed createRide to throw error instead of silently catching (allows caller to show proper error)
+- Fixed client ride page to use currentRide data (origin_lat/dest_lat) for map when ride is active, instead of relying on local form state
+- Fixed handleCreateRide to properly handle createRide errors with try/catch and show error toast
+- Fixed GoogleMap directions useEffect: added cleanup to prevent renderer stacking, added routeKey memo to prevent excessive Directions API calls
+- Updated migration-ride-type.sql to include both ride_type AND stops columns
+
+Stage Summary:
+- 3 files modified: src/store/rideStore.ts, src/app/client/ride/page.tsx, src/components/GoogleMap.tsx
+- 1 file updated: download/migration-ride-type.sql (added stops column)
+- Ride creation is now resilient to missing DB columns (fallback insert)
+- Map properly shows route during active ride using currentRide coordinates
+- Error feedback is clear when ride creation fails
+- Directions renderer properly cleaned up on re-render

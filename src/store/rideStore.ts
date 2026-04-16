@@ -62,34 +62,75 @@ export const useRideStore = create<RideState>((set, get) => ({
 
       // Calculate price (distance + extra per stop)
       const baseDistance = Math.floor(Math.random() * 15) + 3;
-      const stopExtra = stops.length * 2; // 2 extra km per stop
+      const stopExtra = stops.length * 2;
       const distance = baseDistance + stopExtra;
       const price = Math.round((basePrice + (distance * pricePerKm)) * multiplier);
       const duration = distance * 3;
 
-      const { data: ride, error } = await supabase
-        .from('rides')
-        .insert({
-          rider_id: user.id,
-          status: 'searching',
-          origin,
-          origin_lat: originLat,
-          origin_lng: originLng,
-          destination,
-          dest_lat: destLat,
-          dest_lng: destLng,
-          price,
-          distance,
-          duration,
-          ride_type: rideType,
-          stops: stops.length > 0 ? JSON.stringify(stops) : null,
-        })
-        .select()
-        .single();
+      // Build the ride data — try full insert first (with ride_type + stops)
+      const fullInsert: Record<string, any> = {
+        rider_id: user.id,
+        status: 'searching',
+        origin,
+        origin_lat: originLat,
+        origin_lng: originLng,
+        destination,
+        dest_lat: destLat,
+        dest_lng: destLng,
+        price,
+        distance,
+        duration,
+      };
 
-      if (error) throw error;
+      let ride: any = null;
+      let insertError: any = null;
 
-      const rideWithDriver = { ...ride, driver_name: undefined, driver_phone: undefined, driver_vehicle: undefined, driver_rating: undefined, stops: stops.length > 0 ? stops : undefined };
+      // Attempt 1: Insert with ride_type and stops columns
+      try {
+        const result = await supabase
+          .from('rides')
+          .insert({
+            ...fullInsert,
+            ride_type: rideType,
+            stops: stops.length > 0 ? JSON.stringify(stops) : null,
+          })
+          .select()
+          .single();
+        ride = result.data;
+        insertError = result.error;
+      } catch (e) {
+        insertError = e;
+      }
+
+      // Attempt 2: If failed (likely missing columns), retry without ride_type and stops
+      if (insertError && (insertError.message?.includes('ride_type') || insertError.message?.includes('stops') || insertError.code === '42P01' || insertError.code === '42703')) {
+        console.warn('ride_type/stops columns missing, retrying without them...');
+        try {
+          const result2 = await supabase
+            .from('rides')
+            .insert(fullInsert)
+            .select()
+            .single();
+          ride = result2.data;
+          insertError = result2.error;
+        } catch (e) {
+          insertError = e;
+        }
+      }
+
+      if (insertError || !ride) {
+        throw new Error(insertError?.message || 'No se pudo crear el viaje');
+      }
+
+      const rideWithDriver = {
+        ...ride,
+        driver_name: undefined,
+        driver_phone: undefined,
+        driver_vehicle: undefined,
+        driver_rating: undefined,
+        stops: stops.length > 0 ? stops : undefined,
+        ride_type: rideType,
+      };
 
       set({ currentRide: rideWithDriver, isCreating: false });
 
@@ -139,10 +180,10 @@ export const useRideStore = create<RideState>((set, get) => ({
       }, 13000);
 
       return ride.id;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create ride error:', error);
       set({ isCreating: false });
-      return null;
+      throw error;
     }
   },
 
