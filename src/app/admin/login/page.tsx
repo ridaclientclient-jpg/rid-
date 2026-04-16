@@ -26,7 +26,7 @@ export default function AdminLoginPage() {
     const result = await login(email, password);
     if (result.success) {
       toast.success('Bienvenido al panel de administración');
-      router.push('/admin');
+      router.replace('/admin');
     } else {
       toast.error(result.error || 'Error al iniciar sesion');
     }

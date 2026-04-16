@@ -45,21 +45,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const publicPaths = ['/admin/login', '/admin/register', '/admin/recovery'];
   const isPublicPath = publicPaths.includes(pathname);
 
-  useEffect(() => {
-    if (hydrated && !isAuthenticated && !isPublicPath) {
-      router.push('/admin/login');
-    }
-  }, [hydrated, isAuthenticated, isPublicPath, pathname, router]);
-
-  // Don't show sidebar on public pages
+  // Don't show sidebar on public pages (AuthGuard handles auth redirects)
   if (isPublicPath) {
     return <>{children}</>;
   }
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
     toast.success('Sesión cerrada');
-    router.push('/admin/login');
+    await logout();
+    // AuthGuard will handle the redirect automatically
+    router.replace('/admin/login');
   };
 
   const isActive = (href: string) => {

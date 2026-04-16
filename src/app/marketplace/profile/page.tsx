@@ -46,7 +46,7 @@ export default function ProfilePage() {
     { label: 'Términos y Condiciones', icon: FileText, color: 'text-blue-400', action: () => toast.info('Mostrando términos...') },
     { label: 'Soporte', icon: Headphones, color: 'text-emerald-400', action: () => toast.info('Abriendo soporte...') },
     { label: 'Privacidad', icon: Shield, color: 'text-purple-400', action: () => toast.info('Configuración de privacidad') },
-    { label: 'Cerrar Sesión', icon: LogOut, color: 'text-red-400', action: () => { logout(); toast.success('Sesión cerrada'); router.push('/marketplace/login'); } },
+    { label: 'Cerrar Sesión', icon: LogOut, color: 'text-red-400', action: async () => { toast.success('Sesión cerrada'); await logout(); router.replace('/marketplace/login'); } },
   ];
 
   const startEdit = (field: string, value: string) => {

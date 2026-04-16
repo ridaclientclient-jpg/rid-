@@ -23,7 +23,7 @@ export default function ClientLogin() {
     const result = await login(email, password);
     if (result.success) {
       toast.success('Bienvenido a RIDA!');
-      router.push('/client');
+      router.replace('/client');
     } else {
       toast.error(result.error || 'Error al iniciar sesion');
     }

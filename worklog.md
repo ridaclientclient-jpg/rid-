@@ -361,3 +361,24 @@ Stage Summary:
 - Drivers shown are closer (0.2-2.2km) with realistic ETAs (1-6 min)
 - Driver card shows distance + ETA during assigned/arriving status
 - Build verified successful with zero errors
+---
+Task ID: fix-nav
+Agent: main
+Task: Fix "Lock broken by another request with the 'steal' option" navigation error
+
+Work Log:
+- Root cause: Multiple navigation guards racing each other — admin layout had BOTH a useEffect redirect AND AuthGuard, both firing router.push/replace simultaneously
+- AuthGuard.tsx: Added `isNavigatingRef` to prevent double navigation + skip redirect if already on auth page
+- Admin layout: Removed duplicate useEffect (lines 48-52) that was competing with AuthGuard
+- All logout handlers (7 locations): Changed from fire-and-forget `logout(); router.push()` to `await logout(); router.replace()`
+- authStore logout: Added `_isLoggingOut` flag to prevent onAuthStateChange SIGNED_OUT from double-setting state
+- All login pages (3): Changed `router.push()` to `router.replace()` after login success
+- Bottom navs (client + driver): Added `if (pathname !== item.href)` guard to prevent push to current route
+- Files changed: AuthGuard.tsx, admin/layout.tsx, client/layout.tsx, driver/layout.tsx, marketplace/layout.tsx, authStore.ts, admin/login, client/login, driver/login, client/profile, driver/profile, marketplace/profile
+
+Stage Summary:
+- Navigation lock error eliminated by ensuring only ONE navigation fires at a time
+- Logout: await signOut before navigating, use replace instead of push
+- Login: use replace instead of push to avoid competing with AuthGuard
+- AuthGuard: protected against double-fire with ref + pathname check
+- Build verified successful

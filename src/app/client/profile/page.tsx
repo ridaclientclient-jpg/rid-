@@ -144,7 +144,7 @@ export default function ClientProfile() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3 }}
-        onClick={() => { logout(); router.push('/client/login'); toast.success('Sesion cerrada'); }}
+        onClick={async () => { toast.success('Sesion cerrada'); await logout(); router.replace('/client/login'); }}
         className="w-full bg-red-500/10 border border-red-500/30 text-red-400 font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-red-500/20"
       >
         <LogOut className="w-4 h-4" /> Cerrar Sesion

@@ -47,7 +47,7 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
                   <Bell className="w-5 h-5 text-gray-400" />
                   <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400" />
                 </button>
-                <button onClick={() => { logout(); router.push('/driver/login'); }} className="p-2 rounded-xl hover:bg-white/5 transition-colors">
+                <button onClick={async () => { await logout(); router.replace('/driver/login'); }} className="p-2 rounded-xl hover:bg-white/5 transition-colors">
                   <LogOut className="w-5 h-5 text-gray-400" />
                 </button>
               </div>
@@ -69,7 +69,7 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
                 return (
                   <button
                     key={item.href}
-                    onClick={() => router.push(item.href)}
+                    onClick={() => { if (pathname !== item.href) router.push(item.href); }}
                     className={`relative flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all ${
                       isActive ? 'text-cyan-400' : 'text-gray-500 hover:text-gray-300'
                     }`}

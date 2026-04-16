@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 
@@ -15,6 +15,7 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
   const pathname = usePathname();
   const { user, isAuthenticated, isLoading, initAuth } = useAuthStore();
   const [checked, setChecked] = useState(false);
+  const isNavigatingRef = useRef(false);
 
   useEffect(() => {
     initAuth().finally(() => setChecked(true));
@@ -22,11 +23,15 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
 
   useEffect(() => {
     if (!checked || isLoading) return;
+    if (isNavigatingRef.current) return;
 
     if (!isAuthenticated && authPage) {
+      // Don't redirect if already on the auth page
+      if (pathname === authPage) return;
+      isNavigatingRef.current = true;
       router.replace(authPage);
     }
-  }, [checked, isLoading, isAuthenticated, router, authPage]);
+  }, [checked, isLoading, isAuthenticated, router, authPage, pathname]);
 
   if (isLoading || !checked) {
     return (

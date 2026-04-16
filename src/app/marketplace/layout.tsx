@@ -28,10 +28,10 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
 
   const isLoginPage = pathname === '/marketplace/login';
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
     toast.success('Sesión cerrada');
-    router.push('/marketplace/login');
+    await logout();
+    router.replace('/marketplace/login');
   };
 
   const isActive = (href: string, exact?: boolean) => {

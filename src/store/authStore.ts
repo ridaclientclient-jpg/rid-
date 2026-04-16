@@ -153,6 +153,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           });
         }
       } else if (event === 'SIGNED_OUT') {
+        // Skip if logout was already handled manually (prevents double state change)
+        if ((get() as any)._isLoggingOut) return;
         set({
           user: null,
           supaUser: null,
@@ -302,6 +304,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    (get() as any)._isLoggingOut = true;
     await supabase.auth.signOut();
     set({
       user: null,
@@ -310,6 +313,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: false,
       loginAttempts: 0,
     });
+    // Clear flag after a short delay so onAuthStateChange doesn't fire a second redirect
+    setTimeout(() => { (get() as any)._isLoggingOut = false; }, 500);
   },
 
   setLoading: (loading: boolean) => set({ isLoading: loading }),
