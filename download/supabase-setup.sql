@@ -244,6 +244,86 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sos_events ENABLE ROW LEVEL SECURITY;
 
+-- =====================================================
+-- DROP ALL EXISTING POLICIES (safe to re-run)
+-- =====================================================
+
+-- Profiles
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can view all profiles" ON public.profiles; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can update all profiles" ON public.profiles; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Drivers can be viewed by anyone" ON public.profiles; END $$;
+
+-- Drivers
+DO $$ BEGIN DROP POLICY IF EXISTS "Drivers can view own data" ON public.drivers; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Drivers can update own data" ON public.drivers; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can manage drivers" ON public.drivers; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Drivers can insert own data" ON public.drivers; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Active drivers visible for ride matching" ON public.drivers; END $$;
+
+-- Vehicles
+DO $$ BEGIN DROP POLICY IF EXISTS "Vehicle access via driver" ON public.vehicles; END $$;
+
+-- Rides
+DO $$ BEGIN DROP POLICY IF EXISTS "Riders can view own rides" ON public.rides; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Riders can create rides" ON public.rides; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Riders can update own rides" ON public.rides; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can manage all rides" ON public.rides; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Drivers can view available rides" ON public.rides; END $$;
+
+-- Wallets
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own wallet" ON public.wallets; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own wallet" ON public.wallets; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can view all wallets" ON public.wallets; END $$;
+
+-- Transactions
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "System can insert transactions" ON public.transactions; END $$;
+
+-- Documents
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own documents" ON public.documents; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can upload documents" ON public.documents; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own documents" ON public.documents; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can manage documents" ON public.documents; END $$;
+
+-- Reports
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own reports" ON public.reports; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can create reports" ON public.reports; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can manage reports" ON public.reports; END $$;
+
+-- Terms
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own terms" ON public.terms_accepted; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can accept terms" ON public.terms_accepted; END $$;
+
+-- Vendors
+DO $$ BEGIN DROP POLICY IF EXISTS "Vendors can view own data" ON public.vendors; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Vendors can manage own data" ON public.vendors; END $$;
+
+-- Products
+DO $$ BEGIN DROP POLICY IF EXISTS "Products visible to all" ON public.products; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Vendors can manage own products" ON public.products; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can manage all products" ON public.products; END $$;
+
+-- Notifications
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "System can create notifications" ON public.notifications; END $$;
+
+-- Settings
+DO $$ BEGIN DROP POLICY IF EXISTS "Settings visible to all authenticated" ON public.settings; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can manage settings" ON public.settings; END $$;
+
+-- SOS Events
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can create SOS" ON public.sos_events; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can view all SOS" ON public.sos_events; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can resolve SOS" ON public.sos_events; END $$;
+
+-- =====================================================
+-- CREATE ALL POLICIES
+-- =====================================================
+
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
@@ -441,13 +521,99 @@ INSERT INTO public.settings (key, value, type) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- =====================================================
--- SUPABASE STORAGE: Create buckets
+-- SUPABASE STORAGE: Create buckets & policies
 -- =====================================================
--- Run these in Supabase Dashboard > Storage:
--- 1. Create bucket: "documents" (public: false)
--- 2. Create bucket: "avatars" (public: true)
--- 3. Create bucket: "products" (public: true)
--- 4. Create bucket: "reports" (public: false)
+
+-- Drop all existing storage policies (safe to re-run)
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can upload own documents" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can view own documents" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own documents" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can view all documents" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can upload own avatar" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own avatar" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Anyone can view products" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Vendors can upload products" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Vendors can manage products" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can upload own reports" ON storage.objects; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "Admin can view all reports" ON storage.objects; END $$;
+
+-- Create storage buckets (idempotent)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('documents', 'documents', false, 5242880, ARRAY['image/jpeg','image/png','image/webp','image/gif','application/pdf']),
+  ('avatars', 'avatars', true, 2097152, ARRAY['image/jpeg','image/png','image/webp']),
+  ('products', 'products', true, 5242880, ARRAY['image/jpeg','image/png','image/webp','image/gif']),
+  ('reports', 'reports', false, 5242880, ARRAY['image/jpeg','image/png','image/webp','image/gif','application/pdf'])
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage policies for 'documents' bucket
+CREATE POLICY "Users can upload own documents" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'documents'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Users can view own documents" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'documents'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Users can update own documents" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'documents'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Admin can view all documents" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'documents'
+    AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- Storage policies for 'avatars' bucket (public read, authenticated write)
+CREATE POLICY "Anyone can view avatars" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+CREATE POLICY "Users can upload own avatar" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'avatars'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Users can update own avatar" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'avatars'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Storage policies for 'products' bucket
+CREATE POLICY "Anyone can view products" ON storage.objects
+  FOR SELECT USING (bucket_id = 'products');
+CREATE POLICY "Vendors can upload products" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'products'
+    AND EXISTS (SELECT 1 FROM public.vendors WHERE user_id = auth.uid())
+  );
+CREATE POLICY "Vendors can manage products" ON storage.objects
+  FOR ALL USING (
+    bucket_id = 'products'
+    AND EXISTS (SELECT 1 FROM public.vendors WHERE user_id = auth.uid())
+  );
+
+-- Storage policies for 'reports' bucket
+CREATE POLICY "Users can upload own reports" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'reports'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Admin can view all reports" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'reports'
+    AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- Documents table: add unique constraint for upsert + allow users to update own
+ALTER TABLE public.documents DROP CONSTRAINT IF EXISTS documents_user_type_unique;
+ALTER TABLE public.documents ADD CONSTRAINT documents_user_type_unique UNIQUE (user_id, type);
+DO $$ BEGIN DROP POLICY IF EXISTS "Users can update own documents" ON public.documents; END $$;
+CREATE POLICY "Users can update own documents" ON public.documents FOR UPDATE USING (user_id = auth.uid());
 
 -- =====================================================
 -- DONE! Database is ready.
