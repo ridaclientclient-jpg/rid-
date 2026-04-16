@@ -182,3 +182,25 @@ Replaced all demo/mock authentication and ride management with real Supabase Aut
 - **Supabase session persistence**: Leveraging Supabase's built-in cookie-based session management instead of manual `localStorage`
 - **Real-time subscriptions**: Ride updates use Supabase Realtime `postgres_changes` for live status updates
 - **Pricing from settings table**: Ride creation fetches `base_price` and `price_per_km` from `settings` table for dynamic pricing
+
+---
+
+Task ID: admin-auth-pages
+Agent: Main Agent
+Task: Add register and forgot-password pages to admin panel
+
+Work Log:
+- Investigated admin login page and found missing register and recovery links
+- Read client recovery and register pages as reference for design consistency
+- Updated `/admin/login/page.tsx` to add "Olvidaste tu contraseña?" and "Registrarse" links
+- Created `/admin/register/page.tsx` with 2-step form (personal data → security), admin role, same glassmorphism theme
+- Created `/admin/recovery/page.tsx` with email input, sends reset link via API, returns to admin login
+- Updated `/admin/layout.tsx` to allow `/admin/register` and `/admin/recovery` as public paths (no auth required)
+- Updated `/api/auth/reset-password/route.ts` to accept optional `redirectTo` parameter (defaults to `/client/login`)
+
+Stage Summary:
+- Admin panel now has 3 public pages: login, register, recovery
+- All pages share the same dark glassmorphism + cyan neon theme
+- Admin register uses role='admin' in the shared authStore.register()
+- Recovery page sends `redirectTo: '/admin/login'` so password reset returns to admin login
+- Layout bypass updated with `publicPaths` array for clean extensibility

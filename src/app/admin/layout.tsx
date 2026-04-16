@@ -42,14 +42,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileOpen, setMobileOpen] = useState(false);
   const hydrated = useHydrated();
 
+  const publicPaths = ['/admin/login', '/admin/register', '/admin/recovery'];
+  const isPublicPath = publicPaths.includes(pathname);
+
   useEffect(() => {
-    if (hydrated && !isAuthenticated && pathname !== '/admin/login') {
+    if (hydrated && !isAuthenticated && !isPublicPath) {
       router.push('/admin/login');
     }
-  }, [hydrated, isAuthenticated, pathname, router]);
+  }, [hydrated, isAuthenticated, isPublicPath, pathname, router]);
 
-  // Don't show sidebar on login page
-  if (pathname === '/admin/login') {
+  // Don't show sidebar on public pages
+  if (isPublicPath) {
     return <>{children}</>;
   }
 

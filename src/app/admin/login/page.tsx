@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { Shield, Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -136,13 +137,29 @@ export default function AdminLoginPage() {
           </motion.button>
         </form>
 
-        {/* Demo hint */}
+        {/* Forgot password */}
         <motion.div
-          className="mt-6 pt-5 border-t border-white/5"
+          className="flex justify-end"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.55 }}
+        >
+          <Link href="/admin/recovery" className="text-xs text-gray-500 hover:text-cyan-400 transition-colors">
+            Olvidaste tu contrasena?
+          </Link>
+        </motion.div>
+
+        {/* Register & Demo hint */}
+        <motion.div
+          className="mt-4 pt-5 border-t border-white/5 space-y-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
         >
+          <p className="text-center">
+            <span className="text-xs text-gray-500">No tienes cuenta? </span>
+            <Link href="/admin/register" className="text-xs text-cyan-400 hover:underline">Registrarse</Link>
+          </p>
           <p className="text-xs text-gray-500 text-center">
             Demo: <span className="text-gray-400">admin@rida.com</span> / <span className="text-gray-400">admin123</span>
           </p>
