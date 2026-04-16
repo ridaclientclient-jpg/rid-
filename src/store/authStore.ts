@@ -61,16 +61,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { data: profile } = await supabase
+        const sessionUser = session.user;
+        let profile = null;
+
+        const { data: existingProfile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', session.user.id)
+          .eq('id', sessionUser.id)
           .single();
+
+        if (existingProfile) {
+          profile = existingProfile;
+        } else {
+          // Auto-create profile if missing
+          const meta = sessionUser.user_metadata || {};
+          const newProfile = {
+            id: sessionUser.id,
+            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+            email: sessionUser.email || '',
+            phone: meta.phone || '',
+            role: meta.role || 'client',
+            is_verified: sessionUser.email_confirmed_at ? true : false,
+          };
+          const { data: createdProfile } = await supabase
+            .from('profiles')
+            .upsert(newProfile, { onConflict: 'id' })
+            .select()
+            .single();
+          profile = createdProfile;
+        }
 
         if (profile) {
           set({
             user: profileToUser(profile),
-            supaUser: session.user,
+            supaUser: sessionUser,
             session,
             isAuthenticated: true,
             isLoading: false,
@@ -89,15 +113,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Listen for auth changes
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const { data: profile } = await supabase
+        const sessionUser = session.user;
+        let profile = null;
+
+        const { data: existingProfile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', session.user.id)
+          .eq('id', sessionUser.id)
           .single();
+
+        if (existingProfile) {
+          profile = existingProfile;
+        } else {
+          // Auto-create profile if missing
+          const meta = sessionUser.user_metadata || {};
+          const newProfile = {
+            id: sessionUser.id,
+            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+            email: sessionUser.email || '',
+            phone: meta.phone || '',
+            role: meta.role || 'client',
+            is_verified: sessionUser.email_confirmed_at ? true : false,
+          };
+          const { data: createdProfile } = await supabase
+            .from('profiles')
+            .upsert(newProfile, { onConflict: 'id' })
+            .select()
+            .single();
+          profile = createdProfile;
+        }
+
         if (profile) {
           set({
             user: profileToUser(profile),
-            supaUser: session.user,
+            supaUser: sessionUser,
             session,
             isAuthenticated: true,
             isLoading: false,
@@ -148,16 +197,47 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (data.session?.user) {
-        const { data: profile } = await supabase
+        const sessionUser = data.session.user;
+        let profile = null;
+
+        // Try to fetch existing profile
+        const { data: existingProfile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', data.session.user.id)
+          .eq('id', sessionUser.id)
           .single();
+
+        if (existingProfile) {
+          profile = existingProfile;
+        } else {
+          // Profile doesn't exist yet — create it (upsert)
+          const meta = sessionUser.user_metadata || {};
+          const newProfile = {
+            id: sessionUser.id,
+            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+            email: sessionUser.email || '',
+            phone: meta.phone || '',
+            role: meta.role || 'client',
+            is_verified: sessionUser.email_confirmed_at ? true : false,
+          };
+          const { data: createdProfile, error: createError } = await supabase
+            .from('profiles')
+            .upsert(newProfile, { onConflict: 'id' })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('Error creating profile:', createError.message, createError.details);
+            set({ isLoading: false });
+            return { success: false, error: 'Error al crear perfil: ' + createError.message };
+          }
+          profile = createdProfile;
+        }
 
         if (profile) {
           set({
             user: profileToUser(profile),
-            supaUser: data.session.user,
+            supaUser: sessionUser,
             session: data.session,
             isAuthenticated: true,
             isLoading: false,
