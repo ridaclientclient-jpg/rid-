@@ -53,7 +53,7 @@ export default function GoogleMap({
 
   // Initialize map
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (!mapRef.current) return;
 
     loadGoogleMaps()
       .then((google) => {
@@ -85,7 +85,7 @@ export default function GoogleMap({
           streetViewControl: false,
           fullscreenControl: false,
           gestureHandling: 'greedy',
-          mapId: 'RIDA_SUPREME_MAP',
+          // No mapId — uses default renderer (no cloud configuration needed)
         });
 
         mapInstanceRef.current = map;
@@ -162,6 +162,12 @@ export default function GoogleMap({
     return () => {
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
+      }
+      // Cleanup map instance on unmount
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current = null;
+        markersRef.current = [];
+        userMarkerRef.current = null;
       }
     };
   }, []);

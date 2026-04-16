@@ -10,7 +10,7 @@ interface RideState {
   isCreating: boolean;
   availableDrivers: Array<{ id: string; name: string; vehicle: string; rating: number; distance: number; eta: number }>;
 
-  createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number) => Promise<string | null>;
+  createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string) => Promise<string | null>;
   cancelRide: (rideId: string) => Promise<void>;
   completeRide: (rideId: string) => Promise<void>;
   fetchRideHistory: (userId: string) => Promise<void>;
@@ -30,7 +30,7 @@ export const useRideStore = create<RideState>((set, get) => ({
   isCreating: false,
   availableDrivers: [],
 
-  createRide: async (origin, destination, originLat, originLng, destLat, destLng) => {
+  createRide: async (origin, destination, originLat, originLng, destLat, destLng, rideType = 'standard') => {
     set({ isCreating: true });
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -48,9 +48,21 @@ export const useRideStore = create<RideState>((set, get) => ({
       const basePrice = Number(settings?.find(s => s.key === 'base_price')?.value || 1500);
       const pricePerKm = Number(settings?.find(s => s.key === 'price_per_km')?.value || 500);
 
+      // Price multipliers by ride type
+      const multipliers: Record<string, number> = {
+        standard: 1.0,
+        premium: 1.6,
+        suv: 2.1,
+        moto: 0.7,
+        moto_express: 0.9,
+        grua: 3.0,
+        flete: 3.5,
+      };
+      const multiplier = multipliers[rideType] || 1.0;
+
       // Calculate price (simulated distance)
       const distance = Math.floor(Math.random() * 15) + 3;
-      const price = basePrice + (distance * pricePerKm);
+      const price = Math.round((basePrice + (distance * pricePerKm)) * multiplier);
       const duration = distance * 3;
 
       const { data: ride, error } = await supabase
@@ -67,6 +79,7 @@ export const useRideStore = create<RideState>((set, get) => ({
           price,
           distance,
           duration,
+          ride_type: rideType,
         })
         .select()
         .single();

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, MountainSnow, Package } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
@@ -21,7 +21,7 @@ export default function ClientRide() {
   const [destination, setDestination] = useState('');
   const [originCoords, setOriginCoords] = useState<CoordData | null>(null);
   const [destCoords, setDestCoords] = useState<CoordData | null>(null);
-  const [rideType, setRideType] = useState<'standard' | 'premium' | 'suv'>('standard');
+  const [rideType, setRideType] = useState<string>('standard');
   const [showThirdParty, setShowThirdParty] = useState(false);
 
   const handleOriginChange = (val: string, _placeId?: string, lat?: number, lng?: number) => {
@@ -56,7 +56,8 @@ export default function ClientRide() {
     await createRide(
       origin, destination,
       originCoords?.lat, originCoords?.lng,
-      destCoords?.lat, destCoords?.lng
+      destCoords?.lat, destCoords?.lng,
+      rideType
     );
     toast.success('Buscando conductor...');
 
@@ -65,9 +66,13 @@ export default function ClientRide() {
   };
 
   const rideTypes = [
-    { id: 'standard' as const, name: 'Economico', price: '₡1,500', time: '5 min', desc: '4 pasajeros' },
-    { id: 'premium' as const, name: 'Premium', price: '₡2,800', time: '3 min', desc: '4 pasajeros' },
-    { id: 'suv' as const, name: 'SUV', price: '₡3,500', time: '7 min', desc: '6 pasajeros' },
+    { id: 'standard', name: 'Economico', price: '₡1,500', time: '5 min', desc: '4 pasajeros', icon: Car, color: 'from-blue-600 to-cyan-500' },
+    { id: 'premium', name: 'Premium', price: '₡2,400', time: '3 min', desc: '4 pasajeros', icon: Car, color: 'from-purple-600 to-pink-500' },
+    { id: 'suv', name: 'SUV', price: '₡3,150', time: '7 min', desc: '6 pasajeros', icon: Car, color: 'from-amber-600 to-orange-500' },
+    { id: 'moto', name: 'Moto', price: '₡1,050', time: '2 min', desc: '1 pasajero', icon: Bike, color: 'from-green-600 to-emerald-500' },
+    { id: 'moto_express', name: 'Moto Express', price: '₡1,350', time: '1 min', desc: '1 pasajero - Envios', icon: Bike, color: 'from-red-600 to-rose-500' },
+    { id: 'grua', name: 'Grua', price: '₡4,500', time: '15 min', desc: 'Servicio de grua', icon: Truck, color: 'from-yellow-600 to-amber-500' },
+    { id: 'flete', name: 'Carro de Carga (Flete)', price: '₡5,250', time: '20 min', desc: 'Carga pesada', icon: Package, color: 'from-indigo-600 to-violet-500' },
   ];
 
   return (
@@ -118,34 +123,37 @@ export default function ClientRide() {
 
             {/* Ride Types */}
             <div className="space-y-2">
-              {rideTypes.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => setRideType(type.id)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
-                    rideType === type.id
-                      ? 'glass-strong border-cyan-500/50 glow-cyan'
-                      : 'glass hover:bg-white/10'
-                  }`}
-                >
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              {rideTypes.map((type) => {
+                const TypeIcon = type.icon;
+                return (
+                  <button
+                    key={type.id}
+                    onClick={() => setRideType(type.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
                       rideType === type.id
-                        ? 'bg-gradient-to-br from-blue-600 to-cyan-500'
-                        : 'bg-white/10'
+                        ? 'glass-strong border-cyan-500/50 glow-cyan'
+                        : 'glass hover:bg-white/10'
                     }`}
                   >
-                    <Car className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-semibold text-white">{type.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {type.desc} - {type.time} de espera
-                    </p>
-                  </div>
-                  <p className="text-sm font-bold text-cyan-400">{type.price}</p>
-                </button>
-              ))}
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        rideType === type.id
+                          ? `bg-gradient-to-br ${type.color}`
+                          : 'bg-white/10'
+                      }`}
+                    >
+                      <TypeIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-semibold text-white">{type.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {type.desc} - {type.time} de espera
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-cyan-400">{type.price}</p>
+                  </button>
+                );
+              })}
             </div>
 
             <button
@@ -160,12 +168,7 @@ export default function ClientRide() {
                 </>
               ) : (
                 <>
-                  Pedir{' '}
-                  {rideType === 'standard'
-                    ? 'Economico'
-                    : rideType === 'premium'
-                    ? 'Premium'
-                    : 'SUV'}
+                  Pedir {rideTypes.find(t => t.id === rideType)?.name || 'Economico'}
                 </>
               )}
             </button>
