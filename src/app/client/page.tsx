@@ -45,8 +45,8 @@ export default function ClientHome() {
           </div>
           <p className="text-sm text-white">{currentRide.origin} → {currentRide.destination}</p>
           <p className="text-lg font-bold text-white mt-1">₡{currentRide.price.toLocaleString()}</p>
-          <button onClick={() => router.push('/client/ride')} className="w-full mt-3 btn-neon text-white text-sm font-medium py-2 rounded-xl">
-            Ver viaje
+          <button onClick={() => router.push(`/client/ride/${currentRide.id}`)} className="w-full mt-3 btn-neon text-white text-sm font-medium py-2 rounded-xl">
+            Ver detalles
           </button>
         </motion.div>
       )}

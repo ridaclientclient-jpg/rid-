@@ -225,3 +225,41 @@ Stage Summary:
 - Map properly shows route during active ride using currentRide coordinates
 - Error feedback is clear when ride creation fails
 - Directions renderer properly cleaned up on re-render
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix notification bell + add ride details page
+
+Work Log:
+- Analyzed Uber screenshot to understand desired ride details UI
+- Created NotificationPanel component (src/components/NotificationPanel.tsx) with:
+  - Fetches real notifications from Supabase notifications table
+  - Unread badge counter on bell icon
+  - Mark individual/all as read
+  - Delete notifications
+  - Auto-close on click outside
+  - Fallback UI when no notifications
+- Updated client layout (src/app/client/layout.tsx) to use NotificationPanel instead of dead button
+- Created ride details page (src/app/client/ride/[id]/page.tsx) with:
+  - Map preview with route and origin/destination markers
+  - Status badge overlay on map
+  - Ride summary (type, driver name, date, fare, status)
+  - Driver card with call/chat buttons
+  - Receipt button
+  - Detailed trip info: origin, intermediate stops, destination, extra charges, distance, price breakdown, rating
+  - Rating modal for completed rides
+  - SOS button for active rides
+  - Third-party badge
+  - Ride ID display
+- Updated active ride panel (src/app/client/ride/page.tsx) with "Ver detalles del viaje" button
+- Updated history page (src/app/client/history/page.tsx):
+  - Made all ride cards clickable → navigate to /client/ride/[id]
+  - Added ride type badge and distance display
+  - Added rating stars for completed rides
+- Updated home page active ride banner to link to ride details
+
+Stage Summary:
+- 5 files created/modified
+- Notification bell now functional with real Supabase data
+- Ride details page matches Uber screenshot layout
+- All navigation paths connected (active ride, history, home → details)

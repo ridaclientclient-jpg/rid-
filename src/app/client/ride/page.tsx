@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2 } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
@@ -506,13 +506,25 @@ export default function ClientRide() {
               )}
               {currentRide.status === 'completed' && (
                 <button
-                  onClick={() => router.push('/client')}
+                  onClick={() => router.push(`/client/ride/${currentRide.id}`)}
                   className="btn-neon text-white font-medium px-6 py-3 rounded-xl"
                 >
-                  <Check className="w-4 h-4 mr-1" /> Listo
+                  <Check className="w-4 h-4 mr-1" /> Ver Detalles
                 </button>
               )}
             </div>
+
+            {/* View Details Button (non-completed rides) */}
+            {currentRide.status !== 'completed' && currentRide.status !== 'searching' && (
+              <button
+                onClick={() => router.push(`/client/ride/${currentRide.id}`)}
+                className="w-full flex items-center justify-center gap-2 glass rounded-xl p-2.5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+              >
+                <FileText className="w-4 h-4" />
+                <span className="text-xs font-medium">Ver detalles del viaje</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            )}
 
             {/* SOS Button */}
             {currentRide.status === 'started' && (

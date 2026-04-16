@@ -1,10 +1,11 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MapPin, Clock, User as UserIcon, Zap, ArrowLeft, LogOut, Bell } from 'lucide-react';
+import { Home, MapPin, Clock, User as UserIcon, Zap, ArrowLeft, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
+import NotificationPanel from '@/components/NotificationPanel';
 
 const navItems = [
   { icon: Home, label: 'Inicio', href: '/client' },
@@ -42,10 +43,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <button className="relative p-2 rounded-xl hover:bg-white/5 transition-colors">
-                  <Bell className="w-5 h-5 text-gray-400" />
-                  <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400" />
-                </button>
+                <NotificationPanel />
                 <button onClick={() => { logout(); router.push('/client/login'); }} className="p-2 rounded-xl hover:bg-white/5 transition-colors">
                   <LogOut className="w-5 h-5 text-gray-400" />
                 </button>
