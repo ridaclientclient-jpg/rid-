@@ -53,11 +53,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   lockedUntil: null,
 
   initAuth: async () => {
-    // Prevent multiple listeners (memory leak protection)
+    // Prevent multiple listener setups (memory leak protection)
     if ((get() as any)._authListenerSetup) return;
     (get() as any)._authListenerSetup = true;
 
-    set({ isLoading: true });
+    // Only set loading if we're not already authenticated
+    const alreadyAuthed = get().isAuthenticated;
+    if (!alreadyAuthed) {
+      set({ isLoading: true });
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {

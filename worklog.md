@@ -382,3 +382,18 @@ Stage Summary:
 - Login: use replace instead of push to avoid competing with AuthGuard
 - AuthGuard: protected against double-fire with ref + pathname check
 - Build verified successful
+---
+Task ID: fix-login-loading
+Agent: main
+Task: Fix login getting stuck on loading spinner in all 4 apps
+
+Work Log:
+- Root cause: Race condition between login() and initAuth(). When navigating to a protected page after login, initAuth() was setting isLoading:true even though user was already authenticated, and if the Supabase session/profile fetch was slow, the spinner would show indefinitely.
+- AuthGuard.tsx: Complete rewrite — removed dependency on store's isLoading state, now only uses local checked state + redirectAttemptedRef. Added 8s safety timeout so checked always becomes true.
+- authStore initAuth(): Added check — if user is already authenticated, skip setting isLoading:true. This prevents the loading spinner from appearing after a successful login when navigating to a protected page.
+- Build verified successful
+
+Stage Summary:
+- Login flow: login() → isAuthenticated:true, isLoading:false → navigate to protected page → AuthGuard mounts → initAuth() returns (already authed, no isLoading change) → checked=true → content shows immediately
+- Safety: if initAuth() ever hangs (network issue), the 8s timeout forces checked=true so the user isn't stuck forever
+- Redirect protection: redirectAttemptedRef ensures only one redirect attempt per AuthGuard mount

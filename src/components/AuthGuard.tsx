@@ -13,27 +13,37 @@ interface AuthGuardProps {
 export default function AuthGuard({ children, requiredRole, authPage }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, isLoading, initAuth } = useAuthStore();
+  const { user, isAuthenticated, initAuth } = useAuthStore();
   const [checked, setChecked] = useState(false);
-  const isNavigatingRef = useRef(false);
 
   useEffect(() => {
-    initAuth().finally(() => setChecked(true));
-  }, [initAuth]);
+    // Safety timeout: force show content after 8s even if initAuth hangs
+    const safetyTimeout = setTimeout(() => {
+      setChecked(true);
+    }, 8000);
 
+    initAuth()
+      .then(() => setChecked(true))
+      .catch(() => setChecked(true));
+
+    return () => clearTimeout(safetyTimeout);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Redirect unauthenticated users to login (only once)
+  const redirectAttemptedRef = useRef(false);
   useEffect(() => {
-    if (!checked || isLoading) return;
-    if (isNavigatingRef.current) return;
+    if (!checked) return;
+    if (redirectAttemptedRef.current) return;
 
     if (!isAuthenticated && authPage) {
-      // Don't redirect if already on the auth page
       if (pathname === authPage) return;
-      isNavigatingRef.current = true;
+      redirectAttemptedRef.current = true;
       router.replace(authPage);
     }
-  }, [checked, isLoading, isAuthenticated, router, authPage, pathname]);
+  }, [checked, isAuthenticated, router, authPage, pathname]);
 
-  if (isLoading || !checked) {
+  // Show loading spinner only while checking auth
+  if (!checked) {
     return (
       <div className="min-h-screen bg-rida-dark flex items-center justify-center">
         <div className="text-center">
