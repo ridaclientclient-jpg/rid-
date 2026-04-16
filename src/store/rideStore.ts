@@ -5,12 +5,12 @@ import type { Ride } from '@/lib/supabase';
 export type RideStatus = 'searching' | 'assigned' | 'arriving' | 'started' | 'completed' | 'cancelled';
 
 interface RideState {
-  currentRide: (Ride & { driver_name?: string; driver_phone?: string; driver_vehicle?: string; driver_rating?: number }) | null;
+  currentRide: (Ride & { driver_name?: string; driver_phone?: string; driver_vehicle?: string; driver_rating?: number; stops?: Array<{ address: string; lat?: number; lng?: number }> }) | null;
   rideHistory: (Ride & { driver_name?: string; driver_vehicle?: string })[];
   isCreating: boolean;
   availableDrivers: Array<{ id: string; name: string; vehicle: string; rating: number; distance: number; eta: number }>;
 
-  createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string) => Promise<string | null>;
+  createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string, stops?: Array<{ address: string; lat?: number; lng?: number }>) => Promise<string | null>;
   cancelRide: (rideId: string) => Promise<void>;
   completeRide: (rideId: string) => Promise<void>;
   fetchRideHistory: (userId: string) => Promise<void>;
@@ -30,7 +30,7 @@ export const useRideStore = create<RideState>((set, get) => ({
   isCreating: false,
   availableDrivers: [],
 
-  createRide: async (origin, destination, originLat, originLng, destLat, destLng, rideType = 'standard') => {
+  createRide: async (origin, destination, originLat, originLng, destLat, destLng, rideType = 'standard', stops = []) => {
     set({ isCreating: true });
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -60,8 +60,10 @@ export const useRideStore = create<RideState>((set, get) => ({
       };
       const multiplier = multipliers[rideType] || 1.0;
 
-      // Calculate price (simulated distance)
-      const distance = Math.floor(Math.random() * 15) + 3;
+      // Calculate price (distance + extra per stop)
+      const baseDistance = Math.floor(Math.random() * 15) + 3;
+      const stopExtra = stops.length * 2; // 2 extra km per stop
+      const distance = baseDistance + stopExtra;
       const price = Math.round((basePrice + (distance * pricePerKm)) * multiplier);
       const duration = distance * 3;
 
@@ -80,13 +82,14 @@ export const useRideStore = create<RideState>((set, get) => ({
           distance,
           duration,
           ride_type: rideType,
+          stops: stops.length > 0 ? JSON.stringify(stops) : null,
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      const rideWithDriver = { ...ride, driver_name: undefined, driver_phone: undefined, driver_vehicle: undefined, driver_rating: undefined };
+      const rideWithDriver = { ...ride, driver_name: undefined, driver_phone: undefined, driver_vehicle: undefined, driver_rating: undefined, stops: stops.length > 0 ? stops : undefined };
 
       set({ currentRide: rideWithDriver, isCreating: false });
 

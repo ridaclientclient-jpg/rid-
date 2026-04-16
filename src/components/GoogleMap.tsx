@@ -20,6 +20,7 @@ interface GoogleMapProps {
   onMapClick?: (lat: number, lng: number) => void;
   onMapLoaded?: (map: google.maps.Map) => void;
   showRoute?: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } };
+  waypoints?: { lat: number; lng: number }[];
   showDirections?: boolean;
   className?: string;
   style?: React.CSSProperties;
@@ -37,6 +38,7 @@ export default function GoogleMap({
   onMapClick,
   onMapLoaded,
   showRoute,
+  waypoints = [],
   showDirections = false,
   className = '',
   style = {},
@@ -249,6 +251,8 @@ export default function GoogleMap({
         {
           origin: showRoute.origin,
           destination: showRoute.destination,
+          waypoints: waypoints.map(wp => ({ location: wp, stopover: true })),
+          optimizeWaypoints: false,
           travelMode: google.maps.TravelMode.DRIVING,
         },
         (result, status) => {
@@ -258,7 +262,7 @@ export default function GoogleMap({
         }
       );
     });
-  }, [showRoute, showDirections, isLoaded]);
+  }, [showRoute, showDirections, waypoints, isLoaded]);
 
   // Error fallback
   if (hasError) {

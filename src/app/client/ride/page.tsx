@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, MountainSnow, Package } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, GripVertical, CircleDot } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
@@ -14,6 +14,15 @@ interface CoordData {
   lng: number;
 }
 
+interface Stop {
+  id: string;
+  address: string;
+  coords: CoordData | null;
+}
+
+const STOP_LABELS = ['C', 'D', 'E', 'F', 'G', 'H'];
+const STOP_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+
 export default function ClientRide() {
   const router = useRouter();
   const { currentRide, createRide, cancelRide, completeRide, isCreating } = useRideStore();
@@ -23,6 +32,7 @@ export default function ClientRide() {
   const [destCoords, setDestCoords] = useState<CoordData | null>(null);
   const [rideType, setRideType] = useState<string>('standard');
   const [showThirdParty, setShowThirdParty] = useState(false);
+  const [stops, setStops] = useState<Stop[]>([]);
 
   const handleOriginChange = (val: string, _placeId?: string, lat?: number, lng?: number) => {
     setOrigin(val);
@@ -38,10 +48,46 @@ export default function ClientRide() {
     }
   };
 
+  // Add a new intermediate stop
+  const addStop = () => {
+    if (stops.length >= 6) {
+      toast.error('Maximo 6 paradas intermedias');
+      return;
+    }
+    setStops([...stops, { id: 'stop-' + Date.now(), address: '', coords: null }]);
+  };
+
+  // Update a stop's address and coords
+  const updateStop = (stopId: string, address: string, _placeId?: string, lat?: number, lng?: number) => {
+    setStops(stops.map(s => {
+      if (s.id === stopId) {
+        return {
+          ...s,
+          address,
+          coords: lat !== undefined && lng !== undefined ? { lat, lng } : null,
+        };
+      }
+      return s;
+    }));
+  };
+
+  // Remove a stop
+  const removeStop = (stopId: string) => {
+    setStops(stops.filter(s => s.id !== stopId));
+  };
+
   // Build marker array for the map
   const mapMarkers: { lat: number; lng: number; label: string; color: string }[] = [];
   if (originCoords) mapMarkers.push({ ...originCoords, label: 'A', color: '#10b981' });
+  stops.forEach((stop, i) => {
+    if (stop.coords) {
+      mapMarkers.push({ ...stop.coords, label: STOP_LABELS[i], color: STOP_COLORS[i] });
+    }
+  });
   if (destCoords) mapMarkers.push({ ...destCoords, label: 'B', color: '#ef4444' });
+
+  // Build waypoints for the route
+  const waypoints = stops.filter(s => s.coords).map(s => ({ lat: s.coords!.lat, lng: s.coords!.lng }));
 
   const handleCreateRide = async () => {
     if (!origin || !destination) {
@@ -52,12 +98,24 @@ export default function ClientRide() {
       toast.error('Origen y destino no pueden ser iguales');
       return;
     }
+    // Check that all stops have addresses
+    const emptyStop = stops.find(s => !s.address);
+    if (emptyStop) {
+      toast.error('Completa todas las paradas intermedias o eliminalas');
+      return;
+    }
+
+    const stopsData = stops.map(s => ({
+      address: s.address,
+      lat: s.coords?.lat,
+      lng: s.coords?.lng,
+    }));
 
     await createRide(
       origin, destination,
       originCoords?.lat, originCoords?.lng,
       destCoords?.lat, destCoords?.lng,
-      rideType
+      rideType, stopsData
     );
     toast.success('Buscando conductor...');
 
@@ -83,6 +141,7 @@ export default function ClientRide() {
           center={{ lat: 9.7489, lng: -83.7534 }}
           zoom={13}
           markers={mapMarkers}
+          waypoints={waypoints.length > 0 ? waypoints : undefined}
           showRoute={
             originCoords && destCoords
               ? { origin: originCoords, destination: destCoords }
@@ -102,10 +161,11 @@ export default function ClientRide() {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl p-5 space-y-4 max-h-[70%] overflow-y-auto"
+            className="absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl p-5 space-y-4 max-h-[75%] overflow-y-auto"
           >
             {/* Location Inputs */}
-            <div className="space-y-3">
+            <div className="space-y-2">
+              {/* Origin */}
               <PlacesAutocomplete
                 value={origin}
                 onChange={handleOriginChange}
@@ -113,6 +173,55 @@ export default function ClientRide() {
                 dotColor="bg-emerald-400"
               />
 
+              {/* Intermediate Stops */}
+              <AnimatePresence>
+                {stops.map((stop, index) => (
+                  <motion.div
+                    key={stop.id}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="relative"
+                  >
+                    {/* Stop label + remove button */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STOP_COLORS[index] }} />
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          Parada {index + 1}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeStop(stop.id)}
+                        className="ml-auto p-1 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <PlacesAutocomplete
+                      value={stop.address}
+                      onChange={(val, placeId, lat, lng) => updateStop(stop.id, val, placeId, lat, lng)}
+                      placeholder={`Parada intermedia ${index + 1}`}
+                      dotColor=""
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {/* Add Stop Button */}
+              {stops.length < 6 && (
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  onClick={addStop}
+                  className="w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-white/10 text-gray-500 hover:text-cyan-400 hover:border-cyan-500/30 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-xs font-medium">Agregar parada</span>
+                </motion.button>
+              )}
+
+              {/* Destination */}
               <PlacesAutocomplete
                 value={destination}
                 onChange={handleDestinationChange}
@@ -120,6 +229,14 @@ export default function ClientRide() {
                 dotColor="bg-red-400"
               />
             </div>
+
+            {/* Stops summary */}
+            {stops.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <CircleDot className="w-3 h-3" />
+                <span>{stops.length + 2} puntos en la ruta</span>
+              </div>
+            )}
 
             {/* Ride Types */}
             <div className="space-y-2">
@@ -261,7 +378,14 @@ export default function ClientRide() {
               <div className="flex items-start gap-3">
                 <div className="flex flex-col items-center mt-1">
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                  <div className="w-0.5 h-8 bg-white/10" />
+                  <div className="w-0.5 h-4 bg-white/10" />
+                  {/* Show intermediate stops dots */}
+                  {currentRide.stops && currentRide.stops.length > 0 && currentRide.stops.map((stop: any, i: number) => (
+                    <div key={i} className="flex flex-col items-center">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STOP_COLORS[i] }} />
+                      <div className="w-0.5 h-4 bg-white/10" />
+                    </div>
+                  ))}
                   <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
                 </div>
                 <div className="flex-1 space-y-3">
@@ -269,6 +393,13 @@ export default function ClientRide() {
                     <p className="text-xs text-gray-500">Origen</p>
                     <p className="text-sm text-white">{currentRide.origin}</p>
                   </div>
+                  {/* Show intermediate stops */}
+                  {currentRide.stops && currentRide.stops.length > 0 && currentRide.stops.map((stop: any, i: number) => (
+                    <div key={i}>
+                      <p className="text-xs text-gray-500">Parada {i + 1}</p>
+                      <p className="text-sm text-white">{stop.address}</p>
+                    </div>
+                  ))}
                   <div>
                     <p className="text-xs text-gray-500">Destino</p>
                     <p className="text-sm text-white">{currentRide.destination}</p>
