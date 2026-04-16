@@ -194,8 +194,8 @@ export default function ClientRide() {
       {/* Google Map Area */}
       <div className="flex-1 relative">
         <GoogleMap
-          center={mapOrigin || { lat: 9.7489, lng: -83.7534 }}
-          zoom={mapOrigin && mapDest ? 13 : 14}
+          center={mapOrigin && mapDest ? mapOrigin : undefined}
+          zoom={mapOrigin && mapDest ? 13 : undefined}
           markers={mapMarkers}
           waypoints={mapWaypoints.length > 0 ? mapWaypoints : undefined}
           showRoute={

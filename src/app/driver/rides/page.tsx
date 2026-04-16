@@ -159,8 +159,6 @@ export default function DriverRides() {
       <div className="relative shrink-0" style={{ height: showMap ? '45%' : '0', transition: 'height 0.3s ease' }}>
         {showMap && (
           <GoogleMap
-            center={{ lat: 9.7489, lng: -83.7534 }}
-            zoom={12}
             markers={mapMarkers}
             showRoute={showRoute}
             showDirections={!!showRoute}

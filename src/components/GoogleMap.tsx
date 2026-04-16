@@ -32,7 +32,7 @@ const CR_CENTER = { lat: 9.7489, lng: -83.7534 };
 
 export default function GoogleMap({
   center = CR_CENTER,
-  zoom = 12,
+  zoom = 14,
   markers = [],
   onMapClick,
   onMapLoaded,
@@ -50,6 +50,7 @@ export default function GoogleMap({
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const hasCenteredOnUserRef = useRef(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -57,8 +58,8 @@ export default function GoogleMap({
 
   const addUserMarker = useCallback((map: google.maps.Map, position: { lat: number; lng: number }) => {
     if (userMarkerRef.current) {
-      userMarkerRef.current.setMap(null);
-      userMarkerRef.current = null;
+      userMarkerRef.current.setPosition(position);
+      return;
     }
     const m = new google.maps.Marker({
       map,
@@ -77,14 +78,82 @@ export default function GoogleMap({
     userMarkerRef.current = m;
   }, []);
 
+  // Get user position — uses getCurrentPosition first for instant result, then watchPosition for live updates
+  const getUserPosition = useCallback((map: google.maps.Map) => {
+    if (!navigator.geolocation) {
+      setLocationStatus('unavailable');
+      return;
+    }
+
+    setLocationStatus('searching');
+
+    // STEP 1: Get current position IMMEDIATELY (one-shot)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userPos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setUserLocation(userPos);
+        setLocationStatus('found');
+
+        // Center map on user location (only first time)
+        if (!hasCenteredOnUserRef.current) {
+          hasCenteredOnUserRef.current = true;
+          map.setCenter(userPos);
+          map.setZoom(showUserLocation ? 15 : zoom);
+        }
+
+        addUserMarker(map, userPos);
+      },
+      (error) => {
+        console.warn('Geolocation getCurrentPosition error:', error.message);
+        if (error.code === 1) {
+          setLocationStatus('denied');
+        } else {
+          setLocationStatus('unavailable');
+          // Fallback: use the provided center prop
+          map.setCenter(center);
+          map.setZoom(zoom);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+
+    // STEP 2: Watch for live position updates (after initial fix)
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const userPos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setUserLocation(userPos);
+        setLocationStatus('found');
+        addUserMarker(map, userPos);
+        // Don't recenter on every watch update — only update the marker
+        // The re-center button handles manual recentering
+      },
+      (error) => {
+        // Silently handle watch errors — getCurrentPosition already handled the initial error
+        if (locationStatus === 'searching') {
+          if (error.code === 1) setLocationStatus('denied');
+          else setLocationStatus('unavailable');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+  }, [addUserMarker, center, zoom, showUserLocation, locationStatus]);
+
   // Initialize map
   useEffect(() => {
     if (!mapRef.current) return;
 
+    // Cleanup previous watch
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    hasCenteredOnUserRef.current = false;
 
     loadGoogleMaps()
       .then((google) => {
@@ -105,9 +174,10 @@ export default function GoogleMap({
           { featureType: 'transit', elementType: 'labels.text.fill', stylers: [{ color: '#8a9bb5' }] },
         ];
 
+        // Start with CR center as placeholder — will move to user location once GPS resolves
         const map = new google.maps.Map(mapRef.current, {
-          center,
-          zoom,
+          center: CR_CENTER,
+          zoom: 12,
           styles: darkMapStyle,
           disableDefaultUI: true,
           zoomControl: true,
@@ -120,36 +190,13 @@ export default function GoogleMap({
         mapInstanceRef.current = map;
         setIsLoaded(true);
 
-        // Get user location
-        if (showUserLocation && navigator.geolocation) {
-          setLocationStatus('searching');
-
-          watchIdRef.current = navigator.geolocation.watchPosition(
-            (position) => {
-              const userPos = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-              };
-              setUserLocation(userPos);
-              setLocationStatus('found');
-              if (mapInstanceRef.current) {
-                mapInstanceRef.current.setCenter(userPos);
-                mapInstanceRef.current.setZoom(14);
-              }
-              addUserMarker(map, userPos);
-            },
-            (error) => {
-              console.warn('Geolocation error:', error.message, error.code);
-              if (error.code === 1) {
-                setLocationStatus('denied');
-              } else {
-                setLocationStatus('unavailable');
-              }
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-          );
-        } else if (!navigator.geolocation) {
-          setLocationStatus('unavailable');
+        // Get user location and center map
+        if (showUserLocation) {
+          getUserPosition(map);
+        } else {
+          // No user tracking — use provided center
+          map.setCenter(center);
+          map.setZoom(zoom);
         }
 
         // Map click handler
@@ -163,7 +210,8 @@ export default function GoogleMap({
 
         if (onMapLoaded) onMapLoaded(map);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Google Maps load error:', err);
         setHasError(true);
       });
 
@@ -186,10 +234,11 @@ export default function GoogleMap({
       }
       setUserLocation(null);
       setLocationStatus('searching');
+      hasCenteredOnUserRef.current = false;
     };
   }, []);
 
-  // Update markers (using classic google.maps.Marker only)
+  // Update markers
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
@@ -219,7 +268,7 @@ export default function GoogleMap({
     });
   }, [markers, isLoaded]);
 
-  // Stable key for route — only changes when actual coordinates change
+  // Stable key for route
   const routeKey = useMemo(() => {
     if (!showRoute) return '';
     return `${showRoute.origin.lat},${showRoute.origin.lng}-${showRoute.destination.lat},${showRoute.destination.lng}-${JSON.stringify(waypoints)}`;
@@ -227,7 +276,6 @@ export default function GoogleMap({
 
   // Show directions
   useEffect(() => {
-    // Clear previous directions renderer
     if (directionsRendererRef.current) {
       directionsRendererRef.current.setMap(null);
       directionsRendererRef.current = null;
@@ -284,6 +332,13 @@ export default function GoogleMap({
     };
   }, [routeKey, showRoute, showDirections, waypoints, isLoaded]);
 
+  // Re-center on user location
+  const handleRecenter = useCallback(() => {
+    if (!mapInstanceRef.current || !userLocation) return;
+    mapInstanceRef.current.setCenter(userLocation);
+    mapInstanceRef.current.setZoom(15);
+  }, [userLocation]);
+
   // Error fallback
   if (hasError) {
     return (
@@ -330,7 +385,7 @@ export default function GoogleMap({
           {locationStatus === 'denied' && (
             <div className="glass-strong rounded-lg px-3 py-1.5 flex items-center gap-2 border border-red-500/30">
               <Crosshair className="w-3 h-3 text-red-400" />
-              <span className="text-[10px] text-red-400">Ubicacion denegada - Habilita GPS</span>
+              <span className="text-[10px] text-red-400">GPS denegado - Habilita ubicacion</span>
             </div>
           )}
           {locationStatus === 'unavailable' && (
@@ -342,15 +397,10 @@ export default function GoogleMap({
         </div>
       )}
 
-      {/* Re-center button */}
-      {locationStatus === 'found' && userLocation && (
+      {/* Re-center button — only show when location found */}
+      {showUserLocation && locationStatus === 'found' && userLocation && (
         <button
-          onClick={() => {
-            if (mapInstanceRef.current) {
-              mapInstanceRef.current.setCenter(userLocation);
-              mapInstanceRef.current.setZoom(14);
-            }
-          }}
+          onClick={handleRecenter}
           className="absolute bottom-3 right-3 z-10 glass-strong rounded-xl p-2.5 text-gray-400 hover:text-cyan-400 transition-colors"
           title="Mi ubicacion"
         >

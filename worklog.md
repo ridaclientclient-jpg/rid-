@@ -263,3 +263,24 @@ Stage Summary:
 - Notification bell now functional with real Supabase data
 - Ride details page matches Uber screenshot layout
 - All navigation paths connected (active ride, history, home → details)
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix Google Maps to always center on user location
+
+Work Log:
+- Rewrote GoogleMap.tsx with a 2-step GPS strategy:
+  - Step 1: getCurrentPosition (instant) — centers map on user immediately
+  - Step 2: watchPosition (live) — updates marker but does NOT recenter (avoids fighting user pan/zoom)
+- Only centers on first GPS fix (hasCenteredOnUserRef) — prevents recentering on every watchPosition update
+- If GPS fails, falls back to provided center prop, then CR_CENTER as last resort
+- Removed hardcoded center from driver/rides/page.tsx — now uses user location
+- Updated client/ride/page.tsx to pass center only when route is set (not as default)
+- Admin has no GoogleMap usage (uses CSS heatmap grids only) — no changes needed
+- Re-center button uses useCallback for stability
+
+Stage Summary:
+- GoogleMap.tsx: Complete rewrite of GPS logic
+- driver/rides/page.tsx: Removed hardcoded CR center
+- client/ride/page.tsx: Center only when route exists
+- All maps now start at user location in Costa Rica
