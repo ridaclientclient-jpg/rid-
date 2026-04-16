@@ -1,21 +1,38 @@
-import { Loader } from '@googlemaps/js-api-loader';
+// Google Maps API — using the new functional API (no Loader class)
+const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || '';
 
-let loaderInstance: Loader | null = null;
+let loadPromise: Promise<typeof google> | null = null;
 
-export function getGoogleMapsLoader(): Loader {
-  if (!loaderInstance) {
-    loaderInstance = new Loader({
-      apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!,
-      version: 'weekly',
-      libraries: ['places', 'geometry', 'marker'],
-    });
-  }
-  return loaderInstance;
+function getGoogleMapsScript(): Promise<typeof google> {
+  if (loadPromise) return loadPromise;
+
+  loadPromise = new Promise((resolve, reject) => {
+    // Check if already loaded globally
+    if (typeof window !== 'undefined' && (window as any).google?.maps) {
+      resolve((window as any).google);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry,marker&v=weekly`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if ((window as any).google?.maps) {
+        resolve((window as any).google);
+      } else {
+        reject(new Error('Google Maps failed to load'));
+      }
+    };
+    script.onerror = () => reject(new Error('Google Maps script failed to load'));
+    document.head.appendChild(script);
+  });
+
+  return loadPromise;
 }
 
 export async function loadGoogleMaps(): Promise<typeof google> {
-  const loader = getGoogleMapsLoader();
-  return loader.load();
+  return getGoogleMapsScript();
 }
 
 export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number; formattedAddress: string } | null> {
