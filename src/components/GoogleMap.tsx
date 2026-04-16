@@ -28,7 +28,6 @@ interface GoogleMapProps {
   height?: string;
 }
 
-// Costa Rica center default
 const CR_CENTER = { lat: 9.7489, lng: -83.7534 };
 
 export default function GoogleMap({
@@ -47,63 +46,41 @@ export default function GoogleMap({
 }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
-  const directionsRendererRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
-  const userMarkerRef = useRef<any>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'searching' | 'found' | 'denied' | 'unavailable'>('searching');
 
-  const addUserMarker = useCallback((google: typeof window.google, map: google.maps.Map, position: { lat: number; lng: number }) => {
-    // Remove old marker
+  const addUserMarker = useCallback((map: google.maps.Map, position: { lat: number; lng: number }) => {
     if (userMarkerRef.current) {
-      try { userMarkerRef.current.map = null; } catch {}
+      userMarkerRef.current.setMap(null);
       userMarkerRef.current = null;
     }
-
-    try {
-      const { AdvancedMarkerElement } = google.maps.marker;
-      const pinElement = document.createElement('div');
-      pinElement.style.cssText = `
-        width: 20px; height: 20px; border-radius: 50%;
-        background: #06b6d4; border: 3px solid #fff;
-        box-shadow: 0 0 14px rgba(6,182,212,0.7), 0 0 40px rgba(6,182,212,0.3);
-        animation: pulse-ring 2s ease-out infinite;
-      `;
-      const userMarker = new AdvancedMarkerElement({
-        map,
-        position,
-        title: 'Tu ubicacion',
-        content: pinElement,
-      });
-      userMarkerRef.current = userMarker;
-    } catch {
-      // Fallback to basic marker
-      const m = new google.maps.Marker({
-        map,
-        position,
-        title: 'Tu ubicacion',
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: '#06b6d4',
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 3,
-          scale: 10,
-        },
-        zIndex: 1000,
-      });
-      userMarkerRef.current = m;
-    }
+    const m = new google.maps.Marker({
+      map,
+      position,
+      title: 'Tu ubicacion',
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        fillColor: '#06b6d4',
+        fillOpacity: 1,
+        strokeColor: '#fff',
+        strokeWeight: 3,
+        scale: 12,
+      },
+      zIndex: 1000,
+    });
+    userMarkerRef.current = m;
   }, []);
 
   // Initialize map
   useEffect(() => {
     if (!mapRef.current) return;
 
-    // Cleanup previous
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -113,7 +90,6 @@ export default function GoogleMap({
       .then((google) => {
         if (!mapRef.current) return;
 
-        // Dark map styles matching RIDA theme
         const darkMapStyle: google.maps.MapTypeStyle[] = [
           { elementType: 'geometry', stylers: [{ color: '#1d2c4d' }] },
           { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
@@ -144,7 +120,7 @@ export default function GoogleMap({
         mapInstanceRef.current = map;
         setIsLoaded(true);
 
-        // Get user location with watchPosition (continuous)
+        // Get user location
         if (showUserLocation && navigator.geolocation) {
           setLocationStatus('searching');
 
@@ -156,13 +132,11 @@ export default function GoogleMap({
               };
               setUserLocation(userPos);
               setLocationStatus('found');
-
               if (mapInstanceRef.current) {
                 mapInstanceRef.current.setCenter(userPos);
                 mapInstanceRef.current.setZoom(14);
               }
-
-              addUserMarker(google, map, userPos);
+              addUserMarker(map, userPos);
             },
             (error) => {
               console.warn('Geolocation error:', error.message, error.code);
@@ -172,11 +146,7 @@ export default function GoogleMap({
                 setLocationStatus('unavailable');
               }
             },
-            {
-              enableHighAccuracy: true,
-              timeout: 15000,
-              maximumAge: 60000,
-            }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
           );
         } else if (!navigator.geolocation) {
           setLocationStatus('unavailable');
@@ -205,55 +175,46 @@ export default function GoogleMap({
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
       }
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setMap(null);
+        userMarkerRef.current = null;
+      }
+      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current = [];
       if (mapInstanceRef.current) {
         mapInstanceRef.current = null;
-        markersRef.current = [];
-        userMarkerRef.current = null;
       }
       setUserLocation(null);
       setLocationStatus('searching');
     };
   }, []);
 
-  // Update markers
+  // Update markers (using classic google.maps.Marker only)
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
-    markersRef.current.forEach((m) => {
-      try { m.map = null; } catch {}
-    });
+    markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
     loadGoogleMaps().then((google) => {
       markers.forEach((markerData) => {
-        try {
-          const { AdvancedMarkerElement, PinElement } = google.maps.marker;
-          const pin = new PinElement({
-            background: markerData.color || '#06b6d4',
-            glyph: markerData.label || '',
-            glyphColor: '#fff',
-            scale: 1.2,
-          });
-          const marker = new AdvancedMarkerElement({
-            map: mapInstanceRef.current!,
-            position: { lat: markerData.lat, lng: markerData.lng },
-            title: markerData.label,
-            content: pin.element,
-          });
-          markersRef.current.push(marker);
-        } catch {
-          new google.maps.Marker({
-            map: mapInstanceRef.current,
-            position: { lat: markerData.lat, lng: markerData.lng },
-            title: markerData.label,
-            icon: {
-              path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-              fillColor: markerData.color || '#06b6d4',
-              fillOpacity: 1,
-              scale: 5,
-            },
-          });
-        }
+        const m = new google.maps.Marker({
+          map: mapInstanceRef.current!,
+          position: { lat: markerData.lat, lng: markerData.lng },
+          title: markerData.label,
+          icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            fillColor: markerData.color || '#06b6d4',
+            fillOpacity: 1,
+            strokeColor: '#fff',
+            strokeWeight: 2,
+            scale: 6,
+            rotation: 0,
+          },
+          label: markerData.label || undefined,
+          labelClass: 'text-white text-xs font-bold',
+        });
+        markersRef.current.push(m);
       });
     });
   }, [markers, isLoaded]);
@@ -317,14 +278,6 @@ export default function GoogleMap({
           <p className="text-sm text-gray-400">GPS Activo - Costa Rica</p>
           <p className="text-xs text-gray-600 mt-1">Precision: alta</p>
         </div>
-        <svg className="absolute inset-0 w-full h-full opacity-5" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="grid-fallback" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="cyan" strokeWidth="0.5" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid-fallback)" />
-        </svg>
       </div>
     );
   }
@@ -369,7 +322,7 @@ export default function GoogleMap({
         </div>
       )}
 
-      {/* Re-center button when location found */}
+      {/* Re-center button */}
       {locationStatus === 'found' && userLocation && (
         <button
           onClick={() => {
