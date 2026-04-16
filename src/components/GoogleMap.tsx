@@ -51,6 +51,7 @@ export default function GoogleMap({
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const hasCenteredOnUserRef = useRef(false);
+  const gpsResolvedRef = useRef(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -86,63 +87,99 @@ export default function GoogleMap({
     }
 
     setLocationStatus('searching');
+    gpsResolvedRef.current = false;
 
-    // STEP 1: Get current position IMMEDIATELY (one-shot)
+    const onGPSSuccess = (lat: number, lng: number) => {
+      const userPos = { lat, lng };
+      setUserLocation(userPos);
+      setLocationStatus('found');
+      gpsResolvedRef.current = true;
+
+      // Center map on user location (only first time)
+      if (!hasCenteredOnUserRef.current) {
+        hasCenteredOnUserRef.current = true;
+        map.panTo(userPos);
+        // Small delay then zoom in for a smooth feel
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setZoom(showUserLocation ? 16 : zoom);
+          }
+        }, 300);
+      }
+
+      addUserMarker(map, userPos);
+    };
+
+    const onGPSError = (error: GeolocationPositionError) => {
+      console.warn('Geolocation error:', error.message, 'code:', error.code);
+
+      // Only update status if GPS hasn't resolved yet from another call
+      if (gpsResolvedRef.current) return;
+
+      if (error.code === 1) {
+        // PERMISSION_DENIED
+        setLocationStatus('denied');
+      } else {
+        // TIMEOUT or POSITION_UNAVAILABLE — try again with relaxed options
+        navigator.geolocation.getCurrentPosition(
+          (retryPos) => {
+            onGPSSuccess(retryPos.coords.latitude, retryPos.coords.longitude);
+          },
+          (retryError) => {
+            console.warn('Geolocation retry failed:', retryError.message);
+            setLocationStatus('unavailable');
+            // Fallback: use the provided center prop
+            map.setCenter(center);
+            map.setZoom(zoom);
+          },
+          {
+            enableHighAccuracy: false, // relaxed
+            timeout: 20000,
+            maximumAge: 120000, // accept up to 2min cached
+          }
+        );
+      }
+    };
+
+    // STEP 1: Get current position IMMEDIATELY (one-shot) — high accuracy first
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const userPos = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        setUserLocation(userPos);
-        setLocationStatus('found');
-
-        // Center map on user location (only first time)
-        if (!hasCenteredOnUserRef.current) {
-          hasCenteredOnUserRef.current = true;
-          map.setCenter(userPos);
-          map.setZoom(showUserLocation ? 15 : zoom);
-        }
-
-        addUserMarker(map, userPos);
+        onGPSSuccess(position.coords.latitude, position.coords.longitude);
       },
-      (error) => {
-        console.warn('Geolocation getCurrentPosition error:', error.message);
-        if (error.code === 1) {
-          setLocationStatus('denied');
-        } else {
-          setLocationStatus('unavailable');
-          // Fallback: use the provided center prop
-          map.setCenter(center);
-          map.setZoom(zoom);
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      onGPSError,
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000, // accept up to 1min cached for faster load
+      }
     );
 
-    // STEP 2: Watch for live position updates (after initial fix)
+    // STEP 2: Watch for live position updates (for continuous tracking)
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const userPos = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        setUserLocation(userPos);
-        setLocationStatus('found');
-        addUserMarker(map, userPos);
-        // Don't recenter on every watch update — only update the marker
-        // The re-center button handles manual recentering
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setUserLocation({ lat, lng });
+
+        if (!gpsResolvedRef.current) {
+          // watchPosition resolved before getCurrentPosition
+          onGPSSuccess(lat, lng);
+        } else {
+          // Already centered — just update marker, don't recenter
+          setLocationStatus('found');
+          addUserMarker(map, { lat, lng });
+        }
       },
       (error) => {
-        // Silently handle watch errors — getCurrentPosition already handled the initial error
-        if (locationStatus === 'searching') {
+        // Only update status if GPS hasn't resolved from getCurrentPosition
+        if (!gpsResolvedRef.current) {
           if (error.code === 1) setLocationStatus('denied');
           else setLocationStatus('unavailable');
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
     );
-  }, [addUserMarker, center, zoom, showUserLocation, locationStatus]);
+  }, [addUserMarker, center, zoom, showUserLocation]);
 
   // Initialize map
   useEffect(() => {
@@ -154,6 +191,7 @@ export default function GoogleMap({
       watchIdRef.current = null;
     }
     hasCenteredOnUserRef.current = false;
+    gpsResolvedRef.current = false;
 
     loadGoogleMaps()
       .then((google) => {
@@ -235,6 +273,7 @@ export default function GoogleMap({
       setUserLocation(null);
       setLocationStatus('searching');
       hasCenteredOnUserRef.current = false;
+      gpsResolvedRef.current = false;
     };
   }, []);
 
@@ -335,8 +374,8 @@ export default function GoogleMap({
   // Re-center on user location
   const handleRecenter = useCallback(() => {
     if (!mapInstanceRef.current || !userLocation) return;
-    mapInstanceRef.current.setCenter(userLocation);
-    mapInstanceRef.current.setZoom(15);
+    mapInstanceRef.current.panTo(userLocation);
+    mapInstanceRef.current.setZoom(16);
   }, [userLocation]);
 
   // Error fallback

@@ -284,3 +284,27 @@ Stage Summary:
 - driver/rides/page.tsx: Removed hardcoded CR center
 - client/ride/page.tsx: Center only when route exists
 - All maps now start at user location in Costa Rica
+---
+Task ID: 3b
+Agent: Main Agent
+Task: Fix GPS centering reliability — closure bug + retry mechanism
+
+Work Log:
+- Identified stale closure bug: getUserPosition captured locationStatus from initial render, causing watchPosition error handler to incorrectly override 'found' status
+- Replaced stale locationStatus reference with local gpsResolvedRef flag (ref = no closure issues)
+- Added GPS retry mechanism: if high-accuracy getCurrentPosition fails (timeout/unavailable), retries with relaxed options (enableHighAccuracy: false, timeout: 20000, maximumAge: 120000)
+- Increased GPS timeouts: getCurrentPosition 10s→15s, watchPosition 15s→20s
+- Increased maximumAge: getCurrentPosition 30s→60s (faster cached position on revisit)
+- Changed map centering to use panTo() + delayed setZoom(16) for smoother visual transition
+- Re-center button also uses panTo() instead of setCenter()
+- Removed locationStatus from getUserPosition useCallback dependency array
+- Build verified: no errors, all pages compile
+
+Stage Summary:
+- 1 file modified: src/components/GoogleMap.tsx
+- GPS centering is now more reliable across all devices
+- Stale closure bug fixed — status indicator always accurate
+- Retry mechanism handles slow GPS devices gracefully
+- Smooth pan-to animation when centering on user location
+- Admin app has no maps (data tables only) — no changes needed there
+- Client ride page, client ride details page, and driver rides page all use the shared fixed component
