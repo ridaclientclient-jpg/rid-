@@ -19,9 +19,11 @@ interface RideState {
 }
 
 const DEMO_DRIVERS = [
-  { id: '1', name: 'Carlos M.', vehicle: 'Toyota Corolla 2023 - Rojo', rating: 4.8, distance: 1.2, eta: 4 },
-  { id: '2', name: 'Maria G.', vehicle: 'Honda Civic 2022 - Blanco', rating: 4.9, distance: 2.5, eta: 7 },
-  { id: '3', name: 'Jose R.', vehicle: 'Hyundai Accent 2024 - Gris', rating: 4.7, distance: 3.1, eta: 9 },
+  { id: '1', name: 'Carlos M.', vehicle: 'Toyota Corolla 2023 - Rojo', rating: 4.8, distance: 0.4, eta: 2 },
+  { id: '2', name: 'Maria G.', vehicle: 'Honda Civic 2022 - Blanco', rating: 4.9, distance: 0.8, eta: 3 },
+  { id: '3', name: 'Jose R.', vehicle: 'Hyundai Accent 2024 - Gris', rating: 4.7, distance: 1.1, eta: 4 },
+  { id: '4', name: 'Ana L.', vehicle: 'Nissan Sentra 2023 - Azul', rating: 4.6, distance: 1.5, eta: 5 },
+  { id: '5', name: 'Roberto S.', vehicle: 'Kia Rio 2024 - Negro', rating: 4.8, distance: 2.0, eta: 6 },
 ];
 
 export const useRideStore = create<RideState>((set, get) => ({
@@ -141,7 +143,14 @@ export const useRideStore = create<RideState>((set, get) => ({
       setTimeout(async () => {
         const state = get();
         if (state.currentRide?.id === ride.id && state.currentRide.status === 'searching') {
-          const randomDriver = DEMO_DRIVERS[Math.floor(Math.random() * DEMO_DRIVERS.length)];
+          // Pick a random nearby driver (sorted by closest first, pick from top 3)
+          const sortedDrivers = [...DEMO_DRIVERS].sort((a, b) => a.distance - b.distance);
+          const randomDriver = sortedDrivers[Math.floor(Math.random() * Math.min(3, sortedDrivers.length))];
+          // Randomize distance slightly for realism
+          const distJitter = (Math.random() - 0.5) * 0.4;
+          const finalDist = Math.max(0.2, Math.round((randomDriver.distance + distJitter) * 10) / 10);
+          const finalEta = Math.max(1, Math.round(finalDist * 3));
+
           set({
             currentRide: {
               ...state.currentRide,
@@ -150,6 +159,8 @@ export const useRideStore = create<RideState>((set, get) => ({
               driver_name: randomDriver.name,
               driver_vehicle: randomDriver.vehicle,
               driver_rating: randomDriver.rating,
+              driver_distance: finalDist,
+              driver_eta: finalEta,
             }
           });
 

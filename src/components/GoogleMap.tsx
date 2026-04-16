@@ -19,6 +19,7 @@ interface GoogleMapProps {
   markers?: MarkerData[];
   onMapClick?: (lat: number, lng: number) => void;
   onMapLoaded?: (map: google.maps.Map) => void;
+  onUserLocation?: (location: { lat: number; lng: number } | null) => void;
   showRoute?: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } };
   waypoints?: { lat: number; lng: number }[];
   showDirections?: boolean;
@@ -36,6 +37,7 @@ export default function GoogleMap({
   markers = [],
   onMapClick,
   onMapLoaded,
+  onUserLocation,
   showRoute,
   waypoints = [],
   showDirections = false,
@@ -94,6 +96,8 @@ export default function GoogleMap({
       setUserLocation(userPos);
       setLocationStatus('found');
       gpsResolvedRef.current = true;
+      // Notify parent of user location
+      if (onUserLocation) onUserLocation(userPos);
 
       // Center map on user location (only first time)
       if (!hasCenteredOnUserRef.current) {
@@ -159,7 +163,10 @@ export default function GoogleMap({
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        setUserLocation({ lat, lng });
+        const pos = { lat, lng };
+        setUserLocation(pos);
+        // Notify parent of user location update
+        if (onUserLocation) onUserLocation(pos);
 
         if (!gpsResolvedRef.current) {
           // watchPosition resolved before getCurrentPosition
@@ -167,7 +174,7 @@ export default function GoogleMap({
         } else {
           // Already centered — just update marker, don't recenter
           setLocationStatus('found');
-          addUserMarker(map, { lat, lng });
+          addUserMarker(map, pos);
         }
       },
       (error) => {
@@ -179,7 +186,7 @@ export default function GoogleMap({
       },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
     );
-  }, [addUserMarker, center, zoom, showUserLocation]);
+  }, [addUserMarker, center, zoom, showUserLocation, onUserLocation]);
 
   // Initialize map
   useEffect(() => {
@@ -270,6 +277,8 @@ export default function GoogleMap({
       if (mapInstanceRef.current) {
         mapInstanceRef.current = null;
       }
+      // Notify parent that location is no longer available
+      if (onUserLocation) onUserLocation(null);
       setUserLocation(null);
       setLocationStatus('searching');
       hasCenteredOnUserRef.current = false;

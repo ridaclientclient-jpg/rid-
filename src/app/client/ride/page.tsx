@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText } from 'lucide-react';
@@ -35,6 +35,16 @@ export default function ClientRide() {
   const [showThirdParty, setShowThirdParty] = useState(false);
   const [stops, setStops] = useState<Stop[]>([]);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [userGPS, setUserGPS] = useState<{ lat: number; lng: number } | null>(null);
+  const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Capture user GPS from map and keep it synced
+  const handleMapUserLocation = useCallback((location: { lat: number; lng: number } | null) => {
+    if (location) {
+      setUserGPS(location);
+      userGPSRef.current = location;
+    }
+  }, []);
 
   const handleOriginChange = (val: string, _placeId?: string, lat?: number, lng?: number) => {
     setOrigin(val);
@@ -205,6 +215,7 @@ export default function ClientRide() {
           }
           showDirections={!!(mapOrigin && mapDest)}
           showUserLocation={true}
+          onUserLocation={handleMapUserLocation}
           className="absolute inset-0"
         />
       </div>
@@ -248,6 +259,8 @@ export default function ClientRide() {
                 onChange={handleOriginChange}
                 placeholder="O escribe una direccion de partida"
                 dotColor="bg-emerald-400"
+                userLocation={userGPS}
+                searchRadius={50000}
               />
 
               {/* Intermediate Stops */}
@@ -280,6 +293,8 @@ export default function ClientRide() {
                       onChange={(val, placeId, lat, lng) => updateStop(stop.id, val, placeId, lat, lng)}
                       placeholder={`Parada intermedia ${index + 1}`}
                       dotColor=""
+                      userLocation={userGPS}
+                      searchRadius={50000}
                     />
                   </motion.div>
                 ))}
@@ -304,6 +319,8 @@ export default function ClientRide() {
                 onChange={handleDestinationChange}
                 placeholder="A donde vas?"
                 dotColor="bg-red-400"
+                userLocation={userGPS}
+                searchRadius={50000}
               />
             </div>
 
@@ -426,11 +443,29 @@ export default function ClientRide() {
                   <p className="text-xs text-gray-400">
                     {currentRide.driver_vehicle}
                   </p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                    <span className="text-xs text-amber-400">
-                      {currentRide.driver_rating}
-                    </span>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <div className="flex items-center gap-1">
+                      <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      <span className="text-xs text-amber-400">
+                        {currentRide.driver_rating}
+                      </span>
+                    </div>
+                    {(currentRide as any).driver_distance != null && (
+                      <div className="flex items-center gap-1">
+                        <Navigation className="w-3 h-3 text-cyan-400" />
+                        <span className="text-xs text-cyan-400">
+                          {(currentRide as any).driver_distance} km
+                        </span>
+                      </div>
+                    )}
+                    {(currentRide as any).driver_eta != null && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-emerald-400" />
+                        <span className="text-xs text-emerald-400">
+                          {(currentRide as any).driver_eta} min
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMaps';
-import { MapPin, Loader2 } from 'lucide-react';
+import { MapPin, Loader2, Navigation } from 'lucide-react';
 
 interface PlacesAutocompleteProps {
   value: string;
@@ -12,6 +12,10 @@ interface PlacesAutocompleteProps {
   country?: string;
   dotColor?: string;
   disabled?: boolean;
+  /** User's current GPS location — results will be biased toward this location */
+  userLocation?: { lat: number; lng: number } | null;
+  /** Search radius in meters around user location (default: 50000 = 50km) */
+  searchRadius?: number;
 }
 
 export default function PlacesAutocomplete({
@@ -22,6 +26,8 @@ export default function PlacesAutocomplete({
   country = 'CR',
   dotColor = 'bg-emerald-400',
   disabled = false,
+  userLocation,
+  searchRadius = 50000,
 }: PlacesAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -30,6 +36,12 @@ export default function PlacesAutocomplete({
   const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesRef = useRef<google.maps.places.PlacesService | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const userLocationRef = useRef(userLocation);
+
+  // Keep ref in sync so fetchSuggestions always has latest location without recreating
+  useEffect(() => {
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
 
   useEffect(() => {
     loadGoogleMaps()
@@ -49,12 +61,25 @@ export default function PlacesAutocomplete({
       }
 
       setIsLoading(true);
+
+      // Build request with location bias if user location is available
+      const request: google.maps.places.AutocompletionRequest = {
+        input: query,
+        componentRestrictions: { country },
+        types: ['geocode', 'establishment'],
+      };
+
+      // If we have the user's GPS location, bias results nearby
+      const loc = userLocationRef.current;
+      if (loc) {
+        request.location = new google.maps.LatLng(loc.lat, loc.lng);
+        request.radius = searchRadius;
+        // strictBounds would limit results ONLY to the radius — we want bias, not strict
+        // so results outside the radius are still shown, just ranked lower
+      }
+
       autocompleteRef.current?.getPlacePredictions(
-        {
-          input: query,
-          componentRestrictions: { country },
-          types: ['geocode', 'establishment'],
-        },
+        request,
         (predictions, status) => {
           setIsLoading(false);
           if (
@@ -69,7 +94,7 @@ export default function PlacesAutocomplete({
         }
       );
     },
-    [country]
+    [country, searchRadius]
   );
 
   useEffect(() => {
@@ -149,7 +174,15 @@ export default function PlacesAutocomplete({
         />
       </div>
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 glass-strong rounded-xl overflow-hidden z-50 max-h-48 overflow-y-auto custom-scrollbar">
+        <div className="absolute top-full left-0 right-0 mt-1 glass-strong rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar">
+          {userLocation && (
+            <div className="px-4 py-2 border-b border-white/5 flex items-center gap-1.5">
+              <Navigation className="w-3 h-3 text-cyan-400" />
+              <span className="text-[10px] text-cyan-400 font-medium">
+                Resultados cerca de tu ubicacion
+              </span>
+            </div>
+          )}
           {suggestions.map((s, i) => (
             <button
               key={s.place_id}
@@ -160,10 +193,16 @@ export default function PlacesAutocomplete({
                   : 'text-gray-300 hover:bg-white/5'
               }`}
             >
-              <div className="flex items-center gap-2">
-                <MapPin className="w-3 h-3 text-gray-500 shrink-0" />
-                <span className="truncate">{s.description}</span>
+              <div className="flex items-start gap-2">
+                <MapPin className="w-3 h-3 text-gray-500 shrink-0 mt-0.5" />
+                <span className="truncate leading-tight">{s.description}</span>
               </div>
+              {/* Show secondary text (matched substring) */}
+              {s.structured_formatting?.secondary_text && (
+                <p className="text-[10px] text-gray-600 ml-5 truncate mt-0.5">
+                  {s.structured_formatting.secondary_text}
+                </p>
+              )}
             </button>
           ))}
         </div>

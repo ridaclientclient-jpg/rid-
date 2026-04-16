@@ -338,3 +338,26 @@ Stage Summary:
 - Empty states handled gracefully
 - Build verified: 0 errors, all 48 routes compile
 - Remaining mock: Client home recent places, driver ride simulation (DEMO_DRIVERS), marketplace pages
+---
+Task ID: 0
+Agent: main
+Task: Fix destination search to show nearest places to user GPS + fix driver proximity display
+
+Work Log:
+- Added `onUserLocation` callback prop to GoogleMap component - fires when GPS resolves and on live updates
+- Updated PlacesAutocomplete to accept `userLocation` and `searchRadius` props
+- PlacesAutocomplete now uses `location` + `radius` params in `getPlacePredictions()` to bias results toward user GPS
+- Added visual indicator "Resultados cerca de tu ubicacion" in suggestions dropdown when GPS is active
+- Added secondary text from Google structured formatting for better place descriptions
+- Updated ride page to track user GPS from map via `onUserLocation` callback
+- All 3 PlacesAutocomplete instances (origin, stops, destination) now receive `userLocation` prop
+- Updated DEMO_DRIVERS with 5 drivers at closer distances (0.4km - 2.0km)
+- Driver assignment now picks from top 3 closest drivers with slight distance jitter for realism
+- Driver info card now shows distance (km) and ETA (min) alongside rating
+- Search radius set to 50km (50000m) for Costa Rica - biases but doesn't strictly limit
+
+Stage Summary:
+- When user types "pali", Google Places now prioritizes the nearest Pali to their GPS location
+- Drivers shown are closer (0.2-2.2km) with realistic ETAs (1-6 min)
+- Driver card shows distance + ETA during assigned/arriving status
+- Build verified successful with zero errors
