@@ -56,6 +56,7 @@ export default function GoogleMap({
   const gpsResolvedRef = useRef(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'searching' | 'found' | 'denied' | 'unavailable'>('searching');
 
@@ -258,6 +259,7 @@ export default function GoogleMap({
       .catch((err) => {
         console.error('Google Maps load error:', err);
         setHasError(true);
+        setErrorMsg(err?.message || 'Error desconocido');
       });
 
     return () => {
@@ -387,19 +389,25 @@ export default function GoogleMap({
     mapInstanceRef.current.setZoom(16);
   }, [userLocation]);
 
-  // Error fallback
+  // Error fallback — show map placeholder with error info
   if (hasError) {
     return (
       <div
         className={`w-full flex items-center justify-center bg-gradient-to-b from-blue-900/20 to-rida-dark ${className}`}
         style={{ height, borderRadius: '16px', overflow: 'hidden', ...style }}
       >
-        <div className="text-center">
+        <div className="text-center p-4">
           <div className="w-20 h-20 rounded-full bg-cyan-500/10 flex items-center justify-center mx-auto mb-3 animate-pulse-glow">
             <MapPin className="w-10 h-10 text-cyan-400" />
           </div>
-          <p className="text-sm text-gray-400">GPS Activo - Costa Rica</p>
-          <p className="text-xs text-gray-600 mt-1">Precision: alta</p>
+          <p className="text-sm text-gray-400">Cargando mapa...</p>
+          <p className="text-xs text-gray-600 mt-1">Costa Rica</p>
+          <button
+            onClick={() => { setHasError(false); setErrorMsg(''); window.location.reload(); }}
+            className="mt-3 text-[10px] text-cyan-400/70 hover:text-cyan-400 underline"
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     );

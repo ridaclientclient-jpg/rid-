@@ -397,3 +397,26 @@ Stage Summary:
 - Login flow: login() → isAuthenticated:true, isLoading:false → navigate to protected page → AuthGuard mounts → initAuth() returns (already authed, no isLoading change) → checked=true → content shows immediately
 - Safety: if initAuth() ever hangs (network issue), the 8s timeout forces checked=true so the user isn't stuck forever
 - Redirect protection: redirectAttemptedRef ensures only one redirect attempt per AuthGuard mount
+---
+Task ID: fix-map
+Agent: main
+Task: Fix Google Maps not showing in client, driver and admin apps
+
+Work Log:
+- Root cause 1: Script URL had `libraries=marker` which is for AdvancedMarkerElement API — we use classic google.maps.Marker. This could cause silent failures.
+- Root cause 2: `v=weekly` parameter was removed — weekly channel can have breaking changes.
+- Root cause 3: If script load failed once, the rejected promise was cached forever (no retry mechanism).
+- Root cause 4: Used callback parameter pattern which could conflict with other Google Maps scripts.
+- Fix: Rewrote googleMaps.ts — removed 'marker' library, removed version pin, removed callback pattern, use simple onload event instead.
+- Fix: Added retry mechanism — if first load fails, clear promise and retry once.
+- Fix: Added 200ms delay after onload to ensure API fully initialized before resolving.
+- Fix: Added 15s safety timeout.
+- Fix: Script gets an ID so we can reliably remove and re-add it for retries.
+- Fix: GoogleMap component now has better error state with "Reintentar" button.
+- Build verified successful
+
+Stage Summary:
+- Maps should now load reliably with automatic retry on failure
+- PlacesAutocomplete and geocoding still work (places + geometry libraries preserved)
+- If map fails to load, user sees a placeholder with retry button
+- Admin doesn't have a map on its pages currently (only client/ride, client/ride/[id], driver/rides)
