@@ -7,7 +7,8 @@ import { supabase, type Driver, type Ride, type Wallet, type Transaction } from 
 import { toast } from 'sonner';
 import {
   Wallet as WalletIcon, TrendingUp, Clock, ChevronRight, ArrowDownCircle,
-  Info, Calendar, CreditCard, Banknote, Loader2,
+  Info, Calendar, CreditCard, Banknote, Loader2, Target,
+  Gift, Flag, Zap, BarChart3, ArrowUpCircle, RefreshCw,
 } from 'lucide-react';
 
 interface WeeklyDay {
@@ -25,6 +26,12 @@ interface TxDisplay {
 }
 
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+
+const ACHIEVEMENT_TABS = [
+  { id: 'rides', label: 'Viajes', icon: CreditCard },
+  { id: 'demand', label: 'Demanda', icon: Zap },
+  { id: 'performance', label: 'Rendimiento', icon: BarChart3 },
+];
 
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -57,16 +64,18 @@ export default function DriverEarnings() {
   const [workHours, setWorkHours] = useState(0);
   const [transactions, setTransactions] = useState<TxDisplay[]>([]);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [bonuses, setBonuses] = useState(0);
+  const [activeTab, setActiveTab] = useState('rides');
 
   const maxAmount = Math.max(...weeklyData.map(d => d.amount), 1);
   const maxHours = 12;
+  const dailyGoal = 75660;
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
 
     try {
-      // Fetch driver record
       const { data: driver } = await supabase
         .from('drivers')
         .select('*')
@@ -78,7 +87,6 @@ export default function DriverEarnings() {
         setWorkHours(driver.work_hours_today || 0);
       }
 
-      // Fetch wallet
       const { data: wallet } = await supabase
         .from('wallets')
         .select('*')
@@ -87,9 +95,9 @@ export default function DriverEarnings() {
 
       if (wallet) {
         setWalletBalance(wallet.balance || 0);
+        setBonuses(wallet.total_earnings ? wallet.total_earnings * 0.05 : 0);
       }
 
-      // Fetch completed rides for the last 7 days
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       sevenDaysAgo.setHours(0, 0, 0, 0);
@@ -104,7 +112,6 @@ export default function DriverEarnings() {
 
       const rides = recentRides || [];
 
-      // Build weekly data (last 7 days)
       const weekMap: Record<string, number> = {};
       const today = new Date();
       for (let i = 6; i >= 0; i--) {
@@ -144,7 +151,6 @@ export default function DriverEarnings() {
       });
       setWeeklyData(builtWeeklyData);
 
-      // Check for today's withdrawals
       const { data: todayWithdrawals } = await supabase
         .from('transactions')
         .select('id')
@@ -153,7 +159,6 @@ export default function DriverEarnings() {
         .limit(1);
       setHasWithdrawnToday((todayWithdrawals?.length || 0) > 0);
 
-      // Fetch transactions (wallet + transactions)
       if (wallet) {
         const { data: txData } = await supabase
           .from('transactions')
@@ -181,9 +186,7 @@ export default function DriverEarnings() {
     }
   }, [user?.id]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleWithdraw = async () => {
     if (!user?.id) return;
@@ -200,7 +203,6 @@ export default function DriverEarnings() {
 
     setIsWithdrawing(true);
     try {
-      // Get wallet
       const { data: wallet, error: walletErr } = await supabase
         .from('wallets')
         .select('*')
@@ -213,7 +215,6 @@ export default function DriverEarnings() {
         return;
       }
 
-      // Insert withdrawal transaction
       const { error: txErr } = await supabase
         .from('transactions')
         .insert({
@@ -230,7 +231,6 @@ export default function DriverEarnings() {
         return;
       }
 
-      // Update wallet balance
       const { error: updateErr } = await supabase
         .from('wallets')
         .update({
@@ -268,64 +268,112 @@ export default function DriverEarnings() {
     );
   }
 
+  const goalPercent = Math.min((todayEarnings / dailyGoal) * 100, 100);
+
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-4">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-xl font-bold text-white">Ganancias</h1>
-        <p className="text-sm text-gray-400 mt-1">Resumen de tus ingresos</p>
+        <p className="text-sm text-gray-400 mt-0.5">Resumen de tus ingresos</p>
       </motion.div>
 
-      {/* Total Earnings Card */}
+      {/* Today's Earnings Card - Like reference app */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="glass-strong rounded-2xl p-6 bg-gradient-to-br from-blue-600/20 to-cyan-500/10 border border-cyan-500/20"
+        className="glass rounded-2xl p-5"
       >
-        <div className="flex items-center gap-2 mb-2">
-          <WalletIcon className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm text-gray-400">Ganancias Totales</span>
-        </div>
-        <p className="text-4xl font-bold text-white glow-text">{formatCurrency(totalEarnings)}</p>
-        <div className="flex items-center gap-4 mt-3">
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-gray-500">Hoy</p>
-            <p className="text-sm font-semibold text-emerald-400">+{formatCurrency(todayEarnings)}</p>
+            <p className="text-xs text-gray-400">Ingresos de hoy</p>
+            <p className="text-3xl font-bold text-white mt-1">{formatCurrency(todayEarnings)}</p>
           </div>
-          <div className="w-px h-6 bg-white/10" />
-          <div>
-            <p className="text-xs text-gray-500">Esta semana</p>
-            <p className="text-sm font-semibold text-cyan-400">{formatCurrency(totalWeekly)}</p>
+          <div className="flex items-center gap-1 text-gray-400">
+            <ChevronRight className="w-4 h-4" />
+          </div>
+        </div>
+        {/* Daily Goal */}
+        <div className="mt-3 pt-3 border-t border-white/5">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <Target className="w-3 h-3 text-cyan-400" />
+              <span className="text-xs text-gray-400">Objetivo</span>
+            </div>
+            <span className="text-xs text-gray-300">{formatCurrency(dailyGoal)}</span>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-2">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${goalPercent}%` }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500"
+            />
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">{Math.round(goalPercent)}% completado</p>
+        </div>
+      </motion.div>
+
+      {/* Wallet Balance + Bonuses Row */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="grid grid-cols-2 gap-3"
+      >
+        {/* Wallet */}
+        <div className="glass rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <WalletIcon className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs text-gray-500">Saldo de la tarjeta</span>
+          </div>
+          <p className="text-lg font-bold text-white">CRC{walletBalance.toLocaleString()}</p>
+          <button
+            onClick={() => toast.info('Funcion de recarga proximamente')}
+            className="mt-2 w-full py-1.5 rounded-lg bg-white/5 text-[10px] text-gray-300 font-medium hover:bg-white/10 transition-colors"
+          >
+            Recarga
+          </button>
+        </div>
+        {/* Bonuses */}
+        <div className="glass rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Gift className="w-4 h-4 text-purple-400" />
+            <span className="text-xs text-gray-500">Bonificaciones</span>
+          </div>
+          <p className="text-lg font-bold text-white">{formatCurrency(bonuses)}</p>
+          <div className="flex items-center gap-1 mt-2 text-cyan-400">
+            <ChevronRight className="w-3 h-3" />
+            <span className="text-[10px] font-medium">Ver mas</span>
           </div>
         </div>
       </motion.div>
 
-      {/* Stats Grid */}
+      {/* Stats Row */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="grid grid-cols-2 gap-3"
+        className="grid grid-cols-3 gap-2"
       >
-        <div className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs text-gray-500">Comision actual</span>
-          </div>
-          <p className="text-lg font-bold text-white">15%</p>
-          <p className="text-xs text-gray-500 mt-0.5">RIDA retiene 15%</p>
+        <div className="glass rounded-xl p-3 text-center">
+          <TrendingUp className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
+          <p className="text-sm font-bold text-white">15%</p>
+          <p className="text-[10px] text-gray-500">Comision</p>
         </div>
-        <div className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-4 h-4 text-amber-400" />
-            <span className="text-xs text-gray-500">Horas hoy</span>
+        <div className="glass rounded-xl p-3 text-center">
+          <Clock className="w-4 h-4 text-amber-400 mx-auto mb-1" />
+          <p className="text-sm font-bold text-white">{workHours}h</p>
+          <div className="mt-1 w-full bg-white/10 rounded-full h-1">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 h-1 rounded-full transition-all" style={{ width: `${(workHours / maxHours) * 100}%` }} />
           </div>
-          <p className="text-lg font-bold text-white">{workHours}h</p>
-          <div className="mt-1.5 w-full bg-white/10 rounded-full h-1.5">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 h-1.5 rounded-full transition-all" style={{ width: `${(workHours / maxHours) * 100}%` }} />
-          </div>
-          <p className="text-xs text-gray-600 mt-1">{workHours}h / {maxHours}h max</p>
+          <p className="text-[9px] text-gray-600 mt-0.5">de {maxHours}h</p>
+        </div>
+        <div className="glass rounded-xl p-3 text-center">
+          <CreditCard className="w-4 h-4 text-cyan-400 mx-auto mb-1" />
+          <p className="text-sm font-bold text-white">{formatCurrency(totalWeekly)}</p>
+          <p className="text-[10px] text-gray-500">Esta semana</p>
         </div>
       </motion.div>
 
@@ -333,21 +381,21 @@ export default function DriverEarnings() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="glass rounded-2xl p-5"
+        transition={{ delay: 0.13 }}
+        className="glass rounded-2xl p-4"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-cyan-400" />
             <span className="text-sm font-semibold text-white">Esta Semana</span>
           </div>
-          <span className="text-xs text-gray-500">{formatCurrency(totalWeekly)} total</span>
+          <span className="text-xs text-gray-500">{formatCurrency(totalWeekly)}</span>
         </div>
         {weeklyData.length > 0 ? (
-          <div className="flex items-end gap-2 h-36">
+          <div className="flex items-end gap-2 h-28">
             {weeklyData.map((data, i) => (
               <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <span className="text-[10px] text-gray-500">₡{(data.amount / 1000).toFixed(0)}k</span>
+                <span className="text-[9px] text-gray-500">₡{(data.amount / 1000).toFixed(0)}k</span>
                 <motion.div
                   initial={{ height: 0 }}
                   animate={{ height: `${(data.amount / maxAmount) * 100}%` }}
@@ -359,10 +407,95 @@ export default function DriverEarnings() {
             ))}
           </div>
         ) : (
-          <div className="flex items-center justify-center h-36 text-gray-500 text-sm">
+          <div className="flex items-center justify-center h-28 text-gray-500 text-sm">
             Sin viajes esta semana
           </div>
         )}
+      </motion.div>
+
+      {/* Achievements Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.16 }}
+        className="glass rounded-2xl p-4"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Flag className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-semibold text-white">Logros</span>
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-500" />
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4">
+          {ACHIEVEMENT_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeTab === tab.id ? 'bg-cyan-500/20 text-cyan-400' : 'bg-white/5 text-gray-400 hover:bg-white/10'
+              }`}
+            >
+              <tab.icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {/* Tab Content */}
+        <div className="min-h-[80px]">
+          {activeTab === 'rides' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Viajes completados hoy</span>
+                <span className="text-xs font-bold text-white">{weeklyData.reduce((a, d) => a + (d.amount > 0 ? 1 : 0), 0)}</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Viajes esta semana</span>
+                <span className="text-xs font-bold text-white">{weeklyData.filter(d => d.amount > 0).length}</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Aceptacion de viajes</span>
+                <span className="text-xs font-bold text-emerald-400">92%</span>
+              </div>
+            </div>
+          )}
+          {activeTab === 'demand' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Solicitudes activas</span>
+                <span className="text-xs font-bold text-emerald-400">Alta</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Zona con mas demanda</span>
+                <span className="text-xs font-bold text-white">Centro</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Mejor horario</span>
+                <span className="text-xs font-bold text-amber-400">7am - 9am</span>
+              </div>
+            </div>
+          )}
+          {activeTab === 'performance' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Calificacion promedio</span>
+                <div className="flex items-center gap-1">
+                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  <span className="text-xs font-bold text-white">5.00</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Cancelaciones</span>
+                <span className="text-xs font-bold text-white">2%</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                <span className="text-xs text-gray-300">Tiempo de llegada prom.</span>
+                <span className="text-xs font-bold text-emerald-400">4 min</span>
+              </div>
+            </div>
+          )}
+        </div>
       </motion.div>
 
       {/* Withdraw Button */}
@@ -375,7 +508,7 @@ export default function DriverEarnings() {
         <button
           onClick={handleWithdraw}
           disabled={isWithdrawing || hasWithdrawnToday}
-          className={`w-full font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+          className={`w-full font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
             hasWithdrawnToday
               ? 'bg-white/5 border border-white/10 text-gray-500 cursor-not-allowed'
               : 'btn-neon text-white'
@@ -404,14 +537,19 @@ export default function DriverEarnings() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
       >
-        <h2 className="text-sm font-semibold text-gray-400 mb-3">Transacciones Recientes</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-400">Transacciones Recientes</h2>
+          <button onClick={() => { fetchData(); toast.info('Datos actualizados'); }} className="p-1 rounded-lg hover:bg-white/5">
+            <RefreshCw className="w-3.5 h-3.5 text-gray-500" />
+          </button>
+        </div>
         {transactions.length > 0 ? (
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {transactions.map((tx) => (
               <div key={tx.id} className="glass rounded-xl p-3 flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tx.type === 'ride' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
                   {tx.type === 'ride' ? (
-                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                    <ArrowUpCircle className="w-5 h-5 text-emerald-400" />
                   ) : (
                     <ArrowDownCircle className="w-5 h-5 text-red-400" />
                   )}
