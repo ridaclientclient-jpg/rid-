@@ -8,6 +8,7 @@ import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
+import DraggableBottomSheet from '@/components/DraggableBottomSheet';
 import { reverseGeocode } from '@/lib/googleMaps';
 
 interface CoordData {
@@ -200,9 +201,9 @@ export default function ClientRide() {
   ];
 
   return (
-    <div className="relative h-[calc(100vh-120px)] flex flex-col">
-      {/* Google Map Area */}
-      <div className="flex-1 relative">
+    <div className="relative h-[calc(100vh-120px)] flex flex-col overflow-hidden">
+      {/* Google Map Area — full screen behind the sheet */}
+      <div className="absolute inset-0">
         <GoogleMap
           center={mapOrigin && mapDest ? mapOrigin : undefined}
           zoom={mapOrigin && mapDest ? 13 : undefined}
@@ -217,19 +218,19 @@ export default function ClientRide() {
           showUserLocation={true}
           onUserLocation={handleMapUserLocation}
           className="absolute inset-0"
+          height="100%"
         />
       </div>
 
-      {/* Ride Panel */}
-      <AnimatePresence mode="wait">
+      {/* Ride Panel — Draggable Bottom Sheet */}
+      <DraggableBottomSheet
+        initialSnap="peek"
+        minHeight={140}
+        className="glass-strong rounded-t-3xl"
+      >
+        <div className="p-5 space-y-4">
         {!currentRide ? (
-          <motion.div
-            key="form"
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            exit={{ y: 100 }}
-            className="absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl p-5 space-y-4 max-h-[75%] overflow-y-auto"
-          >
+          <>
             {/* Location Inputs */}
             <div className="space-y-2">
               {/* Use My Location Button */}
@@ -383,15 +384,10 @@ export default function ClientRide() {
                 </>
               )}
             </button>
-          </motion.div>
+          </>
         ) : (
-          <motion.div
-            key="active-ride"
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            exit={{ y: 100 }}
-            className="absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl p-5 space-y-4"
-          >
+          <>
+            {/* Active Ride Content */}
             {/* Status Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -574,9 +570,10 @@ export default function ClientRide() {
                 <Shield className="w-5 h-5" /> SOS Emergencia
               </button>
             )}
-          </motion.div>
+          </>
         )}
-      </AnimatePresence>
+        </div>
+      </DraggableBottomSheet>
 
       {/* Third Party Popup */}
       <AnimatePresence>

@@ -420,3 +420,26 @@ Stage Summary:
 - PlacesAutocomplete and geocoding still work (places + geometry libraries preserved)
 - If map fails to load, user sees a placeholder with retry button
 - Admin doesn't have a map on its pages currently (only client/ride, client/ride/[id], driver/rides)
+---
+Task ID: draggable-panel
+Agent: main
+Task: Make bottom panel draggable up/down to reveal full map
+
+Work Log:
+- Created DraggableBottomSheet component with touch and mouse drag support
+- Features: 3 snap positions (peek 180px, half 50%, full 92%), fling detection, double-tap to toggle, velocity-based snap
+- Updated client ride page: map now fills the full screen, panel overlays on top as a draggable sheet
+- Replaced fixed AnimatePresence panel with DraggableBottomSheet
+- Panel starts at "peek" (180px) showing just the location inputs
+- Drag up to see ride types, drag further for full view
+- Drag down to collapse and see more map
+- Quick toggle button (chevron) in top-right corner of sheet
+- Touch and mouse support for both mobile and desktop
+- Glass-strong styling with rounded top corners
+- Build verified successful
+
+Stage Summary:
+- Users can now drag the bottom panel up/down to see more or less of the map
+- Double-tap the handle toggles between peek and full
+- Fling gestures work (fast drag up goes to next snap, fast drag down goes to previous)
+- The map takes full viewport behind the sheet
