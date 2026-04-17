@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 
 export default function AdminLoginPage() {
-  const [email, setEmail] = useState('admin@rida.com');
+  const [email, setEmail] = useState('admin@ridasupreme.com');
   const [password, setPassword] = useState('admin123');
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
@@ -84,7 +84,7 @@ export default function AdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1.5 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white placeholder:text-gray-600 outline-none transition-all"
-              placeholder="admin@rida.com"
+              placeholder="admin@ridasupreme.com"
               required
             />
           </motion.div>
@@ -161,7 +161,7 @@ export default function AdminLoginPage() {
             <Link href="/admin/register" className="text-xs text-cyan-400 hover:underline">Registrarse</Link>
           </p>
           <p className="text-xs text-gray-500 text-center">
-            Demo: <span className="text-gray-400">admin@rida.com</span> / <span className="text-gray-400">admin123</span>
+            Demo: <span className="text-gray-400">admin@ridasupreme.com</span> / <span className="text-gray-400">admin123</span>
           </p>
         </motion.div>
       </motion.div>

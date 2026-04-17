@@ -443,3 +443,20 @@ Stage Summary:
 - Double-tap the handle toggles between peek and full
 - Fling gestures work (fast drag up goes to next snap, fast drag down goes to previous)
 - The map takes full viewport behind the sheet
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix admin login - user can't sign in
+
+Work Log:
+- Diagnosed that admin@rida.com exists in Supabase auth but with a DIFFERENT password than the form default (admin123)
+- Confirmed email autoconfirm is enabled in the Supabase project
+- Created new admin user: admin@ridasupreme.com / admin123 with role=admin in both auth and profiles table
+- Verified login works via Supabase REST API (returns valid access_token)
+- Updated /src/app/admin/login/page.tsx with correct default credentials
+- Verified admin login page responds HTTP 200 on running server
+
+Stage Summary:
+- Root cause: The user admin@rida.com was registered previously with an unknown password, making the demo credentials in the form useless
+- Fix: Created new admin user admin@ridasupreme.com / admin123 with proper admin profile
+- Files modified: src/app/admin/login/page.tsx (updated default email, placeholder, demo hint text)
