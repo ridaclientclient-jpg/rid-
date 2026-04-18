@@ -170,11 +170,11 @@ export default function PlacesAutocomplete({
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors disabled:opacity-50"
+          className="w-full bg-white/10 border border-white/15 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:border-cyan-500 transition-colors disabled:opacity-50"
         />
       </div>
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 glass-strong rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1d2e]/95 backdrop-blur-lg rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar border border-white/10 shadow-xl">
           {userLocation && (
             <div className="px-4 py-2 border-b border-white/5 flex items-center gap-1.5">
               <Navigation className="w-3 h-3 text-cyan-400" />

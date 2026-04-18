@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, MapPin } from 'lucide-react';
@@ -22,8 +22,8 @@ interface Stop {
   coords: CoordData | null;
 }
 
-const STOP_LABELS = ['C', 'D', 'E', 'F', 'G', 'H'];
-const STOP_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+const STOP_LABELS = ['C', 'D', 'E'];
+const STOP_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899'];
 
 export default function ClientRide() {
   const router = useRouter();
@@ -151,8 +151,8 @@ export default function ClientRide() {
 
   // Add a new intermediate stop
   const addStop = () => {
-    if (stops.length >= 6) {
-      toast.error('Maximo 6 paradas intermedias');
+    if (stops.length >= 3) {
+      toast.error('Maximo 3 paradas intermedias');
       return;
     }
     setStops([...stops, { id: 'stop-' + Date.now(), address: '', coords: null }]);
@@ -192,6 +192,12 @@ export default function ClientRide() {
   const mapOrigin = currentRide ? activeRideOrigin : originCoords;
   const mapDest = currentRide ? activeRideDest : destCoords;
   const mapWaypoints = currentRide ? activeWaypoints : stops.filter(s => s.coords).map(s => ({ lat: s.coords!.lat, lng: s.coords!.lng }));
+
+  // Memoize route object to prevent GoogleMap from re-rendering directions on every state change (fixes blue line flickering)
+  const memoizedRoute = useMemo(() => {
+    if (mapOrigin && mapDest) return { origin: mapOrigin, destination: mapDest };
+    return undefined;
+  }, [mapOrigin?.lat, mapOrigin?.lng, mapDest?.lat, mapDest?.lng]);
 
   if (mapOrigin) mapMarkers.push({ ...mapOrigin, label: 'A', color: '#10b981' });
   if (currentRide) {
@@ -270,11 +276,7 @@ export default function ClientRide() {
           zoom={mapOrigin && mapDest ? 13 : undefined}
           markers={mapMarkers}
           waypoints={mapWaypoints.length > 0 ? mapWaypoints : undefined}
-          showRoute={
-            mapOrigin && mapDest
-              ? { origin: mapOrigin, destination: mapDest }
-              : undefined
-          }
+          showRoute={memoizedRoute}
           showDirections={!!(mapOrigin && mapDest)}
           draggablePin={pinTarget && pinPosition ? { position: pinPosition, color: pinTarget === 'origin' ? '#10b981' : '#ef4444' } : null}
           onDraggablePinMove={handlePinDrag}
@@ -386,7 +388,7 @@ export default function ClientRide() {
               </AnimatePresence>
 
               {/* Add Stop Button */}
-              {stops.length < 6 && (
+              {stops.length < 3 && (
                 <motion.button
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -418,35 +420,33 @@ export default function ClientRide() {
             )}
 
             {/* Ride Types */}
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
               {rideTypes.map((type) => {
                 const TypeIcon = type.icon;
                 return (
                   <button
                     key={type.id}
                     onClick={() => setRideType(type.id)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                    className={`flex items-center gap-2 p-2.5 rounded-xl transition-all ${
                       rideType === type.id
-                        ? 'glass-strong border-cyan-500/50 glow-cyan'
-                        : 'glass hover:bg-white/10'
+                        ? 'bg-white/10 border-2 border-cyan-500/60 glow-cyan'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10'
                     }`}
                   >
                     <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                         rideType === type.id
                           ? `bg-gradient-to-br ${type.color}`
                           : 'bg-white/10'
                       }`}
                     >
-                      <TypeIcon className="w-5 h-5 text-white" />
+                      <TypeIcon className="w-4 h-4 text-white" />
                     </div>
-                    <div className="flex-1 text-left">
-                      <p className="text-sm font-semibold text-white">{type.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {type.desc} - {type.time} de espera
-                      </p>
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="text-xs font-semibold text-white truncate">{type.name}</p>
+                      <p className="text-[10px] text-gray-500 truncate">{type.time}</p>
                     </div>
-                    <p className="text-sm font-bold text-cyan-400">{type.price}</p>
+                    <p className="text-xs font-bold text-cyan-400 shrink-0">{type.price}</p>
                   </button>
                 );
               })}
