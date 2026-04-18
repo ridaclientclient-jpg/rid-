@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, MapPin } from 'lucide-react';
