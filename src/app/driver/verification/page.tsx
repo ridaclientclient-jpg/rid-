@@ -50,6 +50,9 @@ export default function DriverVerification() {
 
   const compressImage = (file: File): Promise<Blob> => {
     return new Promise((resolve) => {
+      // Safety timeout: if FileReader hangs on mobile, resolve with original file after 10s
+      const timeout = setTimeout(() => resolve(file), 10000);
+
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
@@ -59,10 +62,11 @@ export default function DriverVerification() {
       reader.onload = (e) => {
         img.src = e.target?.result as string;
       };
-      reader.onerror = () => resolve(file);
+      reader.onerror = () => { clearTimeout(timeout); resolve(file); };
       reader.readAsDataURL(file);
 
       img.onload = () => {
+        clearTimeout(timeout);
         try {
           // Max 800px width - good quality but small file size
           const maxW = 800;
@@ -80,7 +84,7 @@ export default function DriverVerification() {
           resolve(file);
         }
       };
-      img.onerror = () => resolve(file);
+      img.onerror = () => { clearTimeout(timeout); resolve(file); };
     });
   };
 

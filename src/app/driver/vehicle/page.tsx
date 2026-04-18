@@ -81,14 +81,18 @@ export default function DriverVehicle() {
 
   const compressImage = (file: File): Promise<Blob> => {
     return new Promise((resolve) => {
+      // Safety timeout: if FileReader hangs on mobile, resolve with original file after 10s
+      const timeout = setTimeout(() => resolve(file), 10000);
+
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
       const reader = new FileReader();
       reader.onload = (e) => { img.src = e.target?.result as string; };
-      reader.onerror = () => resolve(file);
+      reader.onerror = () => { clearTimeout(timeout); resolve(file); };
       reader.readAsDataURL(file);
       img.onload = () => {
+        clearTimeout(timeout);
         try {
           const maxW = 800;
           const scale = img.width > maxW ? maxW / img.width : 1;
@@ -98,8 +102,16 @@ export default function DriverVehicle() {
           canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', 0.6);
         } catch { resolve(file); }
       };
-      img.onerror = () => resolve(file);
+      img.onerror = () => { clearTimeout(timeout); resolve(file); };
     });
+  };
+
+  const openCamera = () => {
+    // Reset input value so onChange fires even if same file is selected again (mobile fix)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,14 +123,22 @@ export default function DriverVehicle() {
     setUploading(true);
     try {
       const compressed = await compressImage(file);
+
+      // Validate compressed size
+      if (compressed.size > 5 * 1024 * 1024) {
+        toast.error('La imagen es muy grande. Intenta con otra foto.');
+        setUploading(false);
+        return;
+      }
+
       const ext = file.name.split('.').pop() || 'jpg';
       const fileName = `vehicle_${Date.now()}.${ext}`;
       const filePath = `${user.id}/${fileName}`;
 
       // Show preview
-      const reader = new FileReader();
-      reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
-      reader.readAsDataURL(compressed);
+      const previewReader = new FileReader();
+      previewReader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
+      previewReader.readAsDataURL(compressed);
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
@@ -129,7 +149,7 @@ export default function DriverVehicle() {
       setVehicle(prev => ({ ...prev, photo_url: urlData.publicUrl }));
       toast.success('Foto de vehiculo subida');
     } catch (err: any) {
-      toast.error('Error al subir foto');
+      toast.error(err.message || 'Error al subir foto. Intenta de nuevo.');
       console.error(err);
     } finally {
       setUploading(false);
@@ -273,7 +293,7 @@ export default function DriverVehicle() {
           ) : photoPreview ? (
             <div
               className="relative w-full h-40 rounded-xl overflow-hidden cursor-pointer group"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openCamera}
             >
               <img src={photoPreview} alt="Vehiculo" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
@@ -283,7 +303,7 @@ export default function DriverVehicle() {
             </div>
           ) : (
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openCamera}
               className="w-full h-40 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-cyan-500/50 transition-colors"
             >
               <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center">

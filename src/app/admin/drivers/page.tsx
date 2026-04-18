@@ -361,12 +361,12 @@ export default function DriversPage() {
                               <button onClick={() => { setSelectedDriver(driver); setOpenMenu(null); }} className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
                                 <Eye className="w-4 h-4 text-cyan-400" /> Ver detalles
                               </button>
-                              {(driver.status === 'pending' || driver.status === 'rejected') && (
+                              {driver.status !== 'verified' && driver.status !== 'suspended' && (
                                 <button onClick={() => approveDriver(driver.id)} className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors">
                                   <ShieldCheck className="w-4 h-4" /> Aprobar
                                 </button>
                               )}
-                              {(driver.status === 'pending' || driver.status === 'verified' || driver.status === 'online') && (
+                              {driver.status !== 'rejected' && driver.status !== 'suspended' && (
                                 <button onClick={() => rejectDriver(driver.id)} className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors">
                                   <ShieldX className="w-4 h-4" /> Rechazar
                                 </button>
