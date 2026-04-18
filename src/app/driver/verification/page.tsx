@@ -1,61 +1,181 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, CheckCircle, Upload, Shield, User, CreditCard, Car, ArrowLeft } from 'lucide-react';
+import { Camera, CheckCircle, Upload, Shield, User, CreditCard, Car, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabase';
 
 const steps = [
-  { id: 1, label: 'Selfie', icon: User, description: 'Toma una selfie clara con buena iluminacion' },
-  { id: 2, label: 'Cedula Frente', icon: CreditCard, description: 'Fotografa el frente de tu cedula de identidad' },
-  { id: 3, label: 'Cedula Atras', icon: CreditCard, description: 'Fotografa el reverso de tu cedula de identidad' },
-  { id: 4, label: 'Licencia Frente', icon: CreditCard, description: 'Fotografa el frente de tu licencia de conducir' },
-  { id: 5, label: 'Licencia Atras', icon: CreditCard, description: 'Fotografa el reverso de tu licencia de conducir' },
-  { id: 6, label: 'Vehiculo', icon: Car, description: 'Fotografa tu vehiculo: frente, lateral y atras' },
+  { id: 1, label: 'Selfie', icon: User, description: 'Toma una selfie clara con buena iluminacion', docType: 'selfie' },
+  { id: 2, label: 'Cedula Frente', icon: CreditCard, description: 'Fotografa el frente de tu cedula de identidad', docType: 'id_front' },
+  { id: 3, label: 'Cedula Atras', icon: CreditCard, description: 'Fotografa el reverso de tu cedula de identidad', docType: 'id_back' },
+  { id: 4, label: 'Licencia Frente', icon: CreditCard, description: 'Fotografa el frente de tu licencia de conducir', docType: 'license_front' },
+  { id: 5, label: 'Licencia Atras', icon: CreditCard, description: 'Fotografa el reverso de tu licencia de conducir', docType: 'license_back' },
+  { id: 6, label: 'Vehiculo', icon: Car, description: 'Fotografa tu vehiculo: frente, lateral y atras', docType: 'vehicle' },
 ];
 
 const vehicleSubPhotos = [
-  { id: 'front', label: 'Frente del vehiculo' },
-  { id: 'side', label: 'Lateral del vehiculo' },
-  { id: 'back', label: 'Atras del vehiculo' },
+  { id: 'front', label: 'Frente del vehiculo', docType: 'vehicle_front' },
+  { id: 'side', label: 'Lateral del vehiculo', docType: 'vehicle_side' },
+  { id: 'back', label: 'Atras del vehiculo', docType: 'vehicle_back' },
 ];
 
 export default function DriverVerification() {
+  const { user } = useAuthStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [vehiclePhotos, setVehiclePhotos] = useState<Set<string>>(new Set());
   const [currentVehiclePhoto, setCurrentVehiclePhoto] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
 
-  const handleCapture = (step: number) => {
-    if (step === 6 && !isVehicleComplete()) {
-      setVehiclePhotos(prev => new Set([...prev, vehicleSubPhotos[currentVehiclePhoto].id]));
-      if (currentVehiclePhoto < vehicleSubPhotos.length - 1) {
-        setCurrentVehiclePhoto(prev => prev + 1);
-        toast.success(`${vehicleSubPhotos[currentVehiclePhoto].label} capturada`);
-      } else {
-        setCompletedSteps(prev => new Set([...prev, 6]));
-        toast.success('Fotos del vehiculo completadas');
-        setIsSubmitted(true);
-      }
+  const getDocType = useCallback(() => {
+    if (currentStep === 6) {
+      return vehicleSubPhotos[currentVehiclePhoto].docType;
+    }
+    return steps[currentStep - 1].docType;
+  }, [currentStep, currentVehiclePhoto]);
+
+  const openCamera = () => {
+    // On mobile this opens the camera directly, on desktop opens file picker
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const compressImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        // Max 1200px width for reasonable upload size
+        const maxW = 1200;
+        const scale = img.width > maxW ? maxW / img.width : 1;
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => resolve(blob || file),
+          'image/jpeg',
+          0.8
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!user?.id) {
+      toast.error('Debes iniciar sesion primero');
       return;
     }
 
-    setCompletedSteps(prev => new Set([...prev, step]));
-    toast.success(`${steps[step - 1].label} capturado correctamente`);
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Solo se permiten imagenes');
+      return;
+    }
 
-    if (step < 6) {
-      setTimeout(() => setCurrentStep(step + 1), 500);
-    } else {
-      setIsSubmitted(true);
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen es muy grande. Maximo 5MB.');
+      return;
+    }
+
+    const docType = getDocType();
+    setUploading(true);
+
+    try {
+      // Show preview immediately
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPreviews(prev => ({ ...prev, [docType]: ev.target?.result as string }));
+      };
+      reader.readAsDataURL(file);
+
+      // Compress image
+      const compressed = await compressImage(file);
+
+      // Build storage path
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fileName = `${docType}_${Date.now()}.${ext}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, compressed, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+
+      const docUrl = urlData.publicUrl;
+
+      // Save document record to database
+      const { error: dbError } = await supabase
+        .from('documents')
+        .upsert({
+          user_id: user.id,
+          type: docType,
+          url: docUrl,
+          status: 'pending',
+        }, { onConflict: 'user_id,type' });
+
+      if (dbError) throw dbError;
+
+      // Mark step as completed
+      if (currentStep === 6 && !isVehicleComplete()) {
+        setVehiclePhotos(prev => new Set([...prev, vehicleSubPhotos[currentVehiclePhoto].id]));
+        if (currentVehiclePhoto < vehicleSubPhotos.length - 1) {
+          setCurrentVehiclePhoto(prev => prev + 1);
+          toast.success(`${vehicleSubPhotos[currentVehiclePhoto].label} subida correctamente`);
+        } else {
+          setCompletedSteps(prev => new Set([...prev, 6]));
+          toast.success('Fotos del vehiculo completadas');
+          setIsSubmitted(true);
+        }
+      } else if (currentStep < 6) {
+        setCompletedSteps(prev => new Set([...prev, currentStep]));
+        toast.success(`${steps[currentStep - 1].label} subida correctamente`);
+        setTimeout(() => setCurrentStep(prev => prev + 1), 500);
+      } else {
+        setCompletedSteps(prev => new Set([...prev, currentStep]));
+        setIsSubmitted(true);
+      }
+    } catch (err: any) {
+      console.error('Error uploading document:', err);
+      toast.error(err.message || 'Error al subir documento. Intenta de nuevo.');
+      // Remove preview on error
+      setPreviews(prev => {
+        const next = { ...prev };
+        delete next[docType];
+        return next;
+      });
+    } finally {
+      setUploading(false);
     }
   };
 
   const isVehicleComplete = () => vehiclePhotos.size >= vehicleSubPhotos.length;
 
-  const handleSubmit = () => {
-    toast.success('Documentos enviados para revision. Recibiras respuesta en 24-48 horas.');
-  };
+  const currentDocType = getDocType();
+  const currentPreview = previews[currentDocType];
 
   if (isSubmitted) {
     return (
@@ -119,6 +239,16 @@ export default function DriverVerification() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Hidden file input - triggers camera on mobile, file picker on desktop */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-xl font-bold text-white">Verificacion</h1>
@@ -196,16 +326,41 @@ export default function DriverVerification() {
           )}
 
           {/* Camera Upload Area */}
-          <div
-            className="w-56 h-56 mx-auto border-2 border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-cyan-500/50 transition-colors cursor-pointer group"
-            onClick={() => handleCapture(currentStep)}
-          >
-            <div className="w-14 h-14 rounded-full bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
-              <Camera className="w-7 h-7 text-cyan-400" />
+          {uploading ? (
+            <div className="w-56 h-56 mx-auto border-2 border-cyan-500/50 rounded-2xl flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+              <span className="text-xs text-cyan-400 font-medium">Subiendo foto...</span>
             </div>
-            <span className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">Tocar para capturar</span>
-            <Upload className="w-4 h-4 text-gray-600" />
-          </div>
+          ) : currentPreview ? (
+            <div
+              className="w-56 h-56 mx-auto rounded-2xl overflow-hidden relative cursor-pointer group"
+              onClick={openCamera}
+            >
+              <img
+                src={currentPreview}
+                alt="Preview"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
+                <RefreshCw className="w-7 h-7 text-white" />
+                <span className="text-xs text-white font-medium">Tomar otra foto</span>
+              </div>
+              <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center">
+                <CheckCircle className="w-4 h-4 text-white" />
+              </div>
+            </div>
+          ) : (
+            <div
+              className="w-56 h-56 mx-auto border-2 border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-cyan-500/50 transition-colors cursor-pointer group"
+              onClick={openCamera}
+            >
+              <div className="w-14 h-14 rounded-full bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
+                <Camera className="w-7 h-7 text-cyan-400" />
+              </div>
+              <span className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">Tocar para capturar</span>
+              <Upload className="w-4 h-4 text-gray-600" />
+            </div>
+          )}
 
           {/* Back Button (for vehicle sub-photos) */}
           {currentStep === 6 && currentVehiclePhoto > 0 && (
