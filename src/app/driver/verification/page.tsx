@@ -54,8 +54,8 @@ export default function DriverVerification() {
       const ctx = canvas.getContext('2d');
       const img = new Image();
       img.onload = () => {
-        // Max 1200px width for reasonable upload size
-        const maxW = 1200;
+        // Max 800px width - good quality but small file size
+        const maxW = 800;
         const scale = img.width > maxW ? maxW / img.width : 1;
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
@@ -63,7 +63,7 @@ export default function DriverVerification() {
         canvas.toBlob(
           (blob) => resolve(blob || file),
           'image/jpeg',
-          0.8
+          0.6
         );
       };
       img.onerror = () => resolve(file);
@@ -85,25 +85,26 @@ export default function DriverVerification() {
       return;
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('La imagen es muy grande. Maximo 5MB.');
-      return;
-    }
-
     const docType = getDocType();
     setUploading(true);
 
     try {
-      // Show preview immediately
+      // Compress image FIRST (phone cameras produce 8-15MB photos)
+      const compressed = await compressImage(file);
+
+      // Validate compressed size (should be under 1MB after compression)
+      if (compressed.size > 5 * 1024 * 1024) {
+        toast.error('La imagen no se pudo comprimir. Intenta con otra.');
+        setUploading(false);
+        return;
+      }
+
+      // Show preview
       const reader = new FileReader();
       reader.onload = (ev) => {
         setPreviews(prev => ({ ...prev, [docType]: ev.target?.result as string }));
       };
-      reader.readAsDataURL(file);
-
-      // Compress image
-      const compressed = await compressImage(file);
+      reader.readAsDataURL(compressed);
 
       // Build storage path
       const ext = file.name.split('.').pop() || 'jpg';
