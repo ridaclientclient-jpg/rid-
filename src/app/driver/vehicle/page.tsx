@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Car, Save, CheckCircle2, Loader2,
-  Palette, Calendar, Hash
+  Palette, Calendar, Hash, Camera, Upload, RefreshCw, Bike
 } from 'lucide-react';
 
 interface VehicleData {
@@ -18,6 +18,8 @@ interface VehicleData {
   color: string;
   year: number | null;
   verified: boolean;
+  vehicle_type?: string;
+  photo_url?: string;
 }
 
 export default function DriverVehicle() {
@@ -25,13 +27,24 @@ export default function DriverVehicle() {
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [vehicle, setVehicle] = useState<VehicleData>({
     plate: '',
     model: '',
     color: '',
     year: null,
     verified: false,
+    vehicle_type: 'carro',
+    photo_url: '',
   });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  const vehicleTypes = [
+    { id: 'carro', label: 'Carro', icon: Car, color: 'from-blue-600 to-cyan-500', selected: 'border-cyan-500 bg-cyan-500/10' },
+    { id: 'moto', label: 'Moto', icon: Bike, color: 'from-purple-600 to-pink-500', selected: 'border-purple-500 bg-purple-500/10' },
+    { id: 'bici', label: 'Bicicleta', icon: Bike, color: 'from-emerald-600 to-teal-500', selected: 'border-emerald-500 bg-emerald-500/10' },
+  ];
 
   useEffect(() => {
     fetchVehicle();
@@ -61,6 +74,68 @@ export default function DriverVehicle() {
     }
   };
 
+  // Load photo preview when vehicle data arrives
+  useEffect(() => {
+    if (vehicle.photo_url) setPhotoPreview(vehicle.photo_url);
+  }, [vehicle.photo_url]);
+
+  const compressImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e) => { img.src = e.target?.result as string; };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+      img.onload = () => {
+        try {
+          const maxW = 800;
+          const scale = img.width > maxW ? maxW / img.width : 1;
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', 0.6);
+        } catch { resolve(file); }
+      };
+      img.onerror = () => resolve(file);
+    });
+  };
+
+  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Solo imagenes'); return; }
+    if (!user?.id) { toast.error('Inicia sesion primero'); return; }
+
+    setUploading(true);
+    try {
+      const compressed = await compressImage(file);
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fileName = `vehicle_${Date.now()}.${ext}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
+      reader.readAsDataURL(compressed);
+
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, compressed, { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+      setVehicle(prev => ({ ...prev, photo_url: urlData.publicUrl }));
+      toast.success('Foto de vehiculo subida');
+    } catch (err: any) {
+      toast.error('Error al subir foto');
+      console.error(err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!vehicle.plate.trim() || !vehicle.model.trim() || !vehicle.color.trim()) {
       toast.error('Placa, modelo y color son obligatorios');
@@ -87,6 +162,8 @@ export default function DriverVehicle() {
             model: vehicle.model,
             color: vehicle.color,
             year: vehicle.year,
+            vehicle_type: vehicle.vehicle_type,
+            photo_url: vehicle.photo_url,
           })
           .eq('id', vehicle.id);
         if (error) throw error;
@@ -100,6 +177,8 @@ export default function DriverVehicle() {
             model: vehicle.model,
             color: vehicle.color,
             year: vehicle.year,
+            vehicle_type: vehicle.vehicle_type,
+            photo_url: vehicle.photo_url,
           });
         if (error) throw error;
         toast.success('Vehiculo registrado');
@@ -123,6 +202,16 @@ export default function DriverVehicle() {
 
   return (
     <div className="min-h-screen bg-rida-dark">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhotoSelected}
+      />
+
       {/* Header */}
       <div className="sticky top-0 z-10 bg-rida-dark/80 backdrop-blur-xl border-b border-white/5">
         <div className="flex items-center gap-3 p-4">
@@ -139,17 +228,71 @@ export default function DriverVehicle() {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Vehicle Illustration */}
+        {/* Vehicle Type Selector */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-2xl p-6 flex flex-col items-center"
+          className="glass rounded-2xl p-4"
         >
-          <div className="w-20 h-20 rounded-full bg-cyan-500/10 flex items-center justify-center mb-3">
-            <Car className="w-10 h-10 text-cyan-400" />
+          <p className="text-xs text-gray-400 font-medium mb-3">Tipo de vehiculo</p>
+          <div className="grid grid-cols-3 gap-2">
+            {vehicleTypes.map((vt) => (
+              <button
+                key={vt.id}
+                onClick={() => setVehicle({ ...vehicle, vehicle_type: vt.id })}
+                className={`rounded-xl p-3 text-center border transition-all ${
+                  vehicle.vehicle_type === vt.id
+                    ? vt.selected
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${vt.color} flex items-center justify-center mx-auto mb-1.5`}>
+                  <vt.icon className="w-5 h-5 text-white" />
+                </div>
+                <p className={`text-xs font-semibold ${vehicle.vehicle_type === vt.id ? 'text-white' : 'text-gray-400'}`}>{vt.label}</p>
+              </button>
+            ))}
           </div>
-          <h2 className="text-lg font-bold text-white">Datos del Vehiculo</h2>
-          <p className="text-xs text-gray-500 mt-1">Ingresa la informacion de tu vehiculo</p>
+        </motion.div>
+
+        {/* Vehicle Photo */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.03 }}
+          className="glass rounded-2xl p-4"
+        >
+          <p className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-3">
+            <Camera className="w-3 h-3" /> Foto del vehiculo
+          </p>
+          {uploading ? (
+            <div className="w-full h-40 rounded-xl bg-white/5 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+              <span className="text-xs text-cyan-400">Subiendo foto...</span>
+            </div>
+          ) : photoPreview ? (
+            <div
+              className="relative w-full h-40 rounded-xl overflow-hidden cursor-pointer group"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <img src={photoPreview} alt="Vehiculo" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
+                <RefreshCw className="w-5 h-5 text-white" />
+                <span className="text-xs text-white font-medium">Cambiar foto</span>
+              </div>
+            </div>
+          ) : (
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full h-40 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-cyan-500/50 transition-colors"
+            >
+              <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center">
+                <Camera className="w-6 h-6 text-cyan-400" />
+              </div>
+              <span className="text-xs text-gray-500">Tocar para tomar foto</span>
+              <Upload className="w-4 h-4 text-gray-600" />
+            </div>
+          )}
         </motion.div>
 
         {/* Form */}
