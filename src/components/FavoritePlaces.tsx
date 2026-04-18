@@ -158,9 +158,12 @@ export default function FavoritePlaces() {
           <div className="space-y-2">
             {places.map((place) => (
               <div key={place.id} className="relative group">
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handlePlaceClick(place)}
-                  className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handlePlaceClick(place); }}
+                  className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   <span className="text-xl shrink-0">{place.icon}</span>
                   <div className="text-left flex-1 min-w-0">
@@ -180,7 +183,7 @@ export default function FavoritePlaces() {
                     </button>
                     <ChevronRight className="w-4 h-4 text-gray-600" />
                   </div>
-                </button>
+                </div>
               </div>
             ))}
           </div>
