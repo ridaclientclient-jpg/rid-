@@ -506,3 +506,29 @@ Files Changed:
 Stage Summary:
 - Env vars now survive container restarts via .zscripts/dev.sh
 - No need to manually re-enter variables anymore
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix 502 Bad Gateway errors and restore RIDA SUPREME SYSTEM
+
+Work Log:
+- Diagnosed that all Next.js static chunks were returning 502 Bad Gateway
+- Found that the dev server process had completely crashed - no node/next processes running
+- Attempted to restart dev mode (`next dev -p 3000`) multiple times
+- Discovered dev server would start, say "Ready", handle 1-2 requests, then silently crash
+- No stderr output, no OOM killer, no cgroup memory limit issues
+- Switched to production build: `npx next build` succeeded (63 pages, 0 errors)
+- Production standalone server also crashed when started with `nohup &`
+- Root cause: Node.js process was being killed when shell session ended (SIGHUP)
+- The preview system runs Caddy reverse proxy on port 81 → forwards to port 3000
+- Solution: Used `setsid` to fully detach the process from the controlling terminal
+- Production server running stably as PID 3064 on port 3000
+
+Stage Summary:
+- All 4 apps responding HTTP 200: /client, /driver, /admin, /marketplace
+- All sub-routes working: login, profile, ride, pricing, rides, drivers, users, products
+- Caddy proxy (port 81) successfully forwarding to Next.js (port 3000)
+- Preview URL should now work: https://preview-209845a6-chatglm-site.space.chatglm.site/
+- Created start-server.sh script for future reliable startup with auto-restart
+- Server is running in production mode (not dev mode) for stability
