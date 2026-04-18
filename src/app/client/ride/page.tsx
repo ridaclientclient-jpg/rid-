@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, MapPin } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
@@ -39,6 +39,13 @@ export default function ClientRide() {
   const [userGPS, setUserGPS] = useState<{ lat: number; lng: number } | null>(null);
   const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
 
+  // Draggable pin state
+  const [pinTarget, setPinTarget] = useState<'origin' | 'destination' | null>(null);
+  const [pinPosition, setPinPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [pinAddress, setPinAddress] = useState<string>('');
+  const [pinGeocoding, setPinGeocoding] = useState(false);
+  const pinDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Capture user GPS from map and keep it synced
   const handleMapUserLocation = useCallback((location: { lat: number; lng: number } | null) => {
     if (location) {
@@ -46,6 +53,60 @@ export default function ClientRide() {
       userGPSRef.current = location;
     }
   }, []);
+
+  // Start pin mode — user picks a point on the map
+  const startPinMode = async (target: 'origin' | 'destination') => {
+    const startPos = userGPSRef.current || { lat: 9.7489, lng: -83.7534 };
+    setPinTarget(target);
+    setPinPosition(startPos);
+    setPinGeocoding(true);
+    setPinAddress('Obteniendo direccion...');
+    try {
+      const addr = await reverseGeocode(startPos.lat, startPos.lng);
+      setPinAddress(addr || `${startPos.lat.toFixed(5)}, ${startPos.lng.toFixed(5)}`);
+    } catch {
+      setPinAddress(`${startPos.lat.toFixed(5)}, ${startPos.lng.toFixed(5)}`);
+    }
+    setPinGeocoding(false);
+  };
+
+  // Handle pin drag with debounced reverse geocoding
+  const handlePinDrag = useCallback((lat: number, lng: number) => {
+    setPinPosition({ lat, lng });
+    setPinGeocoding(true);
+    if (pinDebounceRef.current) clearTimeout(pinDebounceRef.current);
+    pinDebounceRef.current = setTimeout(async () => {
+      try {
+        const addr = await reverseGeocode(lat, lng);
+        setPinAddress(addr || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      } catch {
+        setPinAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
+      setPinGeocoding(false);
+    }, 400);
+  }, []);
+
+  // Confirm pin selection
+  const confirmPin = () => {
+    if (!pinTarget || !pinPosition || !pinAddress) return;
+    if (pinTarget === 'origin') {
+      setOrigin(pinAddress);
+      setOriginCoords(pinPosition);
+    } else {
+      setDestination(pinAddress);
+      setDestCoords(pinPosition);
+    }
+    setPinTarget(null);
+    setPinPosition(null);
+    setPinAddress('');
+    toast.success(`${pinTarget === 'origin' ? 'Origen' : 'Destino'} seleccionado en el mapa`);
+  };
+
+  const cancelPinMode = () => {
+    setPinTarget(null);
+    setPinPosition(null);
+    setPinAddress('');
+  };
 
   const handleOriginChange = (val: string, _placeId?: string, lat?: number, lng?: number) => {
     setOrigin(val);
@@ -215,6 +276,8 @@ export default function ClientRide() {
               : undefined
           }
           showDirections={!!(mapOrigin && mapDest)}
+          draggablePin={pinTarget && pinPosition ? { position: pinPosition, color: pinTarget === 'origin' ? '#10b981' : '#ef4444' } : null}
+          onDraggablePinMove={handlePinDrag}
           showUserLocation={true}
           onUserLocation={handleMapUserLocation}
           className="absolute inset-0"
@@ -253,6 +316,26 @@ export default function ClientRide() {
                   <p className="text-[10px] text-gray-500">Usar posicion actual como punto de partida</p>
                 </div>
               </button>
+
+              {/* Set on map buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => startPinMode('origin')}
+                  disabled={!!currentRide}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl glass hover:bg-white/10 transition-all text-left disabled:opacity-50"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-xs text-gray-300">Origen en mapa</span>
+                </button>
+                <button
+                  onClick={() => startPinMode('destination')}
+                  disabled={!!currentRide}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl glass hover:bg-white/10 transition-all text-left disabled:opacity-50"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  <span className="text-xs text-gray-300">Destino en mapa</span>
+                </button>
+              </div>
 
               {/* Origin */}
               <PlacesAutocomplete
@@ -574,6 +657,50 @@ export default function ClientRide() {
         )}
         </div>
       </DraggableBottomSheet>
+
+      {/* Pin Selection Overlay */}
+      <AnimatePresence>
+        {pinTarget && pinPosition && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute bottom-44 left-4 right-4 z-30"
+          >
+            <div className="glass-strong rounded-2xl p-4 space-y-3 border border-white/10">
+              <div className="flex items-center gap-2">
+                <MapPin className={`w-4 h-4 ${pinTarget === 'origin' ? 'text-emerald-400' : 'text-red-400'}`} />
+                <span className="text-xs font-semibold text-white">
+                  {pinTarget === 'origin' ? 'Punto de recogida' : 'Destino'}
+                </span>
+                <span className="text-[10px] text-gray-500 ml-auto">Arrastra el pin</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${pinGeocoding ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+                <p className="text-sm text-white flex-1">
+                  {pinGeocoding ? 'Obteniendo direccion...' : pinAddress}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={confirmPin}
+                  disabled={pinGeocoding}
+                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" /> Confirmar
+                </button>
+                <button
+                  onClick={cancelPinMode}
+                  className="px-5 glass text-gray-300 text-sm font-medium py-2.5 rounded-xl hover:bg-white/10 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Third Party Popup */}
       <AnimatePresence>

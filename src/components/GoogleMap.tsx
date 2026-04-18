@@ -13,6 +13,11 @@ interface MarkerData {
   animation?: 'BOUNCE' | 'DROP';
 }
 
+interface DraggablePinConfig {
+  position: { lat: number; lng: number };
+  color: string;
+}
+
 interface GoogleMapProps {
   center?: { lat: number; lng: number };
   zoom?: number;
@@ -23,6 +28,8 @@ interface GoogleMapProps {
   showRoute?: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } };
   waypoints?: { lat: number; lng: number }[];
   showDirections?: boolean;
+  draggablePin?: DraggablePinConfig | null;
+  onDraggablePinMove?: (lat: number, lng: number) => void;
   className?: string;
   style?: React.CSSProperties;
   showUserLocation?: boolean;
@@ -30,6 +37,15 @@ interface GoogleMapProps {
 }
 
 const CR_CENTER = { lat: 9.7489, lng: -83.7534 };
+
+function createPinIcon(color: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="52" viewBox="0 0 40 52">
+    <defs><filter id="ds" x="-20%" y="-10%" width="140%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/></filter></defs>
+    <path d="M20 2C10.06 2 2 10.06 2 20c0 14 18 30 18 30s18-16 18-30C38 10.06 29.94 2 20 2z" fill="${color}" stroke="#fff" stroke-width="2.5" filter="url(#ds)"/>
+    <circle cx="20" cy="20" r="9" fill="#fff"/>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
 
 export default function GoogleMap({
   center = CR_CENTER,
@@ -41,6 +57,8 @@ export default function GoogleMap({
   showRoute,
   waypoints = [],
   showDirections = false,
+  draggablePin = null,
+  onDraggablePinMove,
   className = '',
   style = {},
   showUserLocation = true,
@@ -51,6 +69,7 @@ export default function GoogleMap({
   const markersRef = useRef<google.maps.Marker[]>([]);
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
+  const draggablePinRef = useRef<google.maps.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const hasCenteredOnUserRef = useRef(false);
   const gpsResolvedRef = useRef(false);
@@ -274,6 +293,10 @@ export default function GoogleMap({
         userMarkerRef.current.setMap(null);
         userMarkerRef.current = null;
       }
+      if (draggablePinRef.current) {
+        draggablePinRef.current.setMap(null);
+        draggablePinRef.current = null;
+      }
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
       if (mapInstanceRef.current) {
@@ -287,6 +310,65 @@ export default function GoogleMap({
       gpsResolvedRef.current = false;
     };
   }, []);
+
+  // Manage draggable pin
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded) return;
+
+    // Remove existing draggable pin
+    if (draggablePinRef.current) {
+      draggablePinRef.current.setMap(null);
+      draggablePinRef.current = null;
+    }
+
+    if (!draggablePin) return;
+
+    loadGoogleMaps().then(() => {
+      if (!mapInstanceRef.current || !draggablePin) return;
+
+      const pinIcon = createPinIcon(draggablePin.color);
+
+      const marker = new google.maps.Marker({
+        map: mapInstanceRef.current,
+        position: draggablePin.position,
+        draggable: true,
+        icon: {
+          url: pinIcon,
+          scaledSize: new google.maps.Size(40, 52),
+          anchor: new google.maps.Point(20, 52),
+        },
+        zIndex: 2000,
+        animation: google.maps.Animation.DROP,
+      });
+
+      marker.addListener('drag', () => {
+        const pos = marker.getPosition();
+        if (pos && onDraggablePinMove) {
+          onDraggablePinMove(pos.lat(), pos.lng());
+        }
+      });
+
+      marker.addListener('dragend', () => {
+        const pos = marker.getPosition();
+        if (pos && onDraggablePinMove) {
+          onDraggablePinMove(pos.lat(), pos.lng());
+        }
+      });
+
+      draggablePinRef.current = marker;
+
+      // Pan map to pin position
+      mapInstanceRef.current.panTo(draggablePin.position);
+      mapInstanceRef.current.setZoom(17);
+    });
+
+    return () => {
+      if (draggablePinRef.current) {
+        draggablePinRef.current.setMap(null);
+        draggablePinRef.current = null;
+      }
+    };
+  }, [draggablePin, isLoaded, onDraggablePinMove]);
 
   // Update markers
   useEffect(() => {
