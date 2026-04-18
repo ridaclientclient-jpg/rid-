@@ -107,11 +107,11 @@ export default function DriverProfile() {
 
   const menuItems = [
     { icon: FileText, label: 'Documentos', desc: 'Verificacion de conductor', href: '/driver/verification', color: 'text-blue-400 bg-blue-500/20' },
-    { icon: Car, label: 'Vehiculo', desc: vehicleDesc, action: () => toast.info('Datos del vehiculo'), color: 'text-cyan-400 bg-cyan-500/20' },
-    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', action: () => toast.info('Notificaciones configuradas'), color: 'text-amber-400 bg-amber-500/20' },
-    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', action: () => toast.info('Funcion de seguridad'), color: 'text-emerald-400 bg-emerald-500/20' },
-    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', action: () => toast.info('Mostrando terminos...'), color: 'text-purple-400 bg-purple-500/20' },
-    { icon: HelpCircle, label: 'Soporte', desc: 'Ayuda 24/7', action: () => toast.info('Conectando con soporte...'), color: 'text-pink-400 bg-pink-500/20' },
+    { icon: Car, label: 'Vehiculo', desc: vehicleDesc, href: '/driver/vehicle', color: 'text-cyan-400 bg-cyan-500/20' },
+    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', href: '/driver/notifications', color: 'text-amber-400 bg-amber-500/20' },
+    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', href: '/driver/security', color: 'text-emerald-400 bg-emerald-500/20' },
+    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', href: '/driver/terms', color: 'text-purple-400 bg-purple-500/20' },
+    { icon: HelpCircle, label: 'Soporte', desc: 'Ayuda 24/7', href: '/driver/support', color: 'text-pink-400 bg-pink-500/20' },
   ];
 
   if (loading) {
@@ -281,7 +281,7 @@ export default function DriverProfile() {
           {menuItems.map((item, i) => (
             <button
               key={i}
-              onClick={() => item.href ? router.push(item.href) : item.action?.()}
+              onClick={() => item.href && router.push(item.href)}
               className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/5 transition-colors"
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}>
