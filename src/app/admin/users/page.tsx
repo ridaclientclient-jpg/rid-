@@ -10,7 +10,7 @@ import {
 import { supabase, type Profile } from '@/lib/supabase';
 import { toast } from 'sonner';
 
-type UserRole = 'client' | 'driver' | 'admin' | 'vendor';
+type UserRole = 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
 type UserStatus = 'active' | 'blocked' | 'pending';
 
 interface UserData {
@@ -30,6 +30,7 @@ const roleLabels: Record<UserRole, string> = {
   driver: 'Conductor',
   admin: 'Admin',
   vendor: 'Vendedor',
+  courier: 'Repartidor',
 };
 
 const roleColors: Record<UserRole, string> = {
@@ -37,9 +38,10 @@ const roleColors: Record<UserRole, string> = {
   driver: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   admin: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   vendor: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  courier: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
 };
 
-const filterTabs = ['Todos', 'Clientes', 'Conductores', 'Vendedores', 'Bloqueados'] as const;
+const filterTabs = ['Todos', 'Clientes', 'Conductores', 'Vendedores', 'Repartidores', 'Bloqueados'] as const;
 
 function getInitials(name: string): string {
   return name.split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
@@ -107,6 +109,7 @@ export default function UsersPage() {
       case 'Clientes': matchFilter = u.role === 'client'; break;
       case 'Conductores': matchFilter = u.role === 'driver'; break;
       case 'Vendedores': matchFilter = u.role === 'vendor'; break;
+      case 'Repartidores': matchFilter = u.role === 'courier'; break;
       case 'Bloqueados': matchFilter = u.status === 'blocked'; break;
     }
     return matchSearch && matchFilter;

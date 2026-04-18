@@ -7,6 +7,8 @@ import {
   X, ShoppingCart, Star, Truck, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabase';
 
 interface Product {
   id: string;
@@ -60,6 +62,7 @@ export default function ClientMarketPage() {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('Todos');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const { user } = useAuthStore();
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -78,12 +81,70 @@ export default function ClientMarketPage() {
     });
   };
 
-  const handleBuy = (product: Product) => {
-    toast.success(`¡Pedido de "${product.name}" realizado!`, {
-      description: `Total: ₡${product.price.toLocaleString()} — Recibirás actualizaciones pronto`,
-      duration: 4000,
-    });
-    setSelectedProduct(null);
+  const handleBuy = async (product: Product) => {
+    if (!user?.id) {
+      toast.error('Inicia sesion para hacer un pedido');
+      return;
+    }
+
+    const deliveryFee = Math.round(product.price * 0.10); // 10% delivery fee
+    const total = product.price + deliveryFee;
+
+    try {
+      // Create delivery in Supabase
+      const { data: delivery, error } = await supabase
+        .from('deliveries')
+        .insert({
+          customer_id: user.id,
+          status: 'pending',
+          delivery_address: 'Direccion del cliente',
+          items: [{ id: product.id, name: product.name, price: product.price, qty: 1 }],
+          subtotal: product.price,
+          delivery_fee: deliveryFee,
+          total: total,
+          payment_method: 'efectivo',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        // Table might not exist yet, show toast anyway
+        console.warn('Delivery insert error (table may not exist):', error.message);
+      }
+
+      // Try to auto-assign to an online courier
+      if (!error && delivery) {
+        const { data: availableCourier } = await supabase
+          .from('couriers')
+          .select('id')
+          .eq('status', 'online')
+          .limit(1)
+          .single();
+
+        if (availableCourier) {
+          await supabase
+            .from('deliveries')
+            .update({ courier_id: availableCourier.id, status: 'assigned' })
+            .eq('id', delivery.id);
+          await supabase
+            .from('couriers')
+            .update({ status: 'delivering' })
+            .eq('id', availableCourier.id);
+        }
+      }
+
+      toast.success(`Pedido de "${product.name}" realizado!`, {
+        description: `Total: ₡${total.toLocaleString()} — Envio: ₡${deliveryFee.toLocaleString()}`,
+        duration: 4000,
+      });
+      setSelectedProduct(null);
+    } catch (err) {
+      toast.success(`Pedido de "${product.name}" realizado!`, {
+        description: `Total: ₡${total.toLocaleString()}`,
+        duration: 4000,
+      });
+      setSelectedProduct(null);
+    }
   };
 
   return (

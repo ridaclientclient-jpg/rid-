@@ -22,7 +22,7 @@ export type Profile = {
   name: string;
   email: string;
   phone?: string;
-  role: 'client' | 'driver' | 'admin' | 'vendor';
+  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
   avatar?: string;
   is_verified: boolean;
   is_active: boolean;
@@ -163,4 +163,49 @@ export type SOS = {
   longitude: number;
   status: 'active' | 'resolved';
   created_at: string;
+};
+
+// ─── Courier System Types ──────────────────────────────────────
+
+export type Courier = {
+  id: string;
+  user_id: string;
+  vehicle_type: 'moto' | 'bici' | 'carro';
+  is_online: boolean;
+  status: 'offline' | 'online' | 'busy' | 'delivering' | 'suspended';
+  is_verified: boolean;
+  rating: number;
+  total_deliveries: number;
+  total_earnings: number;
+  current_lat?: number;
+  current_lng?: number;
+  last_online_at?: string;
+  created_at: string;
+  profiles?: Profile;
+};
+
+export type Delivery = {
+  id: string;
+  courier_id?: string;
+  customer_id: string;
+  vendor_id?: string;
+  status: 'pending' | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled';
+  pickup_address?: string;
+  pickup_lat?: number;
+  pickup_lng?: number;
+  delivery_address: string;
+  delivery_lat?: number;
+  delivery_lng?: number;
+  items: any[];
+  subtotal: number;
+  delivery_fee: number;
+  total: number;
+  payment_method: string;
+  customer_rating?: number;
+  courier_rating?: number;
+  notes?: string;
+  created_at: string;
+  profiles?: Profile;
+  couriers?: Courier;
+  vendors?: Vendor;
 };

@@ -7,7 +7,7 @@ interface AuthUser {
   name: string;
   email: string;
   phone?: string;
-  role: 'client' | 'driver' | 'admin' | 'vendor';
+  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
   avatar?: string;
   isVerified?: boolean;
 }
