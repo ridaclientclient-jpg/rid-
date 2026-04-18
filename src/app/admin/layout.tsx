@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, LayoutDashboard, Users, Car, MapPin, DollarSign,
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
-  Menu, X, Store, Package, ShoppingCart, Truck
+  Menu, X, Store, Package, ShoppingCart, Truck, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -152,6 +152,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </Link>
             );
           })}
+          {/* Super Admin only: Administradores */}
+          {user?.role === 'super_admin' && (
+            <Link
+              href='/admin/admins'
+              onClick={() => setMobileOpen(false)}
+              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                isActive('/admin/admins')
+                  ? 'text-purple-400'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {isActive('/admin/admins') && (
+                <motion.div
+                  layoutId="admin-nav-active"
+                  className="absolute inset-0 bg-purple-500/10 border border-purple-500/20 rounded-xl"
+                  transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+              <ShieldCheck className={`w-5 h-5 flex-shrink-0 relative z-10 ${isActive('/admin/admins') ? 'text-purple-400' : ''}`} />
+              {!collapsed && (
+                <span className="relative z-10 whitespace-nowrap">Administradores</span>
+              )}
+            </Link>
+          )}
         </nav>
 
         {/* User & Logout */}

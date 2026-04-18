@@ -54,7 +54,7 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
     );
   }
 
-  if (requiredRole && user && user.role !== requiredRole && user.role !== 'admin') {
+  if (requiredRole && user && user.role !== requiredRole && user.role !== 'admin' && user.role !== 'super_admin') {
     return (
       <div className="min-h-screen bg-rida-dark flex items-center justify-center">
         <div className="text-center">

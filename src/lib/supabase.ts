@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+export const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -22,7 +22,7 @@ export type Profile = {
   name: string;
   email: string;
   phone?: string;
-  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
+  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier' | 'super_admin';
   avatar?: string;
   is_verified: boolean;
   is_active: boolean;
