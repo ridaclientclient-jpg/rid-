@@ -222,7 +222,7 @@ export default function ClientMarketPage() {
       <div className="grid grid-cols-2 gap-3">
         <AnimatePresence mode="popLayout">
           {filtered.map((product, i) => (
-            <motion.button
+            <motion.div
               key={product.id}
               layout
               initial={{ opacity: 0, scale: 0.9 }}
@@ -230,7 +230,7 @@ export default function ClientMarketPage() {
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ delay: i * 0.04 }}
               onClick={() => setSelectedProduct(product)}
-              className="glass rounded-2xl overflow-hidden text-left hover:glow-cyan transition-all duration-300 group"
+              className="glass rounded-2xl overflow-hidden text-left hover:glow-cyan transition-all duration-300 group cursor-pointer"
             >
               {/* Gradient Header */}
               <div className={`h-24 bg-gradient-to-br ${categoryHeaderColors[product.category]} flex items-center justify-center relative`}>
@@ -285,7 +285,7 @@ export default function ClientMarketPage() {
                   {product.inStock ? 'Agregar al carrito' : 'Agotado'}
                 </motion.button>
               </div>
-            </motion.button>
+            </motion.div>
           ))}
         </AnimatePresence>
       </div>
