@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { MapPin, Clock, Star, Shield, ChevronRight, Zap, Car, Wallet, Bell, Headphones, Store } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useRideStore } from '@/store/rideStore';
+import FavoritePlaces from '@/components/FavoritePlaces';
 
 export default function ClientHome() {
   const router = useRouter();
@@ -19,11 +20,7 @@ export default function ClientHome() {
     { icon: Headphones, label: 'Soporte', desc: '24/7 ayuda', href: '/client/support', color: 'from-amber-500 to-orange-500' },
   ];
 
-  const recentPlaces = [
-    { name: 'Casa', address: 'San José, Costa Rica', icon: '🏠' },
-    { name: 'Trabajo', address: 'Escazú, Costa Rica', icon: '🏢' },
-    { name: 'Gym', address: 'Santa Ana, Costa Rica', icon: '💪' },
-  ];
+  // Favorite places are now handled by the FavoritePlaces component (real data from Supabase)
 
   return (
     <div className="p-4 space-y-6">
@@ -93,30 +90,8 @@ export default function ClientHome() {
         </div>
       </motion.div>
 
-      {/* Recent Places */}
-      <motion.div 
-        initial={{ opacity: 0, y: 10 }} 
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <h2 className="text-sm font-semibold text-gray-400 mb-3">Lugares Frecuentes</h2>
-        <div className="space-y-2">
-          {recentPlaces.map((place, i) => (
-            <button
-              key={i}
-              onClick={() => router.push('/client/ride')}
-              className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
-            >
-              <span className="text-xl">{place.icon}</span>
-              <div className="text-left">
-                <p className="text-sm font-medium text-white">{place.name}</p>
-                <p className="text-xs text-gray-500">{place.address}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-600 ml-auto" />
-            </button>
-          ))}
-        </div>
-      </motion.div>
+      {/* Favorite Places */}
+      <FavoritePlaces />
 
       {/* Safety Banner */}
       <motion.div 

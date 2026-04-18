@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, MapPin } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
+import { useFavoritePlacesStore } from '@/store/favoritePlacesStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
@@ -28,10 +29,25 @@ const STOP_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899'];
 export default function ClientRide() {
   const router = useRouter();
   const { currentRide, createRide, cancelRide, completeRide, isCreating } = useRideStore();
+  const { prefill, prefillTarget, clearPrefill } = useFavoritePlacesStore();
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [originCoords, setOriginCoords] = useState<CoordData | null>(null);
   const [destCoords, setDestCoords] = useState<CoordData | null>(null);
+
+  // Pre-fill origin or destination from favorite places store
+  useEffect(() => {
+    if (prefill && prefillTarget) {
+      if (prefillTarget === 'origin') {
+        setOrigin(prefill.address);
+        setOriginCoords(prefill.lat && prefill.lng ? { lat: prefill.lat, lng: prefill.lng } : null);
+      } else if (prefillTarget === 'destination') {
+        setDestination(prefill.address);
+        setDestCoords(prefill.lat && prefill.lng ? { lat: prefill.lat, lng: prefill.lng } : null);
+      }
+      clearPrefill();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [rideType, setRideType] = useState<string>('standard');
   const [showThirdParty, setShowThirdParty] = useState(false);
   const [stops, setStops] = useState<Stop[]>([]);
