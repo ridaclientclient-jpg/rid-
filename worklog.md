@@ -482,3 +482,27 @@ Stage Summary:
 - Complete driver panel redesign inspired by DiDi/Uber reference photos
 - New features: real map, level system, opportunities section, side menu, achievement tabs, daily goal progress, wallet with recarga button, bonuses section
 - All 4 driver pages updated, build passes clean
+---
+Task ID: 5
+Agent: Main Agent
+Task: Fix "supabaseUrl is required" - env vars being lost on container restart
+
+Root Cause:
+The container's /start.sh script OVERWRITES .env with only DATABASE_URL on every restart:
+  echo "DATABASE_URL=file:/home/z/my-project/db/custom.db" > /home/z/my-project/.env
+This means all NEXT_PUBLIC_* variables (Supabase, Google Maps, Base URL) are lost every time
+the preview container restarts.
+
+Fix Applied:
+- Modified .zscripts/dev.sh to restore all environment variables before starting Next.js
+- The script checks if each var exists in .env and adds it if missing
+- This runs AFTER /start.sh overwrites .env, so vars are always available
+- Also restored .env file with all variables immediately
+
+Files Changed:
+- .zscripts/dev.sh: Added "Restoring environment variables" step
+- .env: Rewritten with all 5 variables
+
+Stage Summary:
+- Env vars now survive container restarts via .zscripts/dev.sh
+- No need to manually re-enter variables anymore
