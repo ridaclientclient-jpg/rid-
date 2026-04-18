@@ -290,6 +290,7 @@ export default function ClientRide() {
         initialSnap="peek"
         minHeight={140}
         className="glass-strong rounded-t-3xl"
+        disabled={!!pinTarget}
       >
         <div className="p-5 space-y-4">
         {!currentRide ? (

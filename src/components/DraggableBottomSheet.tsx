@@ -13,6 +13,8 @@ interface DraggableBottomSheetProps {
   dismissible?: boolean;
   /** Callback when sheet is dismissed */
   onDismiss?: () => void;
+  /** When true, disables sheet drag so underlying elements (like map pin drag) can receive touches */
+  disabled?: boolean;
   className?: string;
 }
 
@@ -28,6 +30,7 @@ export default function DraggableBottomSheet({
   minHeight = 120,
   dismissible = true,
   onDismiss,
+  disabled = false,
   className = '',
 }: DraggableBottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -249,8 +252,9 @@ export default function DraggableBottomSheet({
     document.addEventListener('mouseup', onMouseUp);
   }, [sheetHeight, getSnapTargets, animateToSnap, findNearestSnap, dismissible]);
 
-  // Prevent body scroll when dragging
+  // Prevent body scroll when dragging (only when not disabled)
   useEffect(() => {
+    if (disabled) return;
     const preventScroll = (e: TouchEvent) => {
       if (isDragging.current) {
         e.preventDefault();
@@ -258,7 +262,7 @@ export default function DraggableBottomSheet({
     };
     document.addEventListener('touchmove', preventScroll, { passive: false });
     return () => document.removeEventListener('touchmove', preventScroll);
-  }, []);
+  }, [disabled]);
 
   if (sheetHeight <= 5) return null;
 
@@ -269,17 +273,18 @@ export default function DraggableBottomSheet({
       style={{
         height: `${sheetHeight}px`,
         maxHeight: '95vh',
-        touchAction: 'none',
+        touchAction: disabled ? 'auto' : 'none',
       }}
     >
       {/* Drag handle area */}
       <div
         className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none shrink-0"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
-        onClick={handleDoubleTap}
+        onTouchStart={disabled ? undefined : handleTouchStart}
+        onTouchMove={disabled ? undefined : handleTouchMove}
+        onTouchEnd={disabled ? undefined : handleTouchEnd}
+        onMouseDown={disabled ? undefined : handleMouseDown}
+        onClick={disabled ? undefined : handleDoubleTap}
+        style={disabled ? { pointerEvents: 'none', opacity: 0.4 } : undefined}
       >
         <div className="w-10 h-1 rounded-full bg-white/20 hover:bg-cyan-400/50 transition-colors" />
       </div>

@@ -311,11 +311,18 @@ export default function GoogleMap({
     };
   }, []);
 
-  // Manage draggable pin
+  // Create or remove draggable pin — only runs when mode activates/deactivates or color changes
+  const pinActiveRef = useRef<boolean>(false);
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
-    // Remove existing draggable pin
+    const shouldExist = !!draggablePin;
+
+    // If state hasn't changed, skip (position-only updates handled by next effect)
+    if (shouldExist === pinActiveRef.current && draggablePinRef.current) return;
+    pinActiveRef.current = shouldExist;
+
+    // Remove existing
     if (draggablePinRef.current) {
       draggablePinRef.current.setMap(null);
       draggablePinRef.current = null;
@@ -357,7 +364,7 @@ export default function GoogleMap({
 
       draggablePinRef.current = marker;
 
-      // Pan map to pin position
+      // Pan map to pin position on first create
       mapInstanceRef.current.panTo(draggablePin.position);
       mapInstanceRef.current.setZoom(17);
     });
@@ -367,8 +374,16 @@ export default function GoogleMap({
         draggablePinRef.current.setMap(null);
         draggablePinRef.current = null;
       }
+      pinActiveRef.current = false;
     };
-  }, [draggablePin, isLoaded, onDraggablePinMove]);
+  }, [!!draggablePin, draggablePin?.color, isLoaded, onDraggablePinMove]);
+
+  // Update draggable pin position without recreating the marker
+  useEffect(() => {
+    if (!draggablePinRef.current || !draggablePin) return;
+    // Only update if the pin was NOT being dragged by the user
+    draggablePinRef.current.setPosition(draggablePin.position);
+  }, [draggablePin?.position?.lat, draggablePin?.position?.lng]);
 
   // Update markers
   useEffect(() => {
