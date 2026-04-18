@@ -393,7 +393,7 @@ export default function GoogleMap({
   if (hasError) {
     return (
       <div
-        className={`w-full flex items-center justify-center bg-gradient-to-b from-blue-900/20 to-rida-dark ${className}`}
+        className={`w-full h-full flex items-center justify-center bg-gradient-to-b from-blue-900/20 to-rida-dark ${className}`}
         style={{ height, borderRadius: '16px', overflow: 'hidden', ...style }}
       >
         <div className="text-center p-4">
@@ -414,10 +414,10 @@ export default function GoogleMap({
   }
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <div
         ref={mapRef}
-        className={`w-full ${className}`}
+        className={`w-full h-full ${className}`}
         style={{ height, borderRadius: '16px', overflow: 'hidden', ...style }}
       />
 

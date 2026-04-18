@@ -532,3 +532,25 @@ Stage Summary:
 - Preview URL should now work: https://preview-209845a6-chatglm-site.space.chatglm.site/
 - Created start-server.sh script for future reliable startup with auto-restart
 - Server is running in production mode (not dev mode) for stability
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix maps not showing in client, driver, and admin sections
+
+Work Log:
+- Investigated all map-related code: GoogleMap.tsx, googleMaps.ts, PlacesAutocomplete.tsx
+- Verified Google Maps API key is valid and not restricted (returns 673KB JS, works with preview domain referrer)
+- Verified no CSP headers blocking Google Maps scripts
+- Found root cause: GoogleMap.tsx outer wrapper `<div className="relative">` had NO height
+- Inner map container used `height: 100%` but parent had 0 height → map collapsed to 0px
+- Fix: Added `h-full` to outer wrapper and `h-full` to the mapRef div className
+- Also fixed error fallback container
+- Rebuilt production: `next build` → copied static files → restarted server on port 3000
+
+Stage Summary:
+- Changed file: src/components/GoogleMap.tsx (safe file - UI component)
+- Added `h-full` to outer wrapper: `<div className="relative h-full">`
+- Added `h-full` to mapRef div className
+- Production build verified with fix deployed
+- Server running stable on port 3000
