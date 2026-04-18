@@ -53,21 +53,34 @@ export default function DriverVerification() {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
+
+      // Use FileReader instead of URL.createObjectURL (more compatible with mobile cameras)
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+
       img.onload = () => {
-        // Max 800px width - good quality but small file size
-        const maxW = 800;
-        const scale = img.width > maxW ? maxW / img.width : 1;
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(
-          (blob) => resolve(blob || file),
-          'image/jpeg',
-          0.6
-        );
+        try {
+          // Max 800px width - good quality but small file size
+          const maxW = 800;
+          const scale = img.width > maxW ? maxW / img.width : 1;
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(
+            (blob) => resolve(blob || file),
+            'image/jpeg',
+            0.6
+          );
+        } catch {
+          // If canvas fails, return original file
+          resolve(file);
+        }
       };
       img.onerror = () => resolve(file);
-      img.src = URL.createObjectURL(file);
     });
   };
 
