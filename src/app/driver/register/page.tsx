@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, Zap, User, Phone, ArrowRight, ArrowLeft, Car } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Zap, User, Phone, ArrowRight, ArrowLeft, Car, Package, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 
@@ -14,14 +14,26 @@ export default function DriverRegister() {
     name: '', email: '', phone: '', plate: '', model: '', color: '',
     password: '', confirmPassword: '', acceptTerms: false,
   });
+  const [selectedRole, setSelectedRole] = useState<'driver' | 'courier' | 'both'>('driver');
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState(1);
+
+  const roles = [
+    { id: 'driver' as const, label: 'Conductor', desc: 'Transportar pasajeros', icon: Car, color: 'from-blue-600 to-cyan-500', selectedColor: 'border-cyan-500 bg-cyan-500/10' },
+    { id: 'courier' as const, label: 'Repartidor', desc: 'Entregas marketplace', icon: Package, color: 'from-purple-600 to-pink-500', selectedColor: 'border-purple-500 bg-purple-500/10' },
+    { id: 'both' as const, label: 'Ambos', desc: 'Conducir y entregar', icon: CheckCircle, color: 'from-emerald-600 to-teal-500', selectedColor: 'border-emerald-500 bg-emerald-500/10' },
+  ];
 
   const updateForm = (key: string, value: string | boolean) => setForm(prev => ({ ...prev, [key]: value }));
 
   const handleRegister = async () => {
-    if (!form.name || !form.email || !form.phone || !form.plate || !form.model || !form.color || !form.password) {
-      toast.error('Completa todos los campos');
+    if (!form.name || !form.email || !form.phone || !form.password) {
+      toast.error('Completa todos los campos obligatorios');
+      return;
+    }
+    // Vehicle fields only required for driver role
+    if (selectedRole !== 'courier' && (!form.plate || !form.model || !form.color)) {
+      toast.error('Completa los datos del vehiculo');
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -37,9 +49,12 @@ export default function DriverRegister() {
       return;
     }
 
-    const result = await register(form.name, form.email, form.phone, form.password, 'driver');
+    // For 'both', register as 'driver' first (courier record created after)
+    const registerRole = selectedRole === 'both' ? 'driver' : selectedRole;
+    const result = await register(form.name, form.email, form.phone, form.password, registerRole);
     if (result.success) {
-      toast.success('Cuenta de conductor creada exitosamente!');
+      const roleName = selectedRole === 'driver' ? 'conductor' : selectedRole === 'courier' ? 'repartidor' : 'conductor y repartidor';
+      toast.success(`Cuenta de ${roleName} creada exitosamente!`);
       router.push('/driver');
     } else {
       toast.error(result.error || 'Error al crear cuenta');
@@ -59,6 +74,28 @@ export default function DriverRegister() {
           <p className="text-sm text-gray-400 mt-1">Conviertete en conductor RIDA</p>
         </div>
 
+        {/* Role Selector */}
+        <div className="grid grid-cols-3 gap-2 mb-6">
+          {roles.map((role) => (
+            <motion.button
+              key={role.id}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setSelectedRole(role.id)}
+              className={`rounded-xl p-3 text-center border transition-all ${
+                selectedRole === role.id
+                  ? role.selectedColor
+                  : 'border-white/10 bg-white/5 hover:bg-white/10'
+              }`}
+            >
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${role.color} flex items-center justify-center mx-auto mb-1.5`}>
+                <role.icon className="w-5 h-5 text-white" />
+              </div>
+              <p className={`text-xs font-semibold ${selectedRole === role.id ? 'text-white' : 'text-gray-400'}`}>{role.label}</p>
+              <p className="text-[9px] text-gray-500 mt-0.5">{role.desc}</p>
+            </motion.button>
+          ))}
+        </div>
+
         {/* Progress */}
         <div className="flex items-center gap-2 mb-6">
           {[1, 2].map(s => (
@@ -69,7 +106,7 @@ export default function DriverRegister() {
         <div className="glass-strong rounded-2xl p-6 space-y-4">
           {step === 1 ? (
             <>
-              <h2 className="text-lg font-semibold text-white">Datos Personales y Vehiculo</h2>
+              <h2 className="text-lg font-semibold text-white">Datos Personales{selectedRole !== 'courier' ? ' y Vehiculo' : ''}</h2>
               <div className="space-y-3">
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
@@ -83,17 +120,22 @@ export default function DriverRegister() {
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input type="tel" placeholder="Telefono (+506)" value={form.phone} onChange={(e) => updateForm('phone', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
                 </div>
-                <div className="relative">
-                  <Car className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  <input type="text" placeholder="Placa del vehiculo" value={form.plate} onChange={(e) => updateForm('plate', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="text" placeholder="Modelo" value={form.model} onChange={(e) => updateForm('model', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
-                  <input type="text" placeholder="Color" value={form.color} onChange={(e) => updateForm('color', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
-                </div>
+                {selectedRole !== 'courier' && (
+                  <>
+                    <div className="relative">
+                      <Car className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                      <input type="text" placeholder="Placa del vehiculo" value={form.plate} onChange={(e) => updateForm('plate', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="text" placeholder="Modelo" value={form.model} onChange={(e) => updateForm('model', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
+                      <input type="text" placeholder="Color" value={form.color} onChange={(e) => updateForm('color', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
+                    </div>
+                  </>
+                )}
               </div>
               <button onClick={() => {
-                if (form.name && form.email && form.phone && form.plate && form.model && form.color) setStep(2);
+                const vehicleOk = selectedRole === 'courier' || (form.plate && form.model && form.color);
+                if (form.name && form.email && form.phone && vehicleOk) setStep(2);
                 else toast.error('Completa todos los campos');
               }} className="w-full btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2">
                 Siguiente <ArrowRight className="w-4 h-4" />
