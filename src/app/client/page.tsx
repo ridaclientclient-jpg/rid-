@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Clock, Star, Shield, ChevronRight, Zap, Car, Wallet, Bell, Headphones } from 'lucide-react';
+import { MapPin, Clock, Star, Shield, ChevronRight, Zap, Car, Wallet, Bell, Headphones, Store } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useRideStore } from '@/store/rideStore';
 
@@ -15,6 +15,7 @@ export default function ClientHome() {
     { icon: Car, label: 'Pedir Viaje', desc: 'Transporte ahora', href: '/client/ride', color: 'from-blue-600 to-cyan-500' },
     { icon: Clock, label: 'Programar', desc: 'Agendar viaje', href: '/client/ride', color: 'from-purple-600 to-blue-600' },
     { icon: Wallet, label: 'Billetera', desc: 'Ver saldo', href: '/client/wallet', color: 'from-emerald-600 to-cyan-600' },
+    { icon: Store, label: 'Marketplace', desc: 'Comprar productos', href: '/client/market', color: 'from-amber-500 to-orange-500' },
     { icon: Headphones, label: 'Soporte', desc: '24/7 ayuda', href: '/client/support', color: 'from-amber-500 to-orange-500' },
   ];
 

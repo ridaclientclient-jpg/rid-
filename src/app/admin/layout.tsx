@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, LayoutDashboard, Users, Car, MapPin, DollarSign,
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
-  Menu, X
+  Menu, X, Store, Package, ShoppingCart
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -21,6 +21,10 @@ const navItems = [
   { href: '/admin/pricing', label: 'Pricing', icon: DollarSign },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/reports', label: 'Reportes', icon: FileText },
+  { href: '/admin/marketplace', label: 'Marketplace', icon: Store },
+  { href: '/admin/marketplace/vendors', label: 'Vendedores', icon: Users },
+  { href: '/admin/marketplace/products', label: 'Productos', icon: Package },
+  { href: '/admin/marketplace/orders', label: 'Pedidos MKT', icon: ShoppingCart },
   { href: '/admin/settings', label: 'Configuración', icon: Settings },
 ];
 

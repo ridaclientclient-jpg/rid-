@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, MapPin, Clock, User as UserIcon, Zap, ArrowLeft, LogOut } from 'lucide-react';
+import { Home, MapPin, Clock, User as UserIcon, Zap, ArrowLeft, LogOut, Store } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,7 @@ import NotificationPanel from '@/components/NotificationPanel';
 const navItems = [
   { icon: Home, label: 'Inicio', href: '/client' },
   { icon: MapPin, label: 'Viaje', href: '/client/ride' },
+  { icon: Store, label: 'Market', href: '/client/market' },
   { icon: Clock, label: 'Historial', href: '/client/history' },
   { icon: UserIcon, label: 'Perfil', href: '/client/profile' },
 ];

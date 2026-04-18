@@ -120,6 +120,31 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
           })}
         </nav>
 
+        {/* RIDA Ecosystem Links */}
+        <div className="px-3 py-2 border-t border-white/5">
+          <p className="text-[9px] text-gray-600 uppercase tracking-wider px-3 mb-2">RIDA Ecosistema</p>
+          <div className="space-y-1">
+            <button
+              onClick={() => router.push('/client/market')}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-gray-500 hover:text-cyan-400 hover:bg-white/5 transition-all"
+            >
+              <div className="w-5 h-5 rounded-md bg-blue-500/20 flex items-center justify-center">
+                <Store className="w-3 h-3 text-blue-400" />
+              </div>
+              <span>Tienda (Cliente)</span>
+            </button>
+            <button
+              onClick={() => router.push('/admin/marketplace')}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs text-gray-500 hover:text-cyan-400 hover:bg-white/5 transition-all"
+            >
+              <div className="w-5 h-5 rounded-md bg-purple-500/20 flex items-center justify-center">
+                <LayoutDashboard className="w-3 h-3 text-purple-400" />
+              </div>
+              <span>Admin Marketplace</span>
+            </button>
+          </div>
+        </div>
+
         {/* User & Logout */}
         <div className="p-3 border-t border-white/10">
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
