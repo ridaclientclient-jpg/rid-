@@ -137,13 +137,16 @@ export default function SupportPage() {
         .update({ status: newStatus })
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error detail:', error.message, error.code, error.hint, error.details);
+        throw new Error(error.message || error.code || 'Error de Supabase');
+      }
 
       setReports(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
       toast.success(`Reporte marcado como ${statusConfig[newStatus].label}`);
-    } catch (err) {
-      console.error('Update status error:', err);
-      toast.error('Error al actualizar estado');
+    } catch (err: any) {
+      console.error('Update status error:', err?.message || err?.code || JSON.stringify(err));
+      toast.error(err?.message || 'Error al actualizar estado');
     }
   };
 
