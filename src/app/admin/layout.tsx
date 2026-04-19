@@ -6,8 +6,8 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, LayoutDashboard, Users, Car, MapPin, DollarSign,
-  BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
-  Menu, X, Store, Package, ShoppingCart, Truck, ShieldCheck
+  BarChart3, Settings, LogOut, ChevronLeft, Zap,
+  Menu, X, Store, Package, ShoppingCart, Truck, ShieldCheck, Headphones
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -20,7 +20,7 @@ const navItems = [
   { href: '/admin/rides', label: 'Viajes', icon: MapPin },
   { href: '/admin/pricing', label: 'Pricing', icon: DollarSign },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/admin/reports', label: 'Reportes', icon: FileText },
+  { href: '/admin/reports', label: 'Soporte RIDA', icon: Headphones },
   { href: '/admin/marketplace', label: 'Marketplace', icon: Store },
   { href: '/admin/marketplace/vendors', label: 'Vendedores', icon: Users },
   { href: '/admin/marketplace/products', label: 'Productos', icon: Package },

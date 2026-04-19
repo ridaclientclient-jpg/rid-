@@ -2,39 +2,42 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, Phone, Mail, ChevronRight, Shield, HelpCircle, FileText, AlertTriangle, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import {
+  MessageCircle, Phone, Mail, AlertTriangle,
+  Send, Loader2, HelpCircle, ChevronDown, ChevronUp
+} from 'lucide-react';
 
 const faqs = [
   {
-    q: 'Como cambio mi destino durante un viaje?',
-    a: 'Una vez iniciado el viaje, no es posible cambiar el destino directamente desde la app. Puedes cancelar el viaje y crear uno nuevo con la direccion correcta, o contactar al conductor para que te lleve a un punto cercano.',
+    q: 'Como acepto una entrega?',
+    a: 'Cuando recibas una notificacion de nueva entrega, abrela y presiona "Aceptar". La entrega aparecera en tu lista de entregas activas con la direccion de recogida y entrega.',
   },
   {
-    q: 'Como solicito un reembolso?',
-    a: 'Ve a tu historial de viajes, selecciona el viaje con el problema y usa la opcion "Reportar". Describe la situacion y nuestro equipo revisara tu caso para procesar el reembolso correspondiente dentro de 48 horas.',
+    q: 'Que hago si el cliente no esta en la direccion?',
+    a: 'Intenta contactar al cliente por la app. Si no responde en 5 minutos, puedes reportar el problema desde la pantalla de la entrega. El sistema registrara el incidente.',
   },
   {
-    q: 'Como funciona el boton SOS?',
-    a: 'El boton SOS esta disponible durante viajes activos. Al presionarlo, se notifica automaticamente a nuestro equipo de seguridad y se registran tus coordenadas de GPS. Las autoridades seran contactadas si es necesario.',
+    q: 'Como reclamo por un pago incorrecto?',
+    a: 'Ve a la seccion de Ganancias, selecciona la entrega con el problema y toca "Reportar". El equipo de soporte revisara y realizara el ajuste correspondiente dentro de 48 horas.',
   },
   {
-    q: 'Reportar un problema con el conductor',
-    a: 'Puedes reportar un problema desde la pantalla del viaje activo usando el boton de reporte, o despues del viaje desde tu historial. Describe lo sucedido con el mayor detalle posible. Todos los reportes son revisados por nuestro equipo.',
+    q: 'Puedo rechazar una entrega?',
+    a: 'Si, puedes rechazar entregas sin penalidad siempre que no excedas 3 rechazos consecutivas. Demasiados rechazos pueden afectar tu prioridad en la asignacion de entregas.',
   },
   {
-    q: 'Como agrego un lugar frecuente?',
-    a: 'En la pantalla de inicio, en la seccion "Lugares Frecuentes", toca el boton "Agregar". Elige un nombre e icono para tu lugar, busca la direccion y guardalo. Los lugares frecuentes aparecen automaticamente al pedir un viaje.',
+    q: 'Que pasa si el paquete se dania durante el envio?',
+    a: 'Toma fotos del dano inmediatamente y reportalo desde la pantalla de la entrega. El equipo de soporte coordinara con el vendedor y cliente.',
   },
   {
-    q: 'Mi viaje tarda mucho, que puedo hacer?',
-    a: 'Puedes ver la ubicacion del conductor en tiempo real desde la pantalla del viaje. Si el conductor no llega en 10 minutos despues de la confirmacion, puedes cancelar sin penalidad o reportar la situacion a soporte.',
+    q: 'Como actualizo mi vehiculo de entrega?',
+    a: 'Desde tu perfil, ve a la seccion de configuracion donde podras cambiar el tipo de vehiculo (moto, bici o carro). Los cambios se reflejaran en tu proxima sesion.',
   },
 ];
 
-export default function ClientSupport() {
+export default function CourierSupport() {
   const { user } = useAuthStore();
   const [sending, setSending] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -51,7 +54,7 @@ export default function ClientSupport() {
       const { error } = await supabase.from('reports').insert({
         user_id: user?.id,
         type: 'complaint',
-        description: `[Soporte Cliente] ${subject}\n\n${message}`,
+        description: `[Soporte Courier] ${subject}\n\n${message}`,
       });
       if (error) throw error;
       toast.success('Mensaje enviado. Te responderemos pronto.');
@@ -73,7 +76,12 @@ export default function ClientSupport() {
       </motion.div>
 
       {/* Quick Actions */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="grid grid-cols-3 gap-2">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="grid grid-cols-3 gap-2"
+      >
         <button
           onClick={() => toast.info('Llamada al soporte (proximamente)')}
           className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"

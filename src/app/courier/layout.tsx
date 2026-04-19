@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, Package, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X } from 'lucide-react';
+import { Home, Package, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X, Headphones } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +18,7 @@ const navItems = [
   { icon: Home, label: 'Inicio', href: '/courier' },
   { icon: Package, label: 'Entregas', href: '/courier/deliveries' },
   { icon: Wallet, label: 'Ganancias', href: '/courier/earnings' },
+  { icon: Headphones, label: 'Soporte', href: '/courier/support' },
   { icon: UserIcon, label: 'Perfil', href: '/courier/profile' },
 ];
 
