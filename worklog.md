@@ -47,3 +47,30 @@ Stage Summary:
 - Marketplace now creates deliveries and auto-assigns to online couriers
 - Admin can manage couriers separately from drivers
 - SQL file: /home/z/my-project/download/courier-system.sql (must be run in Supabase)
+
+---
+Task ID: 8
+Agent: Main Agent
+Task: Implementar Chat en Vivo Soporte RIDA across all apps
+
+Work Log:
+- Diagnosticado: Botón "Chat" en 4 apps mostraba "Chat en vivo (proximamente)" — completamente falso
+- Diagnosticado: No existía infraestructura de chat en tiempo real en el proyecto
+- Creado SQL: Tablas support_chats y support_messages con Realtime habilitado
+- Creado componente compartido: src/components/SupportChat.tsx (chat full-screen con Supabase Realtime)
+- Modificado: src/app/client/support/page.tsx — Chat activado con componente real
+- Modificado: src/app/driver/support/page.tsx — Chat activado con componente real
+- Modificado: src/app/courier/support/page.tsx — Chat activado con componente real
+- Modificado: src/app/marketplace/support/page.tsx — Chat activado con componente real
+- Creado: src/app/admin/chat/page.tsx — Inbox de chat con lista + conversación + respuesta admin
+- Modificado: src/app/admin/layout.tsx — Agregado "Chat en Vivo" al menú sidebar
+- Email ridsoport@gmail.com integrado en toda la UI de soporte
+- Build exitoso sin errores
+- Fix: Extra </div> en driver/support/page.tsx corregido
+
+Stage Summary:
+- 7 archivos modificados, 2 archivos nuevos
+- Sin archivos protegidos tocados (.env, next.config.ts, supabase.ts, package.json, Caddyfile)
+- Chat en vivo funciona con Supabase Realtime (tiempo real bidireccional)
+- Admin puede ver todos los chats, seleccionar uno y responder
+- SQL requerido: CREATE TABLE support_chats, support_messages + RLS + Realtime

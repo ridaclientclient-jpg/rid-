@@ -6,6 +6,7 @@ import { MessageCircle, Phone, Mail, ChevronRight, Shield, HelpCircle, FileText,
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import SupportChat from '@/components/SupportChat';
 
 const faqs = [
   {
@@ -40,6 +41,7 @@ export default function ClientSupport() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const handleSubmit = async () => {
     if (!subject.trim() || !message.trim()) {
@@ -84,7 +86,7 @@ export default function ClientSupport() {
           <span className="text-[10px] text-gray-400">Llamar</span>
         </button>
         <button
-          onClick={() => toast.info('Chat en vivo (proximamente)')}
+          onClick={() => setChatOpen(true)}
           className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
         >
           <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
@@ -93,7 +95,7 @@ export default function ClientSupport() {
           <span className="text-[10px] text-gray-400">Chat</span>
         </button>
         <button
-          onClick={() => toast.info('Email enviado a soporte@ridasupreme.com')}
+          onClick={() => window.open('mailto:ridsoport@gmail.com', '_blank')}
           className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
         >
           <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
@@ -178,6 +180,9 @@ export default function ClientSupport() {
           {sending ? 'Enviando...' : 'Enviar Mensaje'}
         </button>
       </motion.div>
+
+      {/* Chat en Vivo */}
+      <SupportChat source="cliente" isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import SupportChat from '@/components/SupportChat';
 import {
   MessageCircle, Phone, Mail, AlertTriangle,
   Send, Loader2, HelpCircle, ChevronDown, ChevronUp
@@ -43,6 +44,7 @@ export default function MarketplaceSupport() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const handleSubmit = async () => {
     if (!subject.trim() || !message.trim()) {
@@ -94,7 +96,7 @@ export default function MarketplaceSupport() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          onClick={() => toast.info('Chat en vivo (proximamente)')}
+          onClick={() => setChatOpen(true)}
           className="glass rounded-2xl p-5 flex items-center gap-4 hover:bg-white/5 transition-colors text-left"
         >
           <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
@@ -109,7 +111,7 @@ export default function MarketplaceSupport() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          onClick={() => toast.info('Email enviado a soporte@ridasupreme.com')}
+          onClick={() => window.open('mailto:ridsoport@gmail.com', '_blank')}
           className="glass rounded-2xl p-5 flex items-center gap-4 hover:bg-white/5 transition-colors text-left"
         >
           <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
@@ -197,6 +199,9 @@ export default function MarketplaceSupport() {
           {sending ? 'Enviando...' : 'Enviar Mensaje'}
         </button>
       </motion.div>
+
+      {/* Chat en Vivo */}
+      <SupportChat source="marketplace" isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

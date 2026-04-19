@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import SupportChat from '@/components/SupportChat';
 import {
   MessageCircle, Phone, Mail, AlertTriangle,
   Send, Loader2, HelpCircle, ChevronDown, ChevronUp
@@ -43,6 +44,7 @@ export default function CourierSupport() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const handleSubmit = async () => {
     if (!subject.trim() || !message.trim()) {
@@ -92,7 +94,7 @@ export default function CourierSupport() {
           <span className="text-[10px] text-gray-400">Llamar</span>
         </button>
         <button
-          onClick={() => toast.info('Chat en vivo (proximamente)')}
+          onClick={() => setChatOpen(true)}
           className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
         >
           <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
@@ -101,7 +103,7 @@ export default function CourierSupport() {
           <span className="text-[10px] text-gray-400">Chat</span>
         </button>
         <button
-          onClick={() => toast.info('Email enviado a soporte@ridasupreme.com')}
+          onClick={() => window.open('mailto:ridsoport@gmail.com', '_blank')}
           className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
         >
           <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
@@ -186,6 +188,9 @@ export default function CourierSupport() {
           {sending ? 'Enviando...' : 'Enviar Mensaje'}
         </button>
       </motion.div>
+
+      {/* Chat en Vivo */}
+      <SupportChat source="courier" isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

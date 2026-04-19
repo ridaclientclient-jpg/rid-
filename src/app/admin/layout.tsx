@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, LayoutDashboard, Users, Car, MapPin, DollarSign,
   BarChart3, Settings, LogOut, ChevronLeft, Zap,
-  Menu, X, Store, Package, ShoppingCart, Truck, ShieldCheck, Headphones
+  Menu, X, Store, Package, ShoppingCart, Truck, ShieldCheck, Headphones, MessageCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/admin/rides', label: 'Viajes', icon: MapPin },
   { href: '/admin/pricing', label: 'Pricing', icon: DollarSign },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/admin/chat', label: 'Chat en Vivo', icon: MessageCircle },
   { href: '/admin/reports', label: 'Soporte RIDA', icon: Headphones },
   { href: '/admin/marketplace', label: 'Marketplace', icon: Store },
   { href: '/admin/marketplace/vendors', label: 'Vendedores', icon: Users },
