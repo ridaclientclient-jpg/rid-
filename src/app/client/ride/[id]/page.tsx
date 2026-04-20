@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { useRideStore } from '@/store/rideStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
+import SOSButton from '@/components/SOSButton';
 
 const rideTypeNames: Record<string, string> = {
   standard: 'Economico',
@@ -340,13 +341,26 @@ export default function RideDetailsPage() {
             </div>
             <div className="flex gap-1.5">
               <button
-                onClick={() => toast.success('Llamando conductor...')}
+                type="button"
+                onClick={() => {
+                  if (ride?.driver_phone) {
+                    window.open(`tel:${ride.driver_phone}`, '_self');
+                  } else {
+                    window.open('https://wa.me/50687838329?text=' + encodeURIComponent('Hola, necesito comunicarme con mi conductor del viaje ' + ride.id.slice(0, 8).toUpperCase()), '_blank');
+                  }
+                }}
                 className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center hover:bg-emerald-500/30 transition-colors"
               >
                 <Phone className="w-4 h-4 text-emerald-400" />
               </button>
               <button
-                onClick={() => toast.info('Chat disponible pronto')}
+                type="button"
+                onClick={() => {
+                  const msg = isActive
+                    ? 'Hola, tengo una consulta sobre mi viaje activo ' + ride.id.slice(0, 8).toUpperCase()
+                    : 'Hola, tengo una consulta sobre mi viaje ' + ride.id.slice(0, 8).toUpperCase();
+                  window.open('https://wa.me/50687838329?text=' + encodeURIComponent(msg), '_blank');
+                }}
                 className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center hover:bg-blue-500/30 transition-colors"
               >
                 <MessageSquare className="w-4 h-4 text-blue-400" />
@@ -360,7 +374,7 @@ export default function RideDetailsPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          onClick={() => toast.info('Recibo disponible pronto')}
+          onClick={() => router.push(`/client/ride/receipt?ride=${ride.id}`)}
           className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/5 transition-colors"
         >
           <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center">
@@ -523,14 +537,12 @@ export default function RideDetailsPage() {
 
         {/* SOS Button (active rides) */}
         {isActive && (
-          <motion.button
+          <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            onClick={() => toast.error('SOS ACTIVADO! Contactando emergencias...')}
-            className="w-full bg-red-500/20 border border-red-500/50 text-red-400 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-red-500/30 transition-colors"
           >
-            <Shield className="w-5 h-5" /> SOS Emergencia
-          </motion.button>
+            <SOSButton rideId={ride.id} className="w-full" />
+          </motion.div>
         )}
 
         {/* Info badges */}

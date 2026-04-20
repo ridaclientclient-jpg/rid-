@@ -503,3 +503,24 @@ Stage Summary:
 - Font files: 200
 - All pages: 200
 - IMPORTANT: After every `next build`, must re-copy static assets to standalone
+---
+Task ID: 5
+Agent: main
+Task: Fix non-functional buttons in client ride details (Receipt, Call, Message, SOS)
+
+Work Log:
+- Reviewed ride/[id]/page.tsx - all 4 buttons were fake (toast.info only)
+- Found existing SOSButton.tsx component with real GPS + API SOS functionality
+- Found existing receipt page at /client/ride/receipt/page.tsx with full receipt display
+- Fixed Receipt button: now navigates to /client/ride/receipt?ride={id}
+- Fixed Call button: calls driver phone via tel: if available, else opens WhatsApp support
+- Fixed Message button: opens WhatsApp (50687838329) with pre-filled message about the ride
+- Fixed SOS button: replaced fake toast with real SOSButton component (GPS + API)
+- Build successful, deployed
+
+Stage Summary:
+- Receipt: navigates to real receipt page with fare breakdown and download
+- Call: uses tel: protocol to call driver directly, or WhatsApp fallback
+- Message: opens WhatsApp with ride ID context
+- SOS: uses SOSButton component with GPS location and admin notification
+- No protected files touched (.env, next.config.ts, supabase.ts, package.json, Caddyfile)
