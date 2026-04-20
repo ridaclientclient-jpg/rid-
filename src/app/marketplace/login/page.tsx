@@ -26,7 +26,7 @@ export default function MarketplaceLogin() {
     const result = await login(email, password);
     if (result.success) {
       toast.success('¡Bienvenido a RIDA MARKET!');
-      window.location.href = '/marketplace';
+      router.push('/marketplace');
       return;
     } else {
       toast.error(result.error || 'Error al iniciar sesion');
@@ -42,7 +42,7 @@ export default function MarketplaceLogin() {
     const result = await register(registerData.name, registerData.email, registerData.phone, registerData.password, 'vendor');
     if (result.success) {
       toast.success('¡Cuenta creada exitosamente!');
-      window.location.href = '/marketplace';
+      router.push('/marketplace');
       return;
     } else {
       toast.error(result.error || 'Error al crear cuenta');

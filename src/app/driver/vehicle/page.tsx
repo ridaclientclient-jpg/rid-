@@ -1,212 +1,181 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { Car, Bike, Truck, Check, Plus, Pencil, Trash2, Save, X, Shield, CheckCircle, Loader2 } from 'lucide-react';
+import { supabase, type Vehicle, type Driver } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import {
-  ArrowLeft, Car, Save, CheckCircle2, Loader2,
-  Palette, Calendar, Hash, Camera, Upload, RefreshCw, Bike
-} from 'lucide-react';
 
-interface VehicleData {
-  id?: string;
-  plate: string;
-  model: string;
-  color: string;
-  year: number | null;
-  verified: boolean;
-  vehicle_type?: string;
-  photo_url?: string;
-}
+type VehicleType = 'carro' | 'moto' | 'bici';
+type ServiceMode = 'conductor' | 'repartidor' | 'ambos';
 
-export default function DriverVehicle() {
-  const router = useRouter();
+const vehicleTypeOptions: { id: VehicleType; label: string; icon: typeof Car; desc: string }[] = [
+  { id: 'carro', label: 'Carro', icon: Car, desc: 'Transporte de pasajeros' },
+  { id: 'moto', label: 'Moto', icon: Bike, desc: 'Reparto rapido y courier' },
+  { id: 'bici', label: 'Bicicleta', icon: Bike, desc: 'Reparto ecologico' },
+];
+
+const serviceModeOptions: { id: ServiceMode; label: string; desc: string }[] = [
+  { id: 'conductor', label: 'Conductor', desc: 'Transporte de pasajeros' },
+  { id: 'repartidor', label: 'Repartidor', desc: 'Entregas y paquetes' },
+  { id: 'ambos', label: 'Ambos', desc: 'Conductor y repartidor' },
+];
+
+export default function VehicleManagement() {
   const { user } = useAuthStore();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [driver, setDriver] = useState<Driver | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [vehicle, setVehicle] = useState<VehicleData>({
-    plate: '',
-    model: '',
-    color: '',
-    year: null,
-    verified: false,
-    vehicle_type: 'carro',
-    photo_url: '',
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  const vehicleTypes = [
-    { id: 'carro', label: 'Carro', icon: Car, color: 'from-blue-600 to-cyan-500', selected: 'border-cyan-500 bg-cyan-500/10' },
-    { id: 'moto', label: 'Moto', icon: Bike, color: 'from-purple-600 to-pink-500', selected: 'border-purple-500 bg-purple-500/10' },
-    { id: 'bici', label: 'Bicicleta', icon: Bike, color: 'from-emerald-600 to-teal-500', selected: 'border-emerald-500 bg-emerald-500/10' },
-  ];
+  // Form state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
+  const [serviceMode, setServiceMode] = useState<ServiceMode>('conductor');
+  const [vehicleType, setVehicleType] = useState<VehicleType>('carro');
+  const [form, setForm] = useState({ plate: '', model: '', color: '', year: '' });
 
-  useEffect(() => {
-    fetchVehicle();
-  }, [user?.id]);
+  const resetForm = () => {
+    setForm({ plate: '', model: '', color: '', year: '' });
+    setVehicleType('carro');
+    setEditVehicleId(null);
+    setIsEditing(false);
+  };
 
-  const fetchVehicle = async () => {
+  const fetchData = useCallback(async () => {
     if (!user?.id) return;
+    setLoading(true);
     try {
+      // Fetch driver record
       const { data: driverData } = await supabase
         .from('drivers')
-        .select('id')
+        .select('*')
         .eq('user_id', user.id)
         .single();
 
+      if (driverData) {
+        setDriver(driverData);
+        // Get service mode from driver metadata
+        if (driverData.vehicle_type) {
+          setServiceMode(driverData.vehicle_type as ServiceMode);
+        }
+      }
+
+      // Fetch vehicles
       if (driverData?.id) {
-        const { data: vData } = await supabase
+        const { data: vehicleData } = await supabase
           .from('vehicles')
           .select('*')
-          .eq('driver_id', driverData.id)
-          .single();
-        if (vData) setVehicle(vData);
+          .eq('driver_id', driverData.id);
+        setVehicles(vehicleData || []);
       }
     } catch (err) {
-      console.error('Error fetching vehicle:', err);
+      console.error('Error fetching vehicle data:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]);
 
-  // Load photo preview when vehicle data arrives
-  useEffect(() => {
-    if (vehicle.photo_url) setPhotoPreview(vehicle.photo_url);
-  }, [vehicle.photo_url]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const compressImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve) => {
-      // Safety timeout: if FileReader hangs on mobile, resolve with original file after 10s
-      const timeout = setTimeout(() => resolve(file), 10000);
-
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      const reader = new FileReader();
-      reader.onload = (e) => { img.src = e.target?.result as string; };
-      reader.onerror = () => { clearTimeout(timeout); resolve(file); };
-      reader.readAsDataURL(file);
-      img.onload = () => {
-        clearTimeout(timeout);
-        try {
-          const maxW = 800;
-          const scale = img.width > maxW ? maxW / img.width : 1;
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', 0.6);
-        } catch { resolve(file); }
-      };
-      img.onerror = () => { clearTimeout(timeout); resolve(file); };
-    });
-  };
-
-  const openCamera = () => {
-    // Reset input value so onChange fires even if same file is selected again (mobile fix)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  };
-
-  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { toast.error('Solo imagenes'); return; }
-    if (!user?.id) { toast.error('Inicia sesion primero'); return; }
-
-    setUploading(true);
-    try {
-      const compressed = await compressImage(file);
-
-      // Validate compressed size
-      if (compressed.size > 5 * 1024 * 1024) {
-        toast.error('La imagen es muy grande. Intenta con otra foto.');
-        setUploading(false);
-        return;
-      }
-
-      const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = `vehicle_${Date.now()}.${ext}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      // Show preview
-      const previewReader = new FileReader();
-      previewReader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
-      previewReader.readAsDataURL(compressed);
-
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(filePath, compressed, { contentType: 'image/jpeg', upsert: true });
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
-      setVehicle(prev => ({ ...prev, photo_url: urlData.publicUrl }));
-      toast.success('Foto de vehiculo subida');
-    } catch (err: any) {
-      toast.error(err.message || 'Error al subir foto. Intenta de nuevo.');
-      console.error(err);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!vehicle.plate.trim() || !vehicle.model.trim() || !vehicle.color.trim()) {
-      toast.error('Placa, modelo y color son obligatorios');
+  const handleSaveVehicle = async () => {
+    if (!form.plate || !form.model || !form.color) {
+      toast.error('Completa placa, modelo y color');
       return;
     }
+
     setSaving(true);
     try {
-      const { data: driverData } = await supabase
-        .from('drivers')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      // Ensure driver record exists
+      let driverId = driver?.id;
+      if (!driverId && user?.id) {
+        const { data: newDriver } = await supabase
+          .from('drivers')
+          .insert({ user_id: user.id, status: 'offline' })
+          .select()
+          .single();
+        driverId = newDriver?.id;
+        if (newDriver) setDriver(newDriver);
+      }
 
-      if (!driverData?.id) {
-        toast.error('No se encontro registro de conductor');
+      if (!driverId) {
+        toast.error('Error: no se pudo crear registro de conductor');
+        setSaving(false);
         return;
       }
 
-      if (vehicle.id) {
+      const vehicleData = {
+        driver_id: driverId,
+        plate: form.plate.toUpperCase(),
+        model: form.model,
+        color: form.color,
+        year: form.year ? parseInt(form.year) : null,
+        verified: false,
+      };
+
+      if (editVehicleId) {
+        // Update existing
         const { error } = await supabase
           .from('vehicles')
-          .update({
-            plate: vehicle.plate.toUpperCase(),
-            model: vehicle.model,
-            color: vehicle.color,
-            year: vehicle.year,
-            vehicle_type: vehicle.vehicle_type,
-            photo_url: vehicle.photo_url,
-          })
-          .eq('id', vehicle.id);
+          .update(vehicleData)
+          .eq('id', editVehicleId);
         if (error) throw error;
         toast.success('Vehiculo actualizado');
       } else {
+        // Create new
         const { error } = await supabase
           .from('vehicles')
-          .insert({
-            driver_id: driverData.id,
-            plate: vehicle.plate.toUpperCase(),
-            model: vehicle.model,
-            color: vehicle.color,
-            year: vehicle.year,
-            vehicle_type: vehicle.vehicle_type,
-            photo_url: vehicle.photo_url,
-          });
+          .insert(vehicleData);
         if (error) throw error;
-        toast.success('Vehiculo registrado');
+        toast.success('Vehiculo registrado correctamente');
       }
-      fetchVehicle();
-    } catch (err) {
-      console.error('Error saving vehicle:', err);
-      toast.error('Error al guardar vehiculo');
+
+      resetForm();
+      fetchData();
+    } catch (err: any) {
+      if (err?.message) {
+        toast.error('Error: ' + err.message);
+      } else {
+        toast.error('Error al guardar vehiculo');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteVehicle = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('vehicles')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      toast.success('Vehiculo eliminado');
+      fetchData();
+    } catch {
+      toast.error('Error al eliminar vehiculo');
+    }
+  };
+
+  const handleEditVehicle = (v: Vehicle) => {
+    setEditVehicleId(v.id);
+    setForm({ plate: v.plate, model: v.model, color: v.color, year: v.year?.toString() || '' });
+    setIsEditing(true);
+  };
+
+  const handleSaveServiceMode = async () => {
+    if (!driver?.id) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('drivers')
+        .update({ vehicle_type: serviceMode })
+        .eq('id', driver.id);
+      if (error) throw error;
+      toast.success(`Modo actualizado a: ${serviceModeOptions.find(o => o.id === serviceMode)?.label}`);
+    } catch {
+      toast.error('Error al actualizar modo de servicio');
     } finally {
       setSaving(false);
     }
@@ -214,186 +183,276 @@ export default function DriverVehicle() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      <div className="p-4 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+          <p className="text-sm text-gray-400">Cargando...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-rida-dark">
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handlePhotoSelected}
-      />
-
+    <div className="p-4 space-y-5">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-rida-dark/80 backdrop-blur-xl border-b border-white/5">
-        <div className="flex items-center gap-3 p-4">
-          <button onClick={() => router.back()} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center">
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </button>
-          <h1 className="text-lg font-bold text-white">Mi Vehiculo</h1>
-          {vehicle.verified && (
-            <span className="flex items-center gap-1 ml-auto text-[10px] text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">
-              <CheckCircle2 className="w-3 h-3" /> Verificado
-            </span>
-          )}
-        </div>
-      </div>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-xl font-bold text-white">Mi Vehiculo</h1>
+        <p className="text-sm text-gray-400 mt-1">Gestiona tus vehiculos y tipo de servicio</p>
+      </motion.div>
 
-      <div className="p-4 space-y-4">
-        {/* Vehicle Type Selector */}
+      {/* Service Mode Selection */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="glass-strong rounded-2xl p-4 space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Car className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-semibold text-white">Modo de servicio</span>
+          </div>
+          <button
+            onClick={handleSaveServiceMode}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-neon text-white text-xs font-medium disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            Guardar
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">Selecciona como quieres trabajar en RIDA</p>
+        <div className="grid grid-cols-3 gap-2">
+          {serviceModeOptions.map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => setServiceMode(mode.id)}
+              className={`p-3 rounded-xl border text-center transition-all ${
+                serviceMode === mode.id
+                  ? 'border-cyan-500 bg-cyan-500/10'
+                  : 'border-white/10 hover:border-white/20'
+              }`}
+            >
+              <p className={`text-sm font-medium ${serviceMode === mode.id ? 'text-cyan-400' : 'text-gray-400'}`}>
+                {mode.label}
+              </p>
+              <p className="text-[10px] text-gray-600 mt-0.5">{mode.desc}</p>
+              {serviceMode === mode.id && (
+                <CheckCircle className="w-4 h-4 text-cyan-400 mx-auto mt-1" />
+              )}
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Vehicle Type (for deliveries) */}
+      {(serviceMode === 'repartidor' || serviceMode === 'ambos') && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-2xl p-4"
+          transition={{ delay: 0.1 }}
+          className="glass-strong rounded-2xl p-4 space-y-3"
         >
-          <p className="text-xs text-gray-400 font-medium mb-3">Tipo de vehiculo</p>
+          <div className="flex items-center gap-2">
+            <Bike className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-semibold text-white">Tipo de vehiculo para reparto</span>
+          </div>
+          <p className="text-xs text-gray-500">Selecciona el vehiculo que usas para entregas</p>
           <div className="grid grid-cols-3 gap-2">
-            {vehicleTypes.map((vt) => (
+            {vehicleTypeOptions.map((vt) => (
               <button
                 key={vt.id}
-                onClick={() => setVehicle({ ...vehicle, vehicle_type: vt.id })}
-                className={`rounded-xl p-3 text-center border transition-all ${
-                  vehicle.vehicle_type === vt.id
-                    ? vt.selected
-                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+                onClick={() => setVehicleType(vt.id)}
+                className={`p-3 rounded-xl border text-center transition-all ${
+                  vehicleType === vt.id
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-white/10 hover:border-white/20'
                 }`}
               >
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${vt.color} flex items-center justify-center mx-auto mb-1.5`}>
-                  <vt.icon className="w-5 h-5 text-white" />
-                </div>
-                <p className={`text-xs font-semibold ${vehicle.vehicle_type === vt.id ? 'text-white' : 'text-gray-400'}`}>{vt.label}</p>
+                <vt.icon className={`w-6 h-6 mx-auto ${vehicleType === vt.id ? 'text-emerald-400' : 'text-gray-500'}`} />
+                <p className={`text-xs font-medium mt-1 ${vehicleType === vt.id ? 'text-emerald-400' : 'text-gray-400'}`}>
+                  {vt.label}
+                </p>
+                <p className="text-[10px] text-gray-600">{vt.desc}</p>
               </button>
             ))}
           </div>
         </motion.div>
+      )}
 
-        {/* Vehicle Photo */}
+      {/* Existing Vehicles */}
+      {vehicles.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.03 }}
-          className="glass rounded-2xl p-4"
+          transition={{ delay: 0.15 }}
+          className="space-y-2"
         >
-          <p className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-3">
-            <Camera className="w-3 h-3" /> Foto del vehiculo
-          </p>
-          {uploading ? (
-            <div className="w-full h-40 rounded-xl bg-white/5 flex flex-col items-center justify-center gap-2">
-              <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-              <span className="text-xs text-cyan-400">Subiendo foto...</span>
-            </div>
-          ) : photoPreview ? (
-            <div
-              className="relative w-full h-40 rounded-xl overflow-hidden cursor-pointer group"
-              onClick={openCamera}
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Shield className="w-4 h-4 text-cyan-400" />
+            Vehiculos registrados ({vehicles.length})
+          </h3>
+          {vehicles.map((v, i) => (
+            <motion.div
+              key={v.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.05 + 0.2 }}
+              className="glass rounded-xl p-4 flex items-center gap-3"
             >
-              <img src={photoPreview} alt="Vehiculo" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
-                <RefreshCw className="w-5 h-5 text-white" />
-                <span className="text-xs text-white font-medium">Cambiar foto</span>
+              <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0">
+                <Car className="w-6 h-6 text-cyan-400" />
               </div>
-            </div>
-          ) : (
-            <div
-              onClick={openCamera}
-              className="w-full h-40 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-cyan-500/50 transition-colors"
-            >
-              <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center">
-                <Camera className="w-6 h-6 text-cyan-400" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-white">{v.model}</p>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    v.verified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {v.verified ? 'Verificado' : 'Pendiente'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">Placa: {v.plate} | Color: {v.color} {v.year ? `| ${v.year}` : ''}</p>
               </div>
-              <span className="text-xs text-gray-500">Tocar para tomar foto</span>
-              <Upload className="w-4 h-4 text-gray-600" />
-            </div>
-          )}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => handleEditVehicle(v)}
+                  className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+                >
+                  <Pencil className="w-4 h-4 text-gray-500" />
+                </button>
+                <button
+                  onClick={() => handleDeleteVehicle(v.id)}
+                  className="p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-400" />
+                </button>
+              </div>
+            </motion.div>
+          ))}
         </motion.div>
+      )}
 
-        {/* Form */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="glass rounded-2xl p-4 space-y-4"
-        >
-          {/* Plate */}
-          <div>
-            <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-              <Hash className="w-3 h-3" /> Placa
-            </label>
-            <input
-              type="text"
-              value={vehicle.plate}
-              onChange={(e) => setVehicle({ ...vehicle, plate: e.target.value.toUpperCase() })}
-              placeholder="ABC-123"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
-            />
-          </div>
+      {/* Add / Edit Vehicle Form */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="glass-strong rounded-2xl p-4 space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">
+            {isEditing ? 'Editar Vehiculo' : 'Agregar Vehiculo'}
+          </h3>
+          {isEditing && (
+            <button onClick={resetForm} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          )}
+        </div>
 
-          {/* Model */}
-          <div>
-            <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-              <Car className="w-3 h-3" /> Modelo
-            </label>
-            <input
-              type="text"
-              value={vehicle.model}
-              onChange={(e) => setVehicle({ ...vehicle, model: e.target.value })}
-              placeholder="Toyota Corolla 2020"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
-            />
-          </div>
-
-          {/* Color and Year */}
-          <div className="grid grid-cols-2 gap-3">
+        {!isEditing && vehicles.length > 0 && !isEditing ? (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="w-full py-3 rounded-xl border border-dashed border-white/20 text-gray-400 text-sm flex items-center justify-center gap-2 hover:border-cyan-500/50 hover:text-cyan-400 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar otro vehiculo
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium mb-1 block">Placa</label>
+                <input
+                  type="text"
+                  placeholder="ABC-123"
+                  value={form.plate}
+                  onChange={(e) => setForm(prev => ({ ...prev, plate: e.target.value.toUpperCase() }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 font-medium mb-1 block">Ano</label>
+                <input
+                  type="text"
+                  placeholder="2024"
+                  value={form.year}
+                  onChange={(e) => setForm(prev => ({ ...prev, year: e.target.value }))}
+                  maxLength={4}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            </div>
             <div>
-              <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-                <Palette className="w-3 h-3" /> Color
-              </label>
+              <label className="text-[10px] text-gray-500 font-medium mb-1 block">Modelo</label>
               <input
                 type="text"
-                value={vehicle.color}
-                onChange={(e) => setVehicle({ ...vehicle, color: e.target.value })}
-                placeholder="Blanco"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                placeholder="Toyota Corolla"
+                value={form.model}
+                onChange={(e) => setForm(prev => ({ ...prev, model: e.target.value }))}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-                <Calendar className="w-3 h-3" /> Ano
-              </label>
+              <label className="text-[10px] text-gray-500 font-medium mb-1 block">Color</label>
               <input
-                type="number"
-                value={vehicle.year || ''}
-                onChange={(e) => setVehicle({ ...vehicle, year: e.target.value ? parseInt(e.target.value) : null })}
-                placeholder="2024"
-                min={1990}
-                max={2026}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                type="text"
+                placeholder="Blanco"
+                value={form.color}
+                onChange={(e) => setForm(prev => ({ ...prev, color: e.target.value }))}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
               />
             </div>
+            <div className="flex gap-2 pt-1">
+              {isEditing && (
+                <button
+                  onClick={resetForm}
+                  className="flex-1 border border-white/10 text-gray-400 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                onClick={handleSaveVehicle}
+                disabled={saving || !form.plate || !form.model || !form.color}
+                className="flex-1 btn-neon text-white font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    {isEditing ? 'Actualizar' : 'Guardar'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </motion.div>
+        )}
+      </motion.div>
 
-        {/* Save Button */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+      {/* Verification reminder */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="glass rounded-2xl p-4 border border-amber-500/20"
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Shield className="w-4 h-4 text-amber-400" />
+          <span className="text-xs font-semibold text-amber-400">Recuerda</span>
+        </div>
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Despues de registrar tu vehiculo, debes subir las fotos del mismo en la seccion de Verificacion para completar el proceso. Las fotos deben mostrar la placa claramente visible.
+        </p>
+        <button
+          onClick={() => window.location.href = '/driver/verification'}
+          className="mt-2 text-xs text-cyan-400 font-medium hover:underline"
         >
-          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-          {saving ? 'Guardando...' : 'Guardar Vehiculo'}
-        </motion.button>
-      </div>
+          Ir a Verificacion
+        </button>
+      </motion.div>
     </div>
   );
 }

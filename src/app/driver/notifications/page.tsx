@@ -1,217 +1,259 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabase';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Bell, Check, CheckCheck, Trash2, BellOff, RefreshCw } from 'lucide-react';
+import { supabase, type AppNotification } from '@/lib/supabase';
 import { toast } from 'sonner';
-import {
-  ArrowLeft, Bell, BellOff, Check, Trash2,
-  Loader2, Shield, AlertTriangle, Info, CheckCircle
-} from 'lucide-react';
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  is_read: boolean;
-  created_at: string;
-}
+import { useAuthStore } from '@/store/authStore';
 
 export default function DriverNotifications() {
-  const router = useRouter();
   const { user } = useAuthStore();
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
-  useEffect(() => {
-    if (user?.id) fetchNotifications();
-  }, [user?.id, filter]);
-
-  const fetchNotifications = async () => {
-    setLoading(true);
+  const fetchNotifications = useCallback(async () => {
+    if (!user?.id) return;
     try {
-      let query = supabase
-        .from('notifications')
+      const { data, error } = await supabase
+        .from('app_notifications')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (filter === 'unread') {
-        query = query.eq('is_read', false);
+      if (error) {
+        const errMsg = error.message || JSON.stringify(error);
+        if (error.code === '42P01') {
+          // Table doesn't exist yet - silent
+          setNotifications([]);
+        } else {
+          // RLS or other DB error - show user-friendly message
+          console.warn('[Notifications]', errMsg);
+          toast.error('No se pudieron cargar las notificaciones');
+        }
+      } else {
+        setNotifications(data || []);
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setNotifications(data || []);
-    } catch (err) {
-      console.error('Error fetching notifications:', err);
+    } catch (err: any) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const msg = err?.message || JSON.stringify(err);
+      console.warn('[Notifications]', msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
 
   const markAsRead = async (id: string) => {
     try {
-      await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+      await supabase
+        .from('app_notifications')
+        .update({ is_read: true })
+        .eq('id', id);
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     } catch (err) {
-      console.error('Error marking notification:', err);
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      toast.error('Error al marcar notificacion');
     }
   };
 
   const markAllRead = async () => {
+    if (!user?.id) return;
     try {
-      await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
+      await supabase
+        .from('app_notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      toast.success('Todas las notificaciones leidas');
+      toast.success('Todas las notificaciones marcadas como leidas');
     } catch (err) {
-      console.error('Error marking all:', err);
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      toast.error('Error al marcar todas');
     }
   };
 
   const deleteNotification = async (id: string) => {
     try {
-      await supabase.from('notifications').delete().eq('id', id);
+      await supabase
+        .from('app_notifications')
+        .delete()
+        .eq('id', id);
       setNotifications(prev => prev.filter(n => n.id !== id));
-      toast.success('Notificacion eliminada');
     } catch (err) {
-      console.error('Error deleting:', err);
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      toast.error('Error al eliminar notificacion');
     }
   };
 
-  const getIcon = (type: string) => {
+  const getIconColor = (type: AppNotification['type']) => {
     switch (type) {
-      case 'ride': return <Shield className="w-5 h-5 text-cyan-400" />;
-      case 'payment': return <CheckCircle className="w-5 h-5 text-emerald-400" />;
-      case 'warning': return <AlertTriangle className="w-5 h-5 text-amber-400" />;
-      case 'sos': return <AlertTriangle className="w-5 h-5 text-red-400" />;
-      default: return <Info className="w-5 h-5 text-blue-400" />;
+      case 'ride': return 'text-cyan-400 bg-cyan-500/20';
+      case 'payment': return 'text-emerald-400 bg-emerald-500/20';
+      case 'warning': return 'text-amber-400 bg-amber-500/20';
+      case 'sos': return 'text-red-400 bg-red-500/20';
+      default: return 'text-blue-400 bg-blue-500/20';
     }
   };
 
-  const getTypeColor = (type: string) => {
+  const getTypeLabel = (type: AppNotification['type']) => {
     switch (type) {
-      case 'ride': return 'border-l-cyan-500';
-      case 'payment': return 'border-l-emerald-500';
-      case 'warning': return 'border-l-amber-500';
-      case 'sos': return 'border-l-red-500';
-      default: return 'border-l-blue-500';
+      case 'ride': return 'Viaje';
+      case 'payment': return 'Pago';
+      case 'warning': return 'Alerta';
+      case 'sos': return 'SOS';
+      case 'system': return 'Sistema';
+      default: return 'Info';
     }
   };
 
-  const timeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Ahora';
-    if (mins < 60) return `Hace ${mins}m`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `Hace ${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `Hace ${days}d`;
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHrs = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMin < 1) return 'Ahora mismo';
+    if (diffMin < 60) return `Hace ${diffMin} min`;
+    if (diffHrs < 24) return `Hace ${diffHrs}h`;
+    if (diffDays < 7) return `Hace ${diffDays}d`;
+    return date.toLocaleDateString('es-CR', { day: 'numeric', month: 'short' });
   };
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
-    <div className="min-h-screen bg-rida-dark">
+    <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-rida-dark/80 backdrop-blur-xl border-b border-white/5">
-        <div className="flex items-center gap-3 p-4">
-          <button onClick={() => router.back()} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center">
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </button>
-          <h1 className="text-lg font-bold text-white">Notificaciones</h1>
-          {unreadCount > 0 && (
-            <span className="ml-auto flex items-center gap-1 text-xs text-cyan-400 bg-cyan-500/20 px-2 py-0.5 rounded-full">
-              <Bell className="w-3 h-3" /> {unreadCount} nuevas
-            </span>
-          )}
-        </div>
-
-        {/* Filter Tabs */}
-        <div className="flex gap-2 px-4 pb-3">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filter === 'all' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-gray-400 border border-transparent'
-            }`}
-          >
-            Todas
-          </button>
-          <button
-            onClick={() => setFilter('unread')}
-            className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filter === 'unread' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-gray-400 border border-transparent'
-            }`}
-          >
-            No leidas
-          </button>
-          <button
-            onClick={markAllRead}
-            className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded-full text-xs text-gray-400 bg-white/5 hover:bg-white/10"
-          >
-            <Check className="w-3 h-3" /> Marcar todas
-          </button>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-2">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">Notificaciones</h1>
+            <p className="text-sm text-gray-400 mt-1">
+              {unreadCount > 0 ? `${unreadCount} sin leer` : 'Sin novedades'}
+            </p>
           </div>
-        ) : notifications.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-16"
-          >
-            <BellOff className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">No hay notificaciones</p>
-            <p className="text-gray-600 text-xs mt-1">Las notificaciones nuevas apareceran aqui</p>
-          </motion.div>
-        ) : (
-          notifications.map((notif, i) => (
-            <motion.div
-              key={notif.id}
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-              onClick={() => !notif.is_read && markAsRead(notif.id)}
-              className={`glass rounded-xl p-3 border-l-2 ${getTypeColor(notif.type)} ${!notif.is_read ? 'bg-white/5' : 'opacity-60'} cursor-pointer transition-all`}
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllRead}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-medium hover:bg-cyan-500/20 transition-colors"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                Leer todo
+              </button>
+            )}
+            <button
+              onClick={() => { setLoading(true); fetchNotifications(); }}
+              className="p-2 rounded-lg hover:bg-white/5 transition-colors"
             >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  {getIcon(notif.type)}
+              <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Filter tabs */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="flex gap-2"
+      >
+        {['Todas', 'Sin leer'].map((tab) => (
+          <div
+            key={tab}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+              tab === 'Todas'
+                ? 'bg-white/10 text-white'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            {tab}
+          </div>
+        ))}
+      </motion.div>
+
+      {/* Notifications List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+        </div>
+      ) : notifications.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center justify-center py-12 space-y-3"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center">
+            <BellOff className="w-8 h-8 text-gray-600" />
+          </div>
+          <p className="text-sm text-gray-500">No tienes notificaciones</p>
+          <p className="text-xs text-gray-600">Las alertas de viajes y pagos apareceran aqui</p>
+        </motion.div>
+      ) : (
+        <div className="space-y-2">
+          <AnimatePresence>
+            {notifications.map((notif, index) => (
+              <motion.div
+                key={notif.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className={`glass rounded-xl p-3 flex items-start gap-3 transition-colors ${
+                  !notif.is_read ? 'border border-cyan-500/20' : ''
+                }`}
+              >
+                {/* Icon */}
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${getIconColor(notif.type)}`}>
+                  <Bell className="w-4 h-4" />
                 </div>
+
+                {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-white truncate">{notif.title}</h3>
-                    <span className="text-[10px] text-gray-500 flex-shrink-0">{timeAgo(notif.created_at)}</span>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500">
+                      {getTypeLabel(notif.type)}
+                    </span>
+                    <span className="text-[10px] text-gray-600">{formatTime(notif.created_at)}</span>
+                    {!notif.is_read && (
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />
+                    )}
                   </div>
+                  <p className="text-sm font-medium text-white">{notif.title}</p>
                   <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{notif.message}</p>
                 </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0">
                   {!notif.is_read && (
-                    <div className="w-2 h-2 rounded-full bg-cyan-400" />
+                    <button
+                      onClick={() => markAsRead(notif.id)}
+                      className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                      title="Marcar como leida"
+                    >
+                      <Check className="w-3.5 h-3.5 text-gray-500" />
+                    </button>
                   )}
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
-                    className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center hover:bg-red-500/20"
+                    onClick={() => deleteNotification(notif.id)}
+                    className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                    title="Eliminar"
                   >
-                    <Trash2 className="w-3 h-3 text-gray-500" />
+                    <Trash2 className="w-3.5 h-3.5 text-gray-600 hover:text-red-400" />
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          ))
-        )}
-      </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }

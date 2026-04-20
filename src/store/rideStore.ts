@@ -1,16 +1,16 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
-import type { Ride } from '@/lib/supabase';
+import type { Ride, PaymentMethodType } from '@/lib/supabase';
 
-export type RideStatus = 'searching' | 'assigned' | 'arriving' | 'started' | 'completed' | 'cancelled';
+export type RideStatus = 'searching' | 'assigned' | 'arriving' | 'started' | 'completed' | 'cancelled' | 'scheduled';
 
 interface RideState {
-  currentRide: (Ride & { driver_name?: string; driver_phone?: string; driver_vehicle?: string; driver_rating?: number; stops?: Array<{ address: string; lat?: number; lng?: number }> }) | null;
+  currentRide: (Ride & { driver_name?: string; driver_phone?: string; driver_vehicle?: string; driver_rating?: number; stops?: Array<{ address: string; lat?: number; lng?: number }>; scheduled_at?: string; is_scheduled?: boolean }) | null;
   rideHistory: (Ride & { driver_name?: string; driver_vehicle?: string })[];
   isCreating: boolean;
   availableDrivers: Array<{ id: string; name: string; vehicle: string; rating: number; distance: number; eta: number }>;
 
-  createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string, stops?: Array<{ address: string; lat?: number; lng?: number }>) => Promise<string | null>;
+  createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string, stops?: Array<{ address: string; lat?: number; lng?: number }>, paymentMethod?: PaymentMethodType, paymentExtra?: { cardLastFour?: string; sinpePhone?: string }, scheduledAt?: string) => Promise<string | null>;
   cancelRide: (rideId: string) => Promise<void>;
   completeRide: (rideId: string) => Promise<void>;
   fetchRideHistory: (userId: string) => Promise<void>;
@@ -32,7 +32,7 @@ export const useRideStore = create<RideState>((set, get) => ({
   isCreating: false,
   availableDrivers: [],
 
-  createRide: async (origin, destination, originLat, originLng, destLat, destLng, rideType = 'standard', stops = []) => {
+  createRide: async (origin, destination, originLat, originLng, destLat, destLng, rideType = 'standard', stops = [], paymentMethod = 'cash', paymentExtra = {}, scheduledAt) => {
     set({ isCreating: true });
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -69,10 +69,27 @@ export const useRideStore = create<RideState>((set, get) => ({
       const price = Math.round((basePrice + (distance * pricePerKm)) * multiplier);
       const duration = distance * 3;
 
-      // Build the ride data — try full insert first (with ride_type + stops)
+      // Check wallet balance if paying with wallet
+      if (paymentMethod === 'wallet') {
+        const { data: walletData } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single();
+
+        if (!walletData || walletData.balance < price) {
+          set({ isCreating: false });
+          throw new Error('Saldo insuficiente en tu billetera para este viaje');
+        }
+      }
+
+      // Check if this is a scheduled ride
+      const isScheduled = !!scheduledAt;
+
+      // Build the ride data — try full insert first (with ride_type + stops + payment)
       const fullInsert: Record<string, any> = {
         rider_id: user.id,
-        status: 'searching',
+        status: isScheduled ? 'scheduled' : 'searching',
         origin,
         origin_lat: originLat,
         origin_lng: originLng,
@@ -82,6 +99,12 @@ export const useRideStore = create<RideState>((set, get) => ({
         price,
         distance,
         duration,
+        payment_method: paymentMethod,
+        payment_status: 'pending',
+        card_last_four: paymentExtra.cardLastFour || null,
+        sinpe_phone: paymentExtra.sinpePhone || null,
+        scheduled_at: scheduledAt || null,
+        is_scheduled: isScheduled,
       };
 
       let ride: any = null;
@@ -132,6 +155,12 @@ export const useRideStore = create<RideState>((set, get) => ({
         driver_rating: undefined,
         stops: stops.length > 0 ? stops : undefined,
         ride_type: rideType,
+        payment_method: paymentMethod,
+        payment_status: 'pending',
+        card_last_four: paymentExtra.cardLastFour || null,
+        sinpe_phone: paymentExtra.sinpePhone || null,
+        scheduled_at: scheduledAt || undefined,
+        is_scheduled: isScheduled,
       };
 
       set({ currentRide: rideWithDriver, isCreating: false });
@@ -216,13 +245,140 @@ export const useRideStore = create<RideState>((set, get) => ({
   completeRide: async (rideId: string) => {
     try {
       const state = get();
-      const commissionRate = 15;
-      const driverEarnings = state.currentRide ? state.currentRide.price * (1 - commissionRate / 100) : 0;
+      const ride = state.currentRide;
 
+      // Fetch commission settings from DB
+      const { data: commissionSettings } = await supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['commission_percentage', 'base_fee']);
+
+      const commissionPct = Number(commissionSettings?.find((s: any) => s.key === 'commission_percentage')?.value || 15);
+      const baseFee = Number(commissionSettings?.find((s: any) => s.key === 'base_fee')?.value || 0);
+      const price = ride?.price || 0;
+      const commission = Math.round(price * commissionPct / 100) + baseFee;
+      const driverEarnings = Math.max(0, price - commission);
+
+      // Process payment based on payment method
+      const paymentMethod = (ride as any)?.payment_method || 'cash';
+      const riderId = ride?.rider_id;
+      const driverId = ride?.driver_id;
+
+      if (paymentMethod === 'wallet' && riderId) {
+        /* ── WALLET PAYMENT ── */
+        // Deduct from rider's wallet
+        const { data: riderWallet } = await supabase
+          .from('wallets')
+          .select('id, balance')
+          .eq('user_id', riderId)
+          .single();
+
+        if (riderWallet && riderWallet.balance >= price) {
+          // Deduct from rider
+          await supabase
+            .from('wallets')
+            .update({ balance: riderWallet.balance - price })
+            .eq('id', riderWallet.id);
+
+          // Record rider transaction
+          await supabase.from('transactions').insert({
+            wallet_id: riderWallet.id,
+            amount: -price,
+            type: 'ride_payment',
+            status: 'completed',
+            description: `Pago viaje #${rideId.slice(0, 8).toUpperCase()} — Billetera RIDA`,
+          });
+        }
+
+        // Credit driver's wallet (minus commission)
+        if (driverId) {
+          const { data: driverWallet } = await supabase
+            .from('wallets')
+            .select('id, balance')
+            .eq('user_id', driverId)
+            .single();
+
+          if (driverWallet) {
+            await supabase
+              .from('wallets')
+              .update({
+                balance: driverWallet.balance + driverEarnings,
+                total_earnings: (driverWallet.total_earnings || 0) + driverEarnings,
+              })
+              .eq('id', driverWallet.id);
+
+            await supabase.from('transactions').insert({
+              wallet_id: driverWallet.id,
+              amount: driverEarnings,
+              type: 'credit',
+              status: 'completed',
+              description: `Ganancia viaje #${rideId.slice(0, 8).toUpperCase()}`,
+            });
+          }
+        }
+      } else if (paymentMethod === 'cash' && driverId) {
+        /* ── CASH PAYMENT ── */
+        // Credit driver's wallet with full amount (minus commission) when they confirm cash
+        const { data: driverWallet } = await supabase
+          .from('wallets')
+          .select('id, balance')
+          .eq('user_id', driverId)
+          .single();
+
+        if (driverWallet) {
+          await supabase
+            .from('wallets')
+            .update({
+              balance: driverWallet.balance + driverEarnings,
+              total_earnings: (driverWallet.total_earnings || 0) + driverEarnings,
+            })
+            .eq('id', driverWallet.id);
+
+          await supabase.from('transactions').insert({
+            wallet_id: driverWallet.id,
+            amount: driverEarnings,
+            type: 'credit',
+            status: 'completed',
+            description: `Ganancia viaje (efectivo) #${rideId.slice(0, 8).toUpperCase()}`,
+          });
+        }
+      } else if (paymentMethod === 'card' || paymentMethod === 'sinpe') {
+        /* ── CARD / SINPE — mark as processing (real integration pending) ── */
+        if (driverId) {
+          const { data: driverWallet } = await supabase
+            .from('wallets')
+            .select('id, balance')
+            .eq('user_id', driverId)
+            .single();
+
+          if (driverWallet) {
+            await supabase
+              .from('wallets')
+              .update({
+                balance: driverWallet.balance + driverEarnings,
+                total_earnings: (driverWallet.total_earnings || 0) + driverEarnings,
+              })
+              .eq('id', driverWallet.id);
+
+            const methodLabel = paymentMethod === 'card' ? 'tarjeta' : 'SINPE';
+            await supabase.from('transactions').insert({
+              wallet_id: driverWallet.id,
+              amount: driverEarnings,
+              type: 'credit',
+              status: 'completed',
+              description: `Ganancia viaje (${methodLabel}) #${rideId.slice(0, 8).toUpperCase()}`,
+            });
+          }
+        }
+      }
+
+      // Update ride status with commission breakdown
       await supabase.from('rides').update({
         status: 'completed',
         driver_earnings: driverEarnings,
-        commission_rate: commissionRate,
+        commission_rate: commissionPct,
+        commission: commission,
+        payment_status: 'completed',
       }).eq('id', rideId);
 
       if (state.currentRide) {

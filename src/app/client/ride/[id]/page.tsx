@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   MapPin, Clock, Star, Car, ChevronRight, Receipt,
   HandCoins, CircleDot, Square, Shield, Phone,
-  MessageSquare, CheckCircle2, XCircle, Info,
+  MessageSquare, CheckCircle2, XCircle, Info, AlertTriangle,
   DollarSign, Route, Navigation
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -54,6 +54,10 @@ interface RideDetails {
   driver_rating?: number;
   review?: string;
   is_third_party: boolean;
+  payment_method?: string;
+  payment_status?: string;
+  card_last_four?: string;
+  sinpe_phone?: string;
   ride_type?: string;
   stops?: any;
   created_at: string;
@@ -104,6 +108,10 @@ export default function RideDetailsPage() {
         review: r.review,
         is_third_party: r.is_third_party || false,
         ride_type: r.ride_type,
+        payment_method: r.payment_method,
+        payment_status: r.payment_status,
+        card_last_four: r.card_last_four,
+        sinpe_phone: r.sinpe_phone,
         stops: r.stops,
         created_at: r.created_at,
         updated_at: r.updated_at,
@@ -449,6 +457,10 @@ export default function RideDetailsPage() {
                 <div className="flex justify-between">
                   <span>Tipo de viaje</span>
                   <span className="text-white">{rideTypeName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Metodo de pago</span>
+                  <span className="text-white">{ride.payment_method === 'cash' ? 'Efectivo' : ride.payment_method === 'wallet' ? 'Billetera RIDA' : ride.payment_method === 'card' ? `Tarjeta ****${ride.card_last_four || '****'}` : ride.payment_method === 'sinpe' ? `SINPE ${ride.sinpe_phone || ''}` : 'Efectivo'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Subtotal</span>

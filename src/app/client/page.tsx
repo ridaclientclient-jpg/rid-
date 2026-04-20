@@ -3,9 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, Clock, Star, Shield, ChevronRight, Zap, Car, Wallet, Bell, Headphones, Store } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { useRideStore } from '@/store/rideStore';
-import FavoritePlaces from '@/components/FavoritePlaces';
 
 export default function ClientHome() {
   const router = useRouter();
@@ -14,13 +14,17 @@ export default function ClientHome() {
 
   const quickActions = [
     { icon: Car, label: 'Pedir Viaje', desc: 'Transporte ahora', href: '/client/ride', color: 'from-blue-600 to-cyan-500' },
-    { icon: Clock, label: 'Programar', desc: 'Agendar viaje', href: '/client/ride', color: 'from-purple-600 to-blue-600' },
+    { icon: Clock, label: 'Programar', desc: 'Agendar viaje', href: '/client/ride?mode=schedule', color: 'from-purple-600 to-blue-600' },
     { icon: Wallet, label: 'Billetera', desc: 'Ver saldo', href: '/client/wallet', color: 'from-emerald-600 to-cyan-600' },
     { icon: Store, label: 'Marketplace', desc: 'Comprar productos', href: '/client/market', color: 'from-amber-500 to-orange-500' },
     { icon: Headphones, label: 'Soporte', desc: '24/7 ayuda', href: '/client/support', color: 'from-amber-500 to-orange-500' },
   ];
 
-  // Favorite places are now handled by the FavoritePlaces component (real data from Supabase)
+  const recentPlaces = [
+    { name: 'Casa', address: 'San José, Costa Rica', icon: '🏠' },
+    { name: 'Trabajo', address: 'Escazú, Costa Rica', icon: '🏢' },
+    { name: 'Gym', address: 'Santa Ana, Costa Rica', icon: '💪' },
+  ];
 
   return (
     <div className="p-4 space-y-6">
@@ -90,22 +94,67 @@ export default function ClientHome() {
         </div>
       </motion.div>
 
-      {/* Favorite Places */}
-      <FavoritePlaces />
-
-      {/* Safety Banner */}
+      {/* Recent Places */}
       <motion.div 
         initial={{ opacity: 0, y: 10 }} 
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <h2 className="text-sm font-semibold text-gray-400 mb-3">Lugares Frecuentes</h2>
+        <div className="space-y-2">
+          {recentPlaces.map((place, i) => (
+            <button
+              key={i}
+              onClick={() => router.push('/client/ride')}
+              className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+            >
+              <span className="text-xl">{place.icon}</span>
+              <div className="text-left">
+                <p className="text-sm font-medium text-white">{place.name}</p>
+                <p className="text-xs text-gray-500">{place.address}</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-600 ml-auto" />
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Safety Banner */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
         className="glass rounded-2xl p-4 border border-emerald-500/20"
       >
         <div className="flex items-center gap-3">
-          <Shield className="w-8 h-8 text-emerald-400" />
-          <div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+            <Shield className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white">Tu seguridad es primero</p>
             <p className="text-xs text-gray-400">Comparte tu viaje con contactos de confianza</p>
           </div>
+          <motion.button
+            onClick={async () => {
+              if (currentRide) {
+                const shareText = `Estoy en viaje con RIDA: ${currentRide.origin} → ${currentRide.destination}. Precio: ₡${currentRide.price.toLocaleString()}`;
+                if (navigator.share) {
+                  try {
+                    await navigator.share({ title: 'Mi viaje RIDA', text: shareText });
+                  } catch { /* user cancelled */ }
+                } else {
+                  await navigator.clipboard.writeText(shareText);
+                  toast.success('Enlace copiado al portapapeles');
+                }
+              } else {
+                toast.info('Inicia un viaje para compartir tu ubicacion con contactos de confianza');
+              }
+            }}
+            className="flex-shrink-0 px-4 py-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-medium hover:bg-emerald-500/25 transition-all"
+            whileTap={{ scale: 0.95 }}
+          >
+            Compartir
+          </motion.button>
         </div>
       </motion.div>
     </div>

@@ -54,20 +54,43 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
     );
   }
 
-  if (requiredRole && user && user.role !== requiredRole && user.role !== 'admin' && user.role !== 'super_admin') {
+  if (requiredRole && user && user.role !== requiredRole && user.role !== 'admin') {
+    const handleForceLogout = async () => {
+      await useAuthStore.getState().logout();
+      if (authPage) {
+        router.replace(authPage);
+      } else {
+        router.replace('/');
+      }
+    };
+
     return (
       <div className="min-h-screen bg-rida-dark flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-sm mx-auto px-4">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
           <p className="text-lg text-red-400 font-semibold">Acceso denegado</p>
           <p className="text-sm text-gray-400 mt-2">No tienes permisos para esta seccion</p>
-          <div className="mt-4 space-y-2">
+          <p className="text-xs text-gray-600 mt-1">Tu rol actual: <span className="text-yellow-400">{user.role}</span> | Requerido: <span className="text-cyan-400">{requiredRole}</span></p>
+          <div className="flex flex-col gap-2 mt-5">
             <button
-              onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = '/admin/login'; }}
-              className="block w-full px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-400 text-sm hover:bg-cyan-500/30 transition-colors"
+              onClick={handleForceLogout}
+              className="px-5 py-2.5 rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-sm font-medium hover:bg-cyan-500/25 transition-all"
             >
-              Limpiar sesion y reintentar
+              Cerrar sesion e intentar de nuevo
             </button>
-            <button onClick={() => router.push('/')} className="block w-full text-gray-400 hover:underline text-sm">
+            {authPage && (
+              <button
+                onClick={() => router.push(authPage)}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Ir a login
+              </button>
+            )}
+            <button onClick={() => router.push('/')} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
               Volver al inicio
             </button>
           </div>

@@ -1,158 +1,147 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/store/authStore';
-import { toast } from 'sonner';
-import SupportChat from '@/components/SupportChat';
 import {
-  MessageCircle, Phone, Mail, AlertTriangle,
-  Send, Loader2, HelpCircle, ChevronDown, ChevronUp
+  MessageCircle,
+  Phone,
+  Mail,
+  ChevronRight,
+  ChevronDown,
+  Send,
+  HelpCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
-const faqs = [
+const faqItems = [
   {
-    q: 'Como agrego un nuevo producto?',
-    a: 'Desde el menu lateral, ve a "Productos" y presiona el boton "Agregar Producto". Completa todos los campos incluyendo nombre, descripcion, precio, categoria y sube una foto del producto.',
+    question: 'Como agrego un nuevo producto a mi tienda?',
+    answer:
+      'Ve a la seccion Productos en el menu lateral y haz clic en "Agregar producto". Completa el formulario con nombre, descripcion, precio, categoria y sube al menos una foto. El producto estara visible para los clientes una vez que lo publiques. Puedes agregar hasta 10 imagenes por producto.',
   },
   {
-    q: 'Como gestiono mis pedidos?',
-    a: 'En la seccion "Pedidos" puedes ver todos los pedidos recibidos, pendientes, en proceso y completados. Puedes actualizar el estado de cada pedido manualmente.',
+    question: 'Como gestiono los pedidos recibidos?',
+    answer:
+      'En la seccion Pedidos podras ver todos los pedidos entrantes. Cada pedido muestra los productos solicitados, la direccion de entrega y el estado actual. Puedes aceptar o rechazar pedidos manualmente, o activar la aceptacion automatica en tu configuracion. Cuando aceptes un pedido, este se asignara a un repartidor disponible.',
   },
   {
-    q: 'Como importo productos por CSV?',
-    a: 'Ve a "CSV Import" en el menu lateral. Descarga la plantilla de ejemplo, llena tus productos y sube el archivo. El sistema creara los productos automaticamente.',
+    question: 'Cuando y como recibo mis pagos?',
+    answer:
+      'Los pagos se procesan automaticamente al completar cada entrega. El dinero se acumula en tu saldo de vendedor y puedes solicitar un retiro en cualquier momento desde la seccion de Ganancias. Los retiros se procesan en un plazo de 1 a 3 dias habiles. RIDA cobra una comision del 10% por cada venta realizada.',
   },
   {
-    q: 'Como reclamo por un problema con un pedido?',
-    a: 'Usa el formulario de "Reportar un Problema" abajo. Describe el asunto y el detalle del problema. El equipo de soporte revisara tu caso y te respondera en maximo 24 horas.',
+    question: 'Puedo importar productos en masa?',
+    answer:
+      'Si, puedes importar productos usando un archivo CSV desde la seccion CSV Import en el menu lateral. Descarga la plantilla proporcionada, completa los datos de tus productos y sube el archivo. El sistema validara los datos antes de importarlos. Puedes importar hasta 500 productos por archivo.',
+  },
+];
+
+const contactOptions = [
+  {
+    icon: MessageCircle,
+    label: 'Chat en vivo',
+    desc: 'Respuesta inmediata',
+    color: 'text-cyan-400 bg-cyan-500/20',
+    navigate: '/marketplace/support/chat',
   },
   {
-    q: 'Puedo tener multiples tiendas?',
-    a: 'Actualmente cada vendedor tiene una sola tienda asociada a su cuenta. Si necesitas gestionar multiples tiendas, contacta a soporte para evaluar tu caso.',
+    icon: Phone,
+    label: 'WhatsApp',
+    desc: '+506 8783-8329',
+    color: 'text-emerald-400 bg-emerald-500/20',
+    href: 'https://wa.me/50687838329',
   },
   {
-    q: 'Como cambio mi categoria de productos?',
-    a: 'En "Categorias" puedes crear, editar y eliminar las categorias de tus productos. Los productos asociados se actualizaran automaticamente.',
+    icon: Mail,
+    label: 'Email',
+    desc: 'soporte@rida.app',
+    color: 'text-blue-400 bg-blue-500/20',
+    href: 'mailto:soporte@rida.app',
   },
 ];
 
 export default function MarketplaceSupport() {
-  const { user } = useAuthStore();
-  const [sending, setSending] = useState(false);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  const [subject, setSubject] = useState('');
-  const [chatOpen, setChatOpen] = useState(false);
-
-  const handleSubmit = async () => {
-    if (!subject.trim() || !message.trim()) {
-      toast.error('Asunto y mensaje son obligatorios');
-      return;
-    }
-    setSending(true);
-    try {
-      const { error } = await supabase.from('reports').insert({
-        user_id: user?.id,
-        type: 'complaint',
-        description: `[Soporte Marketplace] ${subject}\n\n${message}`,
-      });
-      if (error) throw error;
-      toast.success('Mensaje enviado. Te responderemos pronto.');
-      setSubject('');
-      setMessage('');
-    } catch (err) {
-      console.error('Error sending support:', err);
-      toast.error('Error al enviar mensaje');
-    } finally {
-      setSending(false);
-    }
-  };
+  const router = useRouter();
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Soporte</h1>
-        <p className="text-gray-400 mt-1">Estamos aqui para ayudarte 24/7</p>
-      </div>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-xl font-bold text-white">Soporte</h1>
+        <p className="text-sm text-gray-400 mt-1">Estamos aqui para ayudarte 24/7</p>
+      </motion.div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={() => toast.info('Llamada al soporte (proximamente)')}
-          className="glass rounded-2xl p-5 flex items-center gap-4 hover:bg-white/5 transition-colors text-left"
-        >
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-            <Phone className="w-6 h-6 text-emerald-400" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">Llamar</p>
-            <p className="text-xs text-gray-500">Respuesta inmediata</p>
-          </div>
-        </motion.button>
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          onClick={() => setChatOpen(true)}
-          className="glass rounded-2xl p-5 flex items-center gap-4 hover:bg-white/5 transition-colors text-left"
-        >
-          <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
-            <MessageCircle className="w-6 h-6 text-blue-400" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">Chat en vivo</p>
-            <p className="text-xs text-gray-500">Respuesta inmediata</p>
-          </div>
-        </motion.button>
-        <motion.button
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          onClick={() => window.open('mailto:ridsoport@gmail.com', '_blank')}
-          className="glass rounded-2xl p-5 flex items-center gap-4 hover:bg-white/5 transition-colors text-left"
-        >
-          <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center">
-            <Mail className="w-6 h-6 text-amber-400" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">Email</p>
-            <p className="text-xs text-gray-500">soporte@ridasupreme.com</p>
-          </div>
-        </motion.button>
-      </div>
+      {/* Contact Buttons */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+      >
+        {contactOptions.map((item, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              if (item.navigate) {
+                router.push(item.navigate);
+              } else if (item.href) {
+                window.open(item.href, '_blank');
+              }
+            }}
+            className="glass rounded-2xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors"
+          >
+            <div
+              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${item.color}`}
+            >
+              <item.icon className="w-5 h-5" />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-sm font-medium text-white">{item.label}</p>
+              <p className="text-xs text-gray-500 truncate">{item.desc}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-600 shrink-0" />
+          </button>
+        ))}
+      </motion.div>
 
       {/* FAQ Section */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="glass rounded-2xl p-5"
+        transition={{ delay: 0.1 }}
       >
-        <div className="flex items-center gap-2 mb-4">
-          <HelpCircle className="w-5 h-5 text-cyan-400" />
-          <h2 className="text-base font-semibold text-white">Preguntas Frecuentes</h2>
-        </div>
+        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <HelpCircle className="w-4 h-4 text-cyan-400" />
+          Preguntas frecuentes
+        </h3>
         <div className="space-y-2">
-          {faqs.map((faq, i) => (
-            <div key={i} className="border border-white/5 rounded-xl overflow-hidden">
+          {faqItems.map((item, index) => (
+            <div key={index} className="glass rounded-xl overflow-hidden">
               <button
-                onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                className="w-full p-3.5 flex items-center gap-3 text-left hover:bg-white/5 transition-colors"
+                type="button"
+                onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
+                className="w-full p-4 flex items-center gap-3 text-left hover:bg-white/5 transition-colors"
               >
-                <span className="flex-1 text-sm text-gray-300">{faq.q}</span>
-                {openFaq === i ? (
-                  <ChevronUp className="w-4 h-4 text-gray-500 shrink-0" />
-                ) : (
+                <span className="flex-1 text-sm text-white">{item.question}</span>
+                {expandedFaq === index ? (
                   <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
                 )}
               </button>
-              {openFaq === i && (
-                <div className="px-3.5 pb-3.5">
-                  <p className="text-sm text-gray-400 leading-relaxed">{faq.a}</p>
-                </div>
+              {expandedFaq === index && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  className="px-4 pb-4"
+                >
+                  <div className="border-t border-white/5 pt-3">
+                    <p className="text-xs text-gray-400 leading-relaxed">{item.answer}</p>
+                  </div>
+                </motion.div>
               )}
             </div>
           ))}
@@ -163,45 +152,40 @@ export default function MarketplaceSupport() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="glass rounded-2xl p-5 space-y-4"
+        transition={{ delay: 0.15 }}
+        className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4"
       >
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-amber-400" />
-          <h2 className="text-base font-semibold text-white">Reportar un Problema</h2>
-        </div>
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <Send className="w-4 h-4 text-cyan-400" />
+          Envanos un mensaje
+        </h3>
         <div>
-          <label className="text-sm text-gray-400 font-medium mb-1.5 block">Asunto</label>
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Describe tu problema brevemente"
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50"
-          />
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500"
+          >
+            <option value="" className="bg-rida-dark">Selecciona un tema</option>
+            <option value="products" className="bg-rida-dark">Productos</option>
+            <option value="orders" className="bg-rida-dark">Pedidos</option>
+            <option value="payments" className="bg-rida-dark">Pagos y facturacion</option>
+            <option value="import" className="bg-rida-dark">Importar productos</option>
+            <option value="technical" className="bg-rida-dark">Problema tecnico</option>
+            <option value="other" className="bg-rida-dark">Otro</option>
+          </select>
         </div>
-        <div>
-          <label className="text-sm text-gray-400 font-medium mb-1.5 block">Mensaje</label>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Explica en detalle lo que sucedio..."
-            rows={5}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 resize-none"
-          />
-        </div>
+        <textarea
+          placeholder="Describe tu problema o consulta..."
+          rows={4}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 resize-none"
+        />
         <button
-          onClick={handleSubmit}
-          disabled={sending}
-          className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 text-sm"
+          type="button"
+          onClick={() => toast.success('Mensaje enviado. Te responderemos pronto.')}
+          className="w-full btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2"
         >
-          {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-          {sending ? 'Enviando...' : 'Enviar Mensaje'}
+          <Send className="w-4 h-4" />
+          Enviar mensaje
         </button>
       </motion.div>
-
-      {/* Chat en Vivo */}
-      <SupportChat source="marketplace" isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

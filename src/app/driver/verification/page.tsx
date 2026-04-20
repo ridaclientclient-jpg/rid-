@@ -1,200 +1,258 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, CheckCircle, Upload, Shield, User, CreditCard, Car, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
+import {
+  Camera, CheckCircle, Shield, User, CreditCard, Car,
+  ArrowLeft, X, RotateCcw, Image as ImageIcon, Loader2, AlertTriangle, FileCheck,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 
+/* ─── Step definitions ─────────────────────────────────────── */
 const steps = [
   { id: 1, label: 'Selfie', icon: User, description: 'Toma una selfie clara con buena iluminacion', docType: 'selfie' },
   { id: 2, label: 'Cedula Frente', icon: CreditCard, description: 'Fotografa el frente de tu cedula de identidad', docType: 'id_front' },
   { id: 3, label: 'Cedula Atras', icon: CreditCard, description: 'Fotografa el reverso de tu cedula de identidad', docType: 'id_back' },
   { id: 4, label: 'Licencia Frente', icon: CreditCard, description: 'Fotografa el frente de tu licencia de conducir', docType: 'license_front' },
   { id: 5, label: 'Licencia Atras', icon: CreditCard, description: 'Fotografa el reverso de tu licencia de conducir', docType: 'license_back' },
-  { id: 6, label: 'Vehiculo', icon: Car, description: 'Fotografa tu vehiculo: frente, lateral y atras', docType: 'vehicle' },
+  { id: 6, label: 'Vehiculo', icon: Car, description: 'Fotografa tu vehiculo: frente, lateral, atras e interior', docType: null },
+  { id: 7, label: 'Circulacion', icon: FileCheck, description: 'Fotografa la circulacion vehicular', docType: 'circulacion' },
+  { id: 8, label: 'Marchamo', icon: FileCheck, description: 'Fotografa el marchamo del vehiculo', docType: 'marchamo' },
 ];
 
 const vehicleSubPhotos = [
-  { id: 'front', label: 'Frente del vehiculo', docType: 'vehicle_front' },
-  { id: 'side', label: 'Lateral del vehiculo', docType: 'vehicle_side' },
-  { id: 'back', label: 'Atras del vehiculo', docType: 'vehicle_back' },
+  { id: 'vehicle_front', label: 'Frente del vehiculo' },
+  { id: 'vehicle_side', label: 'Lateral del vehiculo' },
+  { id: 'vehicle_back', label: 'Atras del vehiculo' },
+  { id: 'vehicle_interior', label: 'Interior del vehiculo' },
 ];
 
+/* ─── All document types for summary ───────────────────────── */
+const allDocTypes = [
+  { type: 'selfie', label: 'Selfie' },
+  { type: 'id_front', label: 'Cedula Frente' },
+  { type: 'id_back', label: 'Cedula Atras' },
+  { type: 'license_front', label: 'Licencia Frente' },
+  { type: 'license_back', label: 'Licencia Atras' },
+  { type: 'vehicle_front', label: 'Vehiculo Frente' },
+  { type: 'vehicle_side', label: 'Vehiculo Lateral' },
+  { type: 'vehicle_back', label: 'Vehiculo Atras' },
+  { type: 'vehicle_interior', label: 'Vehiculo Interior' },
+  { type: 'circulacion', label: 'Circulacion Vehicular' },
+  { type: 'marchamo', label: 'Marchamo' },
+];
+
+/* ─── Helpers ──────────────────────────────────────────────── */
+function dataURLtoBlob(dataURL: string): Blob {
+  const arr = dataURL.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+  const bstr = atob(arr[1]);
+  const n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    u8arr[i] = bstr.charCodeAt(i);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
+/* ─── Component ────────────────────────────────────────────── */
 export default function DriverVerification() {
-  const { user } = useAuthStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const user = useAuthStore((s) => s.user);
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [vehiclePhotos, setVehiclePhotos] = useState<Set<string>>(new Set());
+  const [uploadedDocs, setUploadedDocs] = useState<Set<string>>(new Set());
   const [currentVehiclePhoto, setCurrentVehiclePhoto] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [isUploading, setIsUploading] = useState(false);
 
-  const getDocType = useCallback(() => {
-    if (currentStep === 6) {
-      return vehicleSubPhotos[currentVehiclePhoto].docType;
-    }
-    return steps[currentStep - 1].docType;
-  }, [currentStep, currentVehiclePhoto]);
+  /* Camera state */
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const openCamera = () => {
-    // On mobile this opens the camera directly, on desktop opens file picker
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
+  }, []);
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, [stopCamera]);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraOpen(true);
+    } catch (err: any) {
+      console.error('Camera error:', err);
+      setCameraError('No se pudo acceder a la camara. Usa la opcion de subir imagen.');
+      setCameraOpen(false);
+      setTimeout(() => fileInputRef.current?.click(), 500);
+    }
+  }, []);
+
+  const capturePhoto = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    setCapturedImage(dataUrl);
+    stopCamera();
+    setCameraOpen(false);
+  }, [stopCamera]);
+
+  const retakePhoto = () => {
+    setCapturedImage(null);
+    startCamera();
   };
 
-  const compressImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve) => {
-      // Safety timeout: if FileReader hangs on mobile, resolve with original file after 10s
-      const timeout = setTimeout(() => resolve(file), 10000);
-
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-
-      // Use FileReader instead of URL.createObjectURL (more compatible with mobile cameras)
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => { clearTimeout(timeout); resolve(file); };
-      reader.readAsDataURL(file);
-
-      img.onload = () => {
-        clearTimeout(timeout);
-        try {
-          // Max 800px width - good quality but small file size
-          const maxW = 800;
-          const scale = img.width > maxW ? maxW / img.width : 1;
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob(
-            (blob) => resolve(blob || file),
-            'image/jpeg',
-            0.6
-          );
-        } catch {
-          // If canvas fails, return original file
-          resolve(file);
-        }
-      };
-      img.onerror = () => { clearTimeout(timeout); resolve(file); };
-    });
-  };
-
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!user?.id) {
-      toast.error('Debes iniciar sesion primero');
-      return;
-    }
-
-    // Validate file type
     if (!file.type.startsWith('image/')) {
-      toast.error('Solo se permiten imagenes');
+      toast.error('Selecciona un archivo de imagen valido');
       return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('La imagen no debe superar 10MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setCapturedImage(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, []);
 
-    const docType = getDocType();
-    setUploading(true);
+  /* ─── Upload to Supabase Storage + documents table ──────── */
+  const uploadDocument = async (docType: string, imageData: string): Promise<boolean> => {
+    if (!user) {
+      toast.error('Debes iniciar sesion para subir documentos');
+      return false;
+    }
 
+    setIsUploading(true);
     try {
-      // Compress image FIRST (phone cameras produce 8-15MB photos)
-      const compressed = await compressImage(file);
+      /* 1. Convert dataURL → Blob */
+      const blob = dataURLtoBlob(imageData);
+      const filePath = `${user.id}/${docType}_${Date.now()}.jpg`;
 
-      // Validate compressed size (should be under 1MB after compression)
-      if (compressed.size > 5 * 1024 * 1024) {
-        toast.error('La imagen no se pudo comprimir. Intenta con otra.');
-        setUploading(false);
-        return;
-      }
-
-      // Show preview
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setPreviews(prev => ({ ...prev, [docType]: ev.target?.result as string }));
-      };
-      reader.readAsDataURL(compressed);
-
-      // Build storage path
-      const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = `${docType}_${Date.now()}.${ext}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      // Upload to Supabase Storage
+      /* 2. Upload to Supabase Storage */
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, compressed, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
+        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
 
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath);
-
-      const docUrl = urlData.publicUrl;
-
-      // Save document record to database
-      const { error: dbError } = await supabase
-        .from('documents')
-        .upsert({
-          user_id: user.id,
-          type: docType,
-          url: docUrl,
-          status: 'pending',
-        }, { onConflict: 'user_id,type' });
-
-      if (dbError) throw dbError;
-
-      // Mark step as completed
-      if (currentStep === 6 && !isVehicleComplete()) {
-        setVehiclePhotos(prev => new Set([...prev, vehicleSubPhotos[currentVehiclePhoto].id]));
-        if (currentVehiclePhoto < vehicleSubPhotos.length - 1) {
-          setCurrentVehiclePhoto(prev => prev + 1);
-          toast.success(`${vehicleSubPhotos[currentVehiclePhoto].label} subida correctamente`);
-        } else {
-          setCompletedSteps(prev => new Set([...prev, 6]));
-          toast.success('Fotos del vehiculo completadas');
-          setIsSubmitted(true);
-        }
-      } else if (currentStep < 6) {
-        setCompletedSteps(prev => new Set([...prev, currentStep]));
-        toast.success(`${steps[currentStep - 1].label} subida correctamente`);
-        setTimeout(() => setCurrentStep(prev => prev + 1), 500);
-      } else {
-        setCompletedSteps(prev => new Set([...prev, currentStep]));
-        setIsSubmitted(true);
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError.message);
+        toast.error('Error al subir imagen: ' + uploadError.message);
+        setIsUploading(false);
+        return false;
       }
+
+      /* 3. Insert / upsert into documents table */
+      const { error: insertError } = await supabase
+        .from('documents')
+        .upsert(
+          { user_id: user.id, type: docType, url: filePath, status: 'pending' },
+          { onConflict: 'user_id,type' },
+        );
+
+      if (insertError) {
+        console.error('DB insert error:', insertError.message);
+        toast.error('Error al guardar registro: ' + insertError.message);
+        setIsUploading(false);
+        return false;
+      }
+
+      setUploadedDocs((prev) => new Set([...prev, docType]));
+      setIsUploading(false);
+      return true;
     } catch (err: any) {
-      console.error('Error uploading document:', err);
-      toast.error(err.message || 'Error al subir documento. Intenta de nuevo.');
-      // Remove preview on error
-      setPreviews(prev => {
-        const next = { ...prev };
-        delete next[docType];
-        return next;
-      });
-    } finally {
-      setUploading(false);
+      console.error('Upload exception:', err);
+      toast.error('Error de conexion al subir documento');
+      setIsUploading(false);
+      return false;
     }
   };
 
-  const isVehicleComplete = () => vehiclePhotos.size >= vehicleSubPhotos.length;
+  /* ─── Handle capture / use-photo ────────────────────────── */
+  const handleCapture = async (step: number) => {
+    if (!capturedImage) return;
 
-  const currentDocType = getDocType();
-  const currentPreview = previews[currentDocType];
+    if (step === 6) {
+      /* Vehicle sub-photo */
+      const docType = vehicleSubPhotos[currentVehiclePhoto].id;
+      const ok = await uploadDocument(docType, capturedImage);
+      if (!ok) return;
 
+      setCapturedImage(null);
+
+      if (currentVehiclePhoto < vehicleSubPhotos.length - 1) {
+        setCurrentVehiclePhoto((p) => p + 1);
+        toast.success(vehicleSubPhotos[currentVehiclePhoto].label + ' subida correctamente');
+      } else {
+        setCompletedSteps((prev) => new Set([...prev, 6]));
+        toast.success('Todas las fotos del vehiculo subidas');
+        setCurrentStep(7);
+      }
+    } else {
+      const docType = steps[step - 1].docType!;
+      const ok = await uploadDocument(docType, capturedImage);
+      if (!ok) return;
+
+      setCapturedImage(null);
+      setCompletedSteps((prev) => new Set([...prev, step]));
+      toast.success(steps[step - 1].label + ' subido correctamente');
+
+      if (step < steps.length) {
+        setTimeout(() => setCurrentStep(step + 1), 500);
+      } else {
+        /* Last step completed → finalize */
+        setIsSubmitted(true);
+        /* Update driver status to pending */
+        try {
+          const { data: drv } = await supabase
+            .from('drivers')
+            .select('id')
+            .eq('user_id', user!.id)
+            .single();
+          if (drv) {
+            await supabase.from('drivers').update({ status: 'pending' }).eq('id', drv.id);
+          }
+        } catch (e) {
+          console.warn('Could not update driver status:', e);
+        }
+      }
+    }
+  };
+
+  /* ─── Total documents count ─────────────────────────────── */
+  const totalDocs = allDocTypes.length;
+  const totalUploaded = uploadedDocs.size;
+
+  /* ═══════════════════════════════════════════════════════════
+     SUBMITTED VIEW
+     ═══════════════════════════════════════════════════════════ */
   if (isSubmitted) {
     return (
       <div className="p-4 space-y-6">
@@ -203,9 +261,9 @@ export default function DriverVerification() {
           <p className="text-sm text-gray-400 mt-1">Estado de tu verificacion</p>
         </motion.div>
 
-        {/* Progress - all complete */}
+        {/* Progress */}
         <div className="flex items-center gap-1.5">
-          {steps.map(s => (
+          {steps.map((s) => (
             <div key={s.id} className="h-1.5 flex-1 rounded-full bg-emerald-500" />
           ))}
         </div>
@@ -228,69 +286,107 @@ export default function DriverVerification() {
             Todos tus documentos han sido recibidos correctamente.
           </p>
           <p className="text-sm text-gray-400">
-            El proceso de verificacion toma entre <span className="text-cyan-400 font-medium">24-48 horas</span>.
+            El proceso de verificacion toma entre{' '}
+            <span className="text-cyan-400 font-medium">24-48 horas</span>.
           </p>
 
           <div className="glass rounded-xl p-4 flex items-center gap-3 mt-4">
             <Shield className="w-6 h-6 text-amber-400 shrink-0" />
             <div className="text-left">
               <p className="text-sm font-medium text-amber-400">Pendiente de revision</p>
-              <p className="text-xs text-gray-500">Te notificaremos cuando tu cuenta este verificada</p>
+              <p className="text-xs text-gray-500">
+                Te notificaremos cuando tu cuenta este verificada
+              </p>
             </div>
           </div>
 
-          {/* Completed items */}
-          <div className="space-y-2 mt-4">
-            {steps.map((step) => (
-              <div key={step.id} className="flex items-center gap-2 text-left">
-                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-xs text-gray-400">{step.label}</span>
-              </div>
-            ))}
+          {/* Uploaded documents list */}
+          <div className="space-y-1.5 mt-4 text-left">
+            <p className="text-xs text-gray-500 mb-2">
+              Documentos subidos ({totalUploaded}/{totalDocs}):
+            </p>
+            {allDocTypes.map((doc) => {
+              const isUploaded = uploadedDocs.has(doc.type);
+              return (
+                <div key={doc.type} className="flex items-center gap-2">
+                  {isUploaded ? (
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  )}
+                  <span
+                    className={`text-xs ${isUploaded ? 'text-gray-400' : 'text-red-400'}`}
+                  >
+                    {doc.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </motion.div>
       </div>
     );
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     CAPTURE VIEW
+     ═══════════════════════════════════════════════════════════ */
   const currentStepData = steps[currentStep - 1];
 
   return (
     <div className="p-4 space-y-6">
-      {/* Hidden file input - triggers camera on mobile, file picker on desktop */}
+      {/* Hidden elements */}
+      <canvas ref={canvasRef} className="hidden" />
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
         capture="environment"
+        onChange={handleFileSelect}
         className="hidden"
-        onChange={handleFileSelected}
       />
 
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-xl font-bold text-white">Verificacion</h1>
-        <p className="text-sm text-gray-400 mt-1">Paso {currentStep} de {steps.length}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">Verificacion</h1>
+            <p className="text-sm text-gray-400 mt-1">
+              Paso {currentStep} de {steps.length}
+            </p>
+          </div>
+          <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full">
+            {totalUploaded}/{totalDocs} subidos
+          </span>
+        </div>
       </motion.div>
 
       {/* Progress Bar */}
       <div className="space-y-2">
         <div className="flex items-center gap-1.5">
-          {steps.map(s => (
+          {steps.map((s) => (
             <div
               key={s.id}
               className={`h-1.5 flex-1 rounded-full transition-all ${
-                completedSteps.has(s.id) ? 'bg-emerald-500' : s.id === currentStep ? 'bg-cyan-500' : 'bg-white/10'
+                completedSteps.has(s.id)
+                  ? 'bg-emerald-500'
+                  : s.id === currentStep
+                  ? 'bg-cyan-500'
+                  : 'bg-white/10'
               }`}
             />
           ))}
         </div>
         <div className="flex justify-between">
-          {steps.map(s => (
+          {steps.map((s) => (
             <span
               key={s.id}
               className={`text-[9px] ${
-                completedSteps.has(s.id) ? 'text-emerald-400' : s.id === currentStep ? 'text-cyan-400' : 'text-gray-600'
+                completedSteps.has(s.id)
+                  ? 'text-emerald-400'
+                  : s.id === currentStep
+                  ? 'text-cyan-400'
+                  : 'text-gray-600'
               }`}
             >
               {s.label}
@@ -320,7 +416,9 @@ export default function DriverVerification() {
               <h3 className="text-lg font-semibold text-white">
                 {vehicleSubPhotos[currentVehiclePhoto].label}
               </h3>
-              <p className="text-sm text-gray-400">{vehicleSubPhotos[currentVehiclePhoto].label} en buena iluminacion</p>
+              <p className="text-sm text-gray-400">
+                {vehicleSubPhotos[currentVehiclePhoto].label} en buena iluminacion
+              </p>
             </>
           ) : (
             <>
@@ -336,54 +434,109 @@ export default function DriverVerification() {
                 <div
                   key={photo.id}
                   className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                    vehiclePhotos.has(photo.id) ? 'bg-emerald-500' : i === currentVehiclePhoto ? 'bg-cyan-500' : 'bg-white/20'
+                    uploadedDocs.has(photo.id)
+                      ? 'bg-emerald-500'
+                      : i === currentVehiclePhoto
+                      ? 'bg-cyan-500'
+                      : 'bg-white/20'
                   }`}
                 />
               ))}
             </div>
           )}
 
-          {/* Camera Upload Area */}
-          {uploading ? (
-            <div className="w-56 h-56 mx-auto border-2 border-cyan-500/50 rounded-2xl flex flex-col items-center justify-center gap-3">
+          {/* ─── Camera / Preview Area ──────────────────── */}
+          {isUploading ? (
+            /* Uploading spinner */
+            <div className="w-56 h-56 mx-auto rounded-2xl border-2 border-dashed border-cyan-500/50 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
-              <span className="text-xs text-cyan-400 font-medium">Subiendo foto...</span>
+              <span className="text-sm text-cyan-400 font-medium">Subiendo documento...</span>
+              <span className="text-xs text-gray-500">Por favor espera</span>
             </div>
-          ) : currentPreview ? (
-            <div
-              className="w-56 h-56 mx-auto rounded-2xl overflow-hidden relative cursor-pointer group"
-              onClick={openCamera}
-            >
-              <img
-                src={currentPreview}
-                alt="Preview"
+          ) : capturedImage ? (
+            /* Show captured image */
+            <div className="w-64 h-64 mx-auto rounded-2xl overflow-hidden relative">
+              <img src={capturedImage} alt="Captura" className="w-full h-full object-cover" />
+              <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent flex justify-center gap-3">
+                <button
+                  onClick={retakePhoto}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/20 backdrop-blur text-white text-xs font-medium"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Retomar
+                </button>
+                <button
+                  onClick={() => handleCapture(currentStep)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-medium"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Usar foto
+                </button>
+              </div>
+            </div>
+          ) : cameraOpen ? (
+            /* Live camera view */
+            <div className="w-64 h-64 mx-auto rounded-2xl overflow-hidden relative bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity">
-                <RefreshCw className="w-7 h-7 text-white" />
-                <span className="text-xs text-white font-medium">Tomar otra foto</span>
+              <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent flex justify-center">
+                <button
+                  onClick={capturePhoto}
+                  className="w-14 h-14 rounded-full bg-white flex items-center justify-center active:scale-90 transition-transform"
+                >
+                  <div className="w-12 h-12 rounded-full border-4 border-gray-300" />
+                </button>
               </div>
-              <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center">
-                <CheckCircle className="w-4 h-4 text-white" />
-              </div>
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setCameraOpen(false);
+                }}
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
             </div>
           ) : (
-            <div
-              className="w-56 h-56 mx-auto border-2 border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-cyan-500/50 transition-colors cursor-pointer group"
-              onClick={openCamera}
-            >
-              <div className="w-14 h-14 rounded-full bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
+            /* Capture options */
+            <div className="w-56 h-56 mx-auto border-2 border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-cyan-500/50 transition-colors">
+              <button
+                onClick={startCamera}
+                className="w-14 h-14 rounded-full bg-cyan-500/10 flex items-center justify-center hover:bg-cyan-500/20 transition-colors active:scale-90"
+              >
                 <Camera className="w-7 h-7 text-cyan-400" />
+              </button>
+              <span className="text-xs text-gray-400">Abrir camara</span>
+
+              <div className="flex items-center gap-2 w-32">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-[10px] text-gray-600">o</span>
+                <div className="flex-1 h-px bg-white/10" />
               </div>
-              <span className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">Tocar para capturar</span>
-              <Upload className="w-4 h-4 text-gray-600" />
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors active:scale-90"
+              >
+                <ImageIcon className="w-7 h-7 text-gray-400" />
+              </button>
+              <span className="text-xs text-gray-500">Subir imagen</span>
+
+              {cameraError && (
+                <p className="text-[10px] text-amber-400 mt-1 px-3">{cameraError}</p>
+              )}
             </div>
           )}
 
-          {/* Back Button (for vehicle sub-photos) */}
-          {currentStep === 6 && currentVehiclePhoto > 0 && (
+          {/* Back Button (vehicle sub-photos) */}
+          {currentStep === 6 && currentVehiclePhoto > 0 && !capturedImage && !cameraOpen && !isUploading && (
             <button
-              onClick={(e) => { e.stopPropagation(); setCurrentVehiclePhoto(prev => prev - 1); }}
+              onClick={() => setCurrentVehiclePhoto((prev) => prev - 1)}
               className="text-xs text-gray-400 hover:text-white flex items-center gap-1 mx-auto"
             >
               <ArrowLeft className="w-3 h-3" /> Foto anterior
@@ -394,23 +547,23 @@ export default function DriverVerification() {
 
       {/* Step Navigation */}
       <div className="flex gap-3">
-        {currentStep > 1 && !completedSteps.has(currentStep) && (
+        {currentStep > 1 && !completedSteps.has(currentStep) && !isUploading && (
           <button
             onClick={() => {
               if (currentStep === 6 && currentVehiclePhoto > 0) {
                 setCurrentVehiclePhoto(0);
                 return;
               }
-              setCurrentStep(prev => prev - 1);
+              setCurrentStep((prev) => prev - 1);
             }}
             className="flex-1 border border-white/10 text-gray-300 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-white/5"
           >
             <ArrowLeft className="w-4 h-4" /> Atras
           </button>
         )}
-        {completedSteps.has(currentStep) && currentStep < 6 && (
+        {completedSteps.has(currentStep) && currentStep < steps.length && (
           <button
-            onClick={() => setCurrentStep(prev => prev + 1)}
+            onClick={() => setCurrentStep((prev) => prev + 1)}
             className="flex-1 btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2"
           >
             Siguiente

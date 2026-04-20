@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, Package, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X, Headphones } from 'lucide-react';
+import { Home, Package, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,7 +18,6 @@ const navItems = [
   { icon: Home, label: 'Inicio', href: '/courier' },
   { icon: Package, label: 'Entregas', href: '/courier/deliveries' },
   { icon: Wallet, label: 'Ganancias', href: '/courier/earnings' },
-  { icon: Headphones, label: 'Soporte', href: '/courier/support' },
   { icon: UserIcon, label: 'Perfil', href: '/courier/profile' },
 ];
 
@@ -55,7 +54,7 @@ export default function CourierLayout({ children }: { children: React.ReactNode 
     { icon: TrendingUp, label: 'Ganancias', desc: 'Tus ingresos', href: '/courier/earnings', badge: null },
     { icon: Trophy, label: 'Premios', desc: 'Recompensas', action: () => toast.info('Premios proximamente'), badge: { text: 'Nuevo', color: 'bg-emerald-500' } },
     { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', action: () => toast.info('Funcion de invitacion proximamente'), badge: null },
-    { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', action: () => toast.info('Conectando con soporte...'), badge: null },
+    { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', action: () => router.push('/courier/support'), badge: null },
     { icon: MessageSquare, label: 'Notificaciones', desc: notifCount > 0 ? `${notifCount} no leida(s)` : 'Sin novedad', action: () => toast.info('Notificaciones proximamente'), badge: notifCount > 0 ? { text: String(notifCount), color: 'bg-red-500' } : null },
     { icon: InfoIcon, label: 'Centro de info', desc: 'Recursos', action: () => toast.info('Centro de informacion proximamente'), badge: null },
     { icon: Bike, label: 'Vehiculo', desc: 'Tu vehiculo de entrega', action: () => toast.info('Configuracion de vehiculo proximamente'), badge: null },

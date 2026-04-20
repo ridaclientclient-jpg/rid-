@@ -111,7 +111,7 @@ export default function CourierProfile() {
     { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', action: () => toast.info('Notificaciones configuradas'), color: 'text-amber-400 bg-amber-500/20' },
     { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', action: () => toast.info('Funcion de seguridad'), color: 'text-emerald-400 bg-emerald-500/20' },
     { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', action: () => toast.info('Mostrando terminos...'), color: 'text-purple-400 bg-purple-500/20' },
-    { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', action: () => toast.info('Conectando con soporte...'), color: 'text-pink-400 bg-pink-500/20' },
+    { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', action: () => router.push('/courier/support'), color: 'text-pink-400 bg-pink-500/20' },
   ];
 
   if (loading) {

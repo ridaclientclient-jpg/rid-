@@ -7,7 +7,7 @@ interface AuthUser {
   name: string;
   email: string;
   phone?: string;
-  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier' | 'super_admin';
+  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
   avatar?: string;
   isVerified?: boolean;
 }
@@ -42,6 +42,10 @@ function profileToUser(profile: Profile): AuthUser {
   };
 }
 
+// Shared promise to deduplicate concurrent initAuth() calls
+// Prevents Supabase auth lock contention (5000ms warning)
+let _initAuthPromise: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   supaUser: null,
@@ -53,47 +57,51 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   lockedUntil: null,
 
   initAuth: async () => {
-    // Prevent multiple listener setups (memory leak protection)
-    if ((get() as any)._authListenerSetup) return;
-    (get() as any)._authListenerSetup = true;
+    // If initAuth is already running, return the same promise (prevents lock contention)
+    if (_initAuthPromise) return _initAuthPromise;
 
-    // Only set loading if we're not already authenticated
-    const alreadyAuthed = get().isAuthenticated;
-    if (!alreadyAuthed) {
-      set({ isLoading: true });
-    }
+    _initAuthPromise = (async () => {
+      // Always fetch current session and profile
+      const alreadyAuthed = get().isAuthenticated;
+      if (!alreadyAuthed) {
+        set({ isLoading: true });
+      }
 
-    try {
+      try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const sessionUser = session.user;
         let profile = null;
 
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', sessionUser.id)
-          .single();
-
-        if (existingProfile) {
-          profile = existingProfile;
-        } else {
-          // Auto-create profile if missing
-          const meta = sessionUser.user_metadata || {};
-          const newProfile = {
-            id: sessionUser.id,
-            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
-            email: sessionUser.email || '',
-            phone: meta.phone || '',
-            role: meta.role || 'client',
-            is_verified: sessionUser.email_confirmed_at ? true : false,
-          };
-          const { data: createdProfile } = await supabase
+        try {
+          const { data: existingProfile } = await supabase
             .from('profiles')
-            .upsert(newProfile, { onConflict: 'id' })
-            .select()
+            .select('*')
+            .eq('id', sessionUser.id)
             .single();
-          profile = createdProfile;
+
+          if (existingProfile) {
+            profile = existingProfile;
+          } else {
+            // Auto-create profile if missing
+            const meta = sessionUser.user_metadata || {};
+            const newProfile = {
+              id: sessionUser.id,
+              name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+              email: sessionUser.email || '',
+              phone: meta.phone || '',
+              role: meta.role || 'client',
+              is_verified: sessionUser.email_confirmed_at ? true : false,
+            };
+            const { data: createdProfile } = await supabase
+              .from('profiles')
+              .upsert(newProfile, { onConflict: 'id' })
+              .select()
+              .single();
+            profile = createdProfile;
+          }
+        } catch (profileErr) {
+          console.warn('Profile fetch failed, using session metadata:', profileErr);
         }
 
         if (profile) {
@@ -105,7 +113,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isLoading: false,
           });
         } else {
-          set({ isLoading: false });
+          // Session is valid but profile not available — create fallback user from metadata
+          // This prevents the user from being logged out when the profiles table has issues
+          const meta = sessionUser.user_metadata || {};
+          const fallbackUser: AuthUser = {
+            id: sessionUser.id,
+            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+            email: sessionUser.email || '',
+            phone: meta.phone || '',
+            role: (meta.role || 'client') as AuthUser['role'],
+            isVerified: sessionUser.email_confirmed_at ? true : false,
+          };
+          console.warn('Using fallback user from session metadata:', fallbackUser.email, 'role:', fallbackUser.role);
+          set({
+            user: fallbackUser,
+            supaUser: sessionUser,
+            session,
+            isAuthenticated: true,
+            isLoading: false,
+          });
         }
       } else {
         set({ isLoading: false });
@@ -115,37 +141,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false });
     }
 
+    // Only set up the auth state change listener ONCE
+    if ((get() as any)._authListenerSetup) return;
+    (get() as any)._authListenerSetup = true;
+
     // Listen for auth changes
     supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
         const sessionUser = session.user;
         let profile = null;
 
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', sessionUser.id)
-          .single();
-
-        if (existingProfile) {
-          profile = existingProfile;
-        } else {
-          // Auto-create profile if missing
-          const meta = sessionUser.user_metadata || {};
-          const newProfile = {
-            id: sessionUser.id,
-            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
-            email: sessionUser.email || '',
-            phone: meta.phone || '',
-            role: meta.role || 'client',
-            is_verified: sessionUser.email_confirmed_at ? true : false,
-          };
-          const { data: createdProfile } = await supabase
+        try {
+          const { data: existingProfile } = await supabase
             .from('profiles')
-            .upsert(newProfile, { onConflict: 'id' })
-            .select()
+            .select('*')
+            .eq('id', sessionUser.id)
             .single();
-          profile = createdProfile;
+
+          if (existingProfile) {
+            profile = existingProfile;
+          } else {
+            // Auto-create profile if missing
+            const meta = sessionUser.user_metadata || {};
+            const newProfile = {
+              id: sessionUser.id,
+              name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+              email: sessionUser.email || '',
+              phone: meta.phone || '',
+              role: meta.role || 'client',
+              is_verified: sessionUser.email_confirmed_at ? true : false,
+            };
+            const { data: createdProfile } = await supabase
+              .from('profiles')
+              .upsert(newProfile, { onConflict: 'id' })
+              .select()
+              .single();
+            profile = createdProfile;
+          }
+        } catch (profileErr) {
+          console.warn('Profile fetch in onAuthStateChange failed:', profileErr);
         }
 
         if (profile) {
@@ -156,7 +190,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isAuthenticated: true,
             isLoading: false,
           });
+        } else {
+          // Fallback: use session metadata
+          const meta = sessionUser.user_metadata || {};
+          const fallbackUser: AuthUser = {
+            id: sessionUser.id,
+            name: meta.name || sessionUser.email?.split('@')[0] || 'Usuario',
+            email: sessionUser.email || '',
+            phone: meta.phone || '',
+            role: (meta.role || 'client') as AuthUser['role'],
+            isVerified: sessionUser.email_confirmed_at ? true : false,
+          };
+          set({
+            user: fallbackUser,
+            supaUser: sessionUser,
+            session,
+            isAuthenticated: true,
+            isLoading: false,
+          });
         }
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Update session when token is refreshed to prevent premature logout
+        set({
+          supaUser: session.user,
+          session,
+          isAuthenticated: true,
+        });
       } else if (event === 'SIGNED_OUT') {
         // Skip if logout was already handled manually (prevents double state change)
         if ((get() as any)._isLoggingOut) return;
@@ -169,6 +228,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
       }
     });
+    })()
+    .finally(() => { _initAuthPromise = null; });
   },
 
   login: async (email: string, password: string) => {

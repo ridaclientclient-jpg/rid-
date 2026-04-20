@@ -1,49 +1,57 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft, FileText, CheckCircle, ChevronDown, ChevronUp
-} from 'lucide-react';
+import { FileText, ChevronDown, ChevronUp, Shield, User, Car, CreditCard } from 'lucide-react';
 import { useState } from 'react';
 
-const termsSections = [
+const sections = [
   {
-    title: '1. Terminos del Servicio',
-    content: `Al registrarte como conductor en RIDA SUPREME, aceptas proporcionar un servicio de transporte seguro y profesional. Te comprometes a mantener tu vehiculo en buenas condiciones, cumplir con todas las leyes de transito vigentes, y tratar a todos los pasajeros con respeto y cortesia. RIDA SUPREME se reserva el derecho de desactivar tu cuenta si se detecta un incumplimiento reiterado de estos terminos. Como conductor, eres responsable de tu propia seguridad y la de tus pasajeros durante cada viaje.`,
+    title: '1. Terminos Generales',
+    icon: FileText,
+    content: `Al registrarte como conductor o repartidor en RIDA SUPREME SYSTEM, aceptas cumplir con todos los terminos y condiciones aqui establecidos. La plataforma RIDA es un servicio de intermediacion tecnologica que conecta a conductores y repartidores con usuarios que solicitan servicios de transporte o entrega de paquetes. Al usar la plataforma, reconoces que RIDA actua exclusivamente como intermediario y no asume responsabilidad directa por los servicios prestados entre las partes. Estos terminos aplican de igual manera para conductores de vehiculos, motociclistas y ciclistas que ofrecen servicios de entrega o courier a traves de la plataforma.`,
   },
   {
-    title: '2. Requisitos del Conductor',
-    content: `Para operar como conductor en la plataforma, debes cumplir con los siguientes requisitos: ser mayor de 18 anos, poseer una licencia de conducir vigente, tener un vehiculo asegurado y con revision tecnica al dia, y aprobar el proceso de verificacion de documentos. RIDA SUPREME verifica periodicamente el cumplimiento de estos requisitos y puede solicitar la actualizacion de documentos en cualquier momento. La falta de documentacion vigente puede resultar en la suspension temporal de la cuenta.`,
+    title: '2. Requisitos para Conductor',
+    icon: Car,
+    content: `Para operar como conductor en RIDA, debes cumplir con los siguientes requisitos: ser mayor de 18 anos de edad, poseer una licencia de conducir vigente emitida por la autoridad competente, contar con un vehiculo que cumpla con las normas de seguridad vial establecidas por la legislacion local. El vehiculo debe tener seguro vigente, revision tecnica al dia y estar en buenas condiciones mecanicas. Para conductores de vehiculos motorizados (carros y motos), la licencia debe corresponder al tipo de vehiculo que se utilizara. Para ciclistas, se requiere casco de seguridad certificado y equipo reflectante. RIDA se reserva el derecho de solicitar documentacion adicional y realizar verificaciones periodicas para mantener la calidad del servicio.`,
   },
   {
-    title: '3. Tarifas y Pagos',
-    content: `Las tarifas de cada viaje son calculadas automaticamente por la plataforma basandose en la distancia, duracion estimada, demanda y tipo de servicio. RIDA SUPREMEcobra una comision sobre cada viaje completado, la cual se detalla en tu panel de ganancias. Los pagos se procesan de forma segura a traves de la billetera integrada en la aplicacion. Puedes solicitar retiros de tus ganancias acumuladas segun los limites y horarios establecidos por la plataforma.`,
+    title: '3. Requisitos para Repartidor',
+    icon: CreditCard,
+    content: `Los repartidores que ofrecen servicios de courier a traves de RIDA deben cumplir con los siguientes requisitos: ser mayor de 18 anos de edad, contar con identificacion vigente, y utilizar un vehiculo adecuado para el tipo de entregas que acepten. Los repartidores pueden utilizar moto, bicicleta o vehiculo, y deben tener el equipo de seguridad correspondiente a cada tipo de vehiculo. Todo repartidor debe mantener en buen estado su equipo de transporte y proporcionar un servicio seguro y confiable. RIDA evalua periodicamente el desempeno de los repartidores y puede suspender cuentas que no cumplan con los estandares de calidad.`,
   },
   {
-    title: '4. Cancelaciones y Penalidades',
-    content: `Las cancelaciones excesivas por parte del conductor pueden resultar en reduccion de tu calificacion, menor prioridad en la asignacion de viajes, o suspension temporal de la cuenta. Se considera cancelacion excesiva mas de 3 cancelaciones en un periodo de 24 horas. Las cancelaciones por razones de seguridad, emergencias, o comportamiento inapropiado del pasajero no seran penalizadas. Debes reportar estos incidentes a traves del sistema de soporte.`,
+    title: '4. Seguridad y Responsabilidad',
+    icon: Shield,
+    content: `La seguridad de todos los participantes es la prioridad maxima de RIDA. Los conductores y repartidores deben: respetar todas las leyes de transito aplicables, no utilizar dispositivos moviles mientras conducen, mantener un comportamiento profesional y respetuoso en todo momento, no transportar pasajeros o paquetes adicionales no registrados en la plataforma, y reportar inmediatamente cualquier incidente o situacion de emergencia a traves del boton SOS. RIDA cuenta con sistemas de seguimiento GPS en tiempo real, verificacion de identidad y calificacion mutua para garantizar la seguridad. El incumplimiento de las normas de seguridad puede resultar en la suspension o cancelacion permanente de la cuenta.`,
   },
   {
-    title: '5. Privacidad y Datos',
-    content: `RIDAA SUPREME protege tus datos personales conforme a nuestra Politica de Privacidad. Tu ubicacion se comparte con pasajeros unicamente durante los viajes activos para seguridad de ambas partes. No compartimos tu informacion personal con terceros sin tu consentimiento expreso. Tienes derecho a solicitar la eliminacion de tus datos personales en cualquier momento, sujeto a las obligaciones legales de retencion de informacion.`,
+    title: '5. Tarifas y Pagos',
+    icon: CreditCard,
+    content: `Las tarifas de los servicios son calculadas dinamicamente por la plataforma basandose en factores como la distancia, tiempo estimado, demanda en tiempo real y condiciones del trafico. RIDA retiene un porcentaje de comision sobre cada servicio, el cual es comunicado claramente antes de aceptar cada viaje o entrega. Los pagos son procesados de forma segura y depositados directamente en la billetera digital del conductor o repartidor dentro de la plataforma. Los retiros de fondos pueden solicitarse en cualquier momento y seran procesados segun los tiempos establecidos por el proveedor de pago. RIDA garantiza transparencia total en la estructura de tarifas y comisiones, la cual esta disponible en todo momento dentro de la seccion de ganancias de la aplicacion.`,
   },
   {
-    title: '6. Seguro y Seguridad',
-    content: `RIDAA SUPREME proporciona cobertura de seguro durante cada viaje activo para proteger tanto al conductor como al pasajero en caso de accidente. Esta cobertura aplica unicamente cuando el viaje esta en curso o cuando te diriges a recoger a un pasajero. En caso de emergencia, utiliza el boton SOS disponible en la aplicacion para contactar inmediatamente a los servicios de emergencia y al equipo de soporte de RIDA SUPREME.`,
+    title: '6. Privacidad y Proteccion de Datos',
+    icon: User,
+    content: `RIDA respeta la privacidad de todos sus usuarios y cumple con la legislacion de proteccion de datos aplicable. Los datos personales proporcionados durante el registro (nombre, correo, telefono, documentos de verificacion) son utilizados exclusivamente para los fines de la plataforma: verificacion de identidad, gestion de servicios, comunicaciones relacionadas con la plataforma y cumplimiento de obligaciones legales. RIDA no compartira informacion personal con terceros sin consentimiento expreso del usuario, excepto cuando sea requerido por autoridad competente. Los datos de ubicacion se recopilan unicamente durante la prestacion activa del servicio y se eliminan periodicamente segun nuestra politica de retencion de datos. El usuario puede solicitar la eliminacion de su cuenta y datos personales en cualquier momento contactando a soporte.`,
   },
   {
-    title: '7. Calificacion y Revision',
-    content: `Tanto conductores como pasajeros pueden calificarse mutuamente despues de cada viaje. Tu calificacion promedio afecta directamente la cantidad y calidad de viajes que recibes. Una calificacion promedio inferior a 4.5 puede resultar en una revision de tu cuenta y posibles medidas correctivas. Si consideras que una calificacion es injusta, puedes apelar a traves del soporte tecnico dentro de los 7 dias siguientes al viaje.`,
+    title: '7. Calificaciones y Calidad del Servicio',
+    icon: Shield,
+    content: `RIDA utiliza un sistema de calificacion mutua de 1 a 5 estrellas tanto para conductores/repartidores como para usuarios. Las calificaciones ayudan a mantener la calidad del servicio y permiten a todos los participantes tomar decisiones informadas. Un promedio de calificacion inferior a 4.3 puede resultar en advertencias o suspension de la cuenta. Los casos de calificacion muy baja seran revisados por nuestro equipo de soporte antes de tomar cualquier accion. RIDA tambien toma en cuenta factores como tasa de aceptacion de viajes, puntualidad, cancelled rides ratio y cumplimiento de las normas de seguridad para evaluar el desempeno general de cada conductor y repartidor en la plataforma.`,
+  },
+  {
+    title: '8. Cancelaciones y Sanciones',
+    icon: FileText,
+    content: `Las cancelaciones frecuentes de servicios aceptados afectan negativamente la experiencia de todos los usuarios. RIDA establece los siguientes lineamientos: cancelar un servicio despues de haberlo aceptado sin causa justificada puede resultar en una penalizacion. Las causas justificadas incluyen: emergencia personal, problema mecanico del vehiculo, o situacion de inseguridad. Tres o mas cancelaciones injustificadas en un periodo de 7 dias resultaran en una reduccion temporal del numero de solicitudes recibidas. El incumplimiento reiterado puede llevar a la suspension temporal o permanente de la cuenta. RIDA se compromete a revisar cada caso de forma justa y transparente antes de aplicar cualquier sancion, y el conductor o repartidor tendra derecho a apelar cualquier decision a traves del canal de soporte.`,
   },
 ];
 
 export default function DriverTerms() {
-  const router = useRouter();
-  const [openSections, setOpenSections] = useState<Set<number>>(new Set([0]));
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set([0]));
 
   const toggleSection = (index: number) => {
-    setOpenSections(prev => {
+    setExpandedSections(prev => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
       else next.add(index);
@@ -52,83 +60,85 @@ export default function DriverTerms() {
   };
 
   return (
-    <div className="min-h-screen bg-rida-dark">
+    <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-rida-dark/80 backdrop-blur-xl border-b border-white/5">
-        <div className="flex items-center gap-3 p-4">
-          <button onClick={() => router.back()} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center">
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </button>
-          <h1 className="text-lg font-bold text-white">Terminos y Condiciones</h1>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-xl font-bold text-white">Terminos y Condiciones</h1>
+        <p className="text-sm text-gray-400 mt-1">Ultima actualizacion: Abril 2025</p>
+      </motion.div>
+
+      {/* Summary */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="glass rounded-2xl p-4 border border-cyan-500/20"
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <FileText className="w-4 h-4 text-cyan-400" />
+          <span className="text-sm font-semibold text-white">Resumen</span>
         </div>
-      </div>
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Estos terminos regulan tu uso de RIDA como conductor o repartidor. Al utilizar la plataforma, aceptas estas condiciones. Te recomendamos leerlas completamente antes de comenzar a ofrecer servicios.
+        </p>
+      </motion.div>
 
-      <div className="p-4 space-y-3">
-        {/* Intro */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-2xl p-4 text-center"
-        >
-          <div className="w-14 h-14 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-3">
-            <FileText className="w-7 h-7 text-purple-400" />
-          </div>
-          <h2 className="text-sm font-bold text-white">Condiciones para Conductores</h2>
-          <p className="text-[11px] text-gray-500 mt-1">Ultima actualizacion: Abril 2025</p>
-        </motion.div>
-
-        {/* Sections */}
-        {termsSections.map((section, i) => (
+      {/* Sections */}
+      <div className="space-y-2">
+        {sections.map((section, index) => (
           <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 5 }}
+            key={index}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.03 }}
+            transition={{ delay: index * 0.03 + 0.1 }}
             className="glass rounded-xl overflow-hidden"
           >
             <button
-              onClick={() => toggleSection(i)}
-              className="w-full p-4 flex items-center gap-3 text-left"
+              onClick={() => toggleSection(index)}
+              className="w-full p-4 flex items-center gap-3 text-left hover:bg-white/5 transition-colors"
             >
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-white">{section.title}</h3>
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0">
+                <section.icon className="w-4 h-4 text-cyan-400" />
               </div>
-              {openSections.has(i) ? (
+              <span className="flex-1 text-sm font-medium text-white">{section.title}</span>
+              {expandedSections.has(index) ? (
                 <ChevronUp className="w-4 h-4 text-gray-500" />
               ) : (
                 <ChevronDown className="w-4 h-4 text-gray-500" />
               )}
             </button>
-            {openSections.has(i) && (
+            {expandedSections.has(index) && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
                 className="px-4 pb-4"
               >
-                <p className="text-xs text-gray-400 leading-relaxed">{section.content}</p>
+                <div className="border-t border-white/5 pt-3">
+                  <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-line">
+                    {section.content}
+                  </p>
+                </div>
               </motion.div>
             )}
           </motion.div>
         ))}
-
-        {/* Acceptance Note */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="glass rounded-xl p-4 border border-cyan-500/20 mt-4"
-        >
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-medium text-white">Aceptacion automatica</p>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Al usar RIDA SUPREME como conductor, aceptas estos terminos y condiciones. Puedes consultar esta seccion en cualquier momento desde tu perfil.
-              </p>
-            </div>
-          </div>
-        </motion.div>
       </div>
+
+      {/* Footer Note */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="text-center py-4"
+      >
+        <p className="text-[10px] text-gray-600">
+          Al continuar usando RIDA, aceptas estos Terminos y Condiciones.
+        </p>
+        <p className="text-[10px] text-gray-600 mt-1">
+          Para dudas, contacta a soporte desde la app.
+        </p>
+      </motion.div>
     </div>
   );
 }

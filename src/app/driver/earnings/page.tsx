@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
 import { supabase, type Driver, type Ride, type Wallet, type Transaction } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import {
   Wallet as WalletIcon, TrendingUp, Clock, ChevronRight, ArrowDownCircle,
   Info, Calendar, CreditCard, Banknote, Loader2, Target,
   Gift, Flag, Zap, BarChart3, ArrowUpCircle, RefreshCw,
+  X, Send, Smartphone, Shield, Users,
 } from 'lucide-react';
 
 interface WeeklyDay {
@@ -22,7 +23,7 @@ interface TxDisplay {
   desc: string;
   amount: number;
   time: string;
-  type: 'ride' | 'withdraw';
+  type: 'ride' | 'withdraw' | 'transfer';
 }
 
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
@@ -66,6 +67,29 @@ export default function DriverEarnings() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [bonuses, setBonuses] = useState(0);
   const [activeTab, setActiveTab] = useState('rides');
+  const [walletId, setWalletId] = useState<string | null>(null);
+
+  // ─── Modal States ─────────────────────────────────
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+
+  // ─── Withdraw Form ────────────────────────────────
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
+
+  // ─── Transfer Form ────────────────────────────────
+  const [transferPhone, setTransferPhone] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferLoading, setTransferLoading] = useState(false);
+
+  // ─── Queue State ──────────────────────────────────
+  const [queueInfo, setQueueInfo] = useState<{
+    position: number;
+    status: 'queued' | 'processing';
+    amount: number;
+    queueId: string;
+  } | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const maxAmount = Math.max(...weeklyData.map(d => d.amount), 1);
   const maxHours = 12;
@@ -87,15 +111,31 @@ export default function DriverEarnings() {
         setWorkHours(driver.work_hours_today || 0);
       }
 
-      const { data: wallet } = await supabase
+      // Fetch or auto-create wallet
+      let { data: wallet, error: walletErr } = await supabase
         .from('wallets')
         .select('*')
         .eq('user_id', user.id)
         .single();
 
+      if (walletErr || !wallet) {
+        const { data: newWallet } = await supabase
+          .from('wallets')
+          .upsert({
+            user_id: user.id,
+            balance: 0,
+            total_earnings: 0,
+            total_withdrawn: 0,
+          }, { onConflict: 'user_id' })
+          .select()
+          .single();
+        wallet = newWallet;
+      }
+
       if (wallet) {
         setWalletBalance(wallet.balance || 0);
         setBonuses(wallet.total_earnings ? wallet.total_earnings * 0.05 : 0);
+        setWalletId(wallet.id);
       }
 
       const sevenDaysAgo = new Date();
@@ -170,10 +210,10 @@ export default function DriverEarnings() {
         if (txData && txData.length > 0) {
           const mapped: TxDisplay[] = txData.map((tx: Transaction) => ({
             id: tx.id,
-            desc: tx.description || (tx.type === 'withdrawal' ? 'Retiro a banco' : `Viaje ${tx.ride_id?.slice(0, 8) || ''}`),
-            amount: tx.type === 'withdrawal' ? -Math.abs(tx.amount) : tx.amount,
+            desc: tx.description || (tx.type === 'withdrawal' ? 'Retiro a banco' : tx.type === 'debit' ? 'Transferencia enviada' : `Viaje ${tx.ride_id?.slice(0, 8) || ''}`),
+            amount: (tx.type === 'withdrawal' || tx.type === 'debit') ? -Math.abs(tx.amount) : tx.amount,
             time: formatRelativeTime(tx.created_at),
-            type: tx.type === 'withdrawal' ? 'withdraw' : 'ride',
+            type: tx.type === 'withdrawal' ? 'withdraw' : tx.type === 'debit' ? 'transfer' : 'ride',
           }));
           setTransactions(mapped);
         }
@@ -188,72 +228,347 @@ export default function DriverEarnings() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleWithdraw = async () => {
+  // ─── Queue Functions ──────────────────────────────
+  const checkQueueStatus = useCallback(async () => {
     if (!user?.id) return;
+    try {
+      const { data: myEntry } = await supabase
+        .from('withdrawal_queue')
+        .select('*')
+        .eq('user_id', user.id)
+        .in('status', ['queued', 'processing'])
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
+      if (!myEntry) {
+        // Check if recently completed or failed
+        const { data: latestEntry } = await supabase
+          .from('withdrawal_queue')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestEntry && latestEntry.status === 'completed' && !hasWithdrawnToday) {
+          fetchData();
+        } else if (latestEntry && latestEntry.status === 'failed') {
+          toast.error('Retiro fallido: ' + (latestEntry.error_message || 'Intenta de nuevo'));
+          fetchData();
+        }
+        setQueueInfo(null);
+        return;
+      }
+
+      if (myEntry.status === 'processing') {
+        setQueueInfo({ position: 0, status: 'processing', amount: myEntry.amount, queueId: myEntry.id });
+      } else {
+        // Count how many are ahead in queue
+        const { count: queuedAhead } = await supabase
+          .from('withdrawal_queue')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'queued')
+          .lt('created_at', myEntry.created_at);
+        const { count: processingCount } = await supabase
+          .from('withdrawal_queue')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'processing');
+        const position = (queuedAhead || 0) + (processingCount || 0) + 1;
+        setQueueInfo({ position, status: 'queued', amount: myEntry.amount, queueId: myEntry.id });
+      }
+    } catch (err) {
+      console.error('Queue check error:', err);
+    }
+  }, [user?.id, hasWithdrawnToday, fetchData]);
+
+  const processNextInQueue = useCallback(async () => {
+    try {
+      // Check if something is already being processed
+      const { data: currentProcessing } = await supabase
+        .from('withdrawal_queue')
+        .select('id')
+        .eq('status', 'processing')
+        .limit(1)
+        .maybeSingle();
+      if (currentProcessing) return; // Someone is already processing
+
+      // Get next queued item (FIFO)
+      const { data: nextItem } = await supabase
+        .from('withdrawal_queue')
+        .select('*')
+        .eq('status', 'queued')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!nextItem) return; // Queue is empty
+
+      // Atomically claim it (optimistic lock — prevents race conditions)
+      const { data: claimed, error: claimErr } = await supabase
+        .from('withdrawal_queue')
+        .update({ status: 'processing' })
+        .eq('id', nextItem.id)
+        .eq('status', 'queued')
+        .select()
+        .single();
+      if (claimErr || !claimed) return; // Someone else claimed it
+
+      const isCurrentUser = claimed.user_id === user?.id;
+
+      try {
+        // Get wallet for this withdrawal
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('id', claimed.wallet_id)
+          .single();
+
+        if (!wallet || wallet.balance < claimed.amount) {
+          await supabase
+            .from('withdrawal_queue')
+            .update({
+              status: 'failed',
+              error_message: !wallet ? 'Billetera no encontrada' : 'Saldo insuficiente',
+              processed_at: new Date().toISOString(),
+            })
+            .eq('id', claimed.id);
+          if (isCurrentUser) {
+            toast.error('No se pudo procesar: saldo insuficiente');
+            setQueueInfo(null);
+            fetchData();
+          }
+          return;
+        }
+
+        // Check daily limit for this wallet
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const { data: todayTx } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('wallet_id', claimed.wallet_id)
+          .eq('type', 'withdrawal')
+          .gte('created_at', todayStr + 'T00:00:00')
+          .limit(1);
+        if (todayTx && todayTx.length > 0) {
+          await supabase
+            .from('withdrawal_queue')
+            .update({
+              status: 'failed',
+              error_message: 'Ya existe un retiro hoy',
+              processed_at: new Date().toISOString(),
+            })
+            .eq('id', claimed.id);
+          if (isCurrentUser) {
+            toast.error('Ya tienes un retiro procesado hoy');
+            setQueueInfo(null);
+          }
+          return;
+        }
+
+        // Create withdrawal transaction
+        const { error: txErr } = await supabase
+          .from('transactions')
+          .insert({
+            wallet_id: claimed.wallet_id,
+            amount: claimed.amount,
+            type: 'withdrawal',
+            status: 'processing',
+            description: 'Retiro a banco - ' + formatCurrency(claimed.amount) + ' (24h)',
+          });
+        if (txErr) throw txErr;
+
+        // Update wallet balance
+        const { error: updateErr } = await supabase
+          .from('wallets')
+          .update({
+            balance: wallet.balance - claimed.amount,
+            total_withdrawn: (wallet.total_withdrawn || 0) + claimed.amount,
+          })
+          .eq('id', claimed.wallet_id);
+        if (updateErr) throw updateErr;
+
+        // Mark as completed in queue
+        await supabase
+          .from('withdrawal_queue')
+          .update({
+            status: 'completed',
+            processed_at: new Date().toISOString(),
+          })
+          .eq('id', claimed.id);
+
+        if (isCurrentUser) {
+          toast.success('Retiro de ' + formatCurrency(claimed.amount) + ' procesado exitosamente');
+          setQueueInfo(null);
+          setHasWithdrawnToday(true);
+          setWalletBalance(wallet.balance - claimed.amount);
+          fetchData();
+        }
+      } catch (err: any) {
+        const msg = err?.message || 'Error desconocido';
+        await supabase
+          .from('withdrawal_queue')
+          .update({
+            status: 'failed',
+            error_message: msg,
+            processed_at: new Date().toISOString(),
+          })
+          .eq('id', claimed.id);
+        if (isCurrentUser) {
+          toast.error('Error al procesar retiro. Intenta de nuevo.');
+          setQueueInfo(null);
+          fetchData();
+        }
+      }
+    } catch (err) {
+      console.error('Queue processing error:', err);
+    }
+  }, [user?.id, fetchData]);
+
+  // ─── Queue Polling ────────────────────────────────
+  useEffect(() => {
+    checkQueueStatus();
+    const interval = setInterval(() => {
+      checkQueueStatus();
+      processNextInQueue();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [checkQueueStatus, processNextInQueue]);
+
+  // ─── Withdraw Handler (Queue-based) ──────────────
+  const handleWithdraw = async () => {
+    const amount = parseInt(withdrawAmount);
+    if (!amount || amount < 10000) {
+      toast.error('El monto minimo de retiro es ₡10,000');
+      return;
+    }
+    if (amount > walletBalance) {
+      toast.error('Monto mayor al saldo disponible');
+      return;
+    }
     if (hasWithdrawnToday) {
       toast.error('Ya realizaste un retiro hoy. Puedes retirar de nuevo manana.');
       return;
     }
-
-    if (walletBalance < 10000) {
-      toast.error('Saldo insuficiente. El minimo de retiro es ₡10,000');
+    if (queueInfo) {
+      toast.error('Ya tienes un retiro en fila. Espera a que se procese.');
+      return;
+    }
+    if (!walletId) {
+      toast.error('No se encontro la billetera');
       return;
     }
 
-    setIsWithdrawing(true);
+    setWithdrawLoading(true);
     try {
-      const { data: wallet, error: walletErr } = await supabase
+      // Add to withdrawal queue instead of processing directly
+      const { error: queueErr } = await supabase
+        .from('withdrawal_queue')
+        .insert({
+          wallet_id: walletId,
+          user_id: user!.id,
+          amount: amount,
+          status: 'queued',
+        });
+      if (queueErr) throw queueErr;
+
+      setShowWithdraw(false);
+      setWithdrawAmount('');
+      toast.info('Retiro agregado a la fila. Procesando...');
+
+      // Check queue position and try to process
+      await checkQueueStatus();
+      await processNextInQueue();
+    } catch (err: any) {
+      console.error('Queue error:', err);
+      toast.error('Error al agregar a la fila. Intenta de nuevo.');
+    } finally {
+      setWithdrawLoading(false);
+    }
+  };
+
+  // ─── Cancel Queue Entry ───────────────────────────
+  const handleCancelQueue = async () => {
+    if (!queueInfo || queueInfo.status !== 'queued') return;
+    setCancelLoading(true);
+    try {
+      const { error } = await supabase
+        .from('withdrawal_queue')
+        .update({
+          status: 'cancelled',
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', queueInfo.queueId)
+        .eq('status', 'queued');
+      if (error) throw error;
+      setQueueInfo(null);
+      toast.info('Retiro cancelado de la fila');
+    } catch (err) {
+      toast.error('Error al cancelar. Intenta de nuevo.');
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  // ─── Transfer Handler ─────────────────────────────
+  const handleTransfer = async () => {
+    const amount = parseInt(transferAmount);
+    const phone = transferPhone.trim();
+
+    if (!phone || phone.length < 8) {
+      toast.error('Ingresa un numero de telefono valido (8+ digitos)');
+      return;
+    }
+    if (!amount || amount < 500) {
+      toast.error('El monto minimo de transferencia es ₡500');
+      return;
+    }
+    if (amount > walletBalance) {
+      toast.error('Saldo insuficiente para esta transferencia');
+      return;
+    }
+    if (!walletId) {
+      toast.error('No se encontro la billetera');
+      return;
+    }
+
+    setTransferLoading(true);
+    try {
+      const { data: wallet } = await supabase
         .from('wallets')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('id', walletId)
         .single();
+      if (!wallet) throw new Error('Billetera no encontrada');
 
-      if (walletErr || !wallet) {
-        toast.error('No se encontro la billetera');
-        setIsWithdrawing(false);
-        return;
-      }
-
+      // Create debit transaction for sender
       const { error: txErr } = await supabase
         .from('transactions')
         .insert({
-          wallet_id: wallet.id,
-          amount: walletBalance,
-          type: 'withdrawal',
-          status: 'processing',
-          description: 'Retiro a banco',
+          wallet_id: walletId,
+          amount: amount,
+          type: 'debit',
+          status: 'completed',
+          description: `Transferencia SINPE al ${phone} - ${formatCurrency(amount)}`,
         });
+      if (txErr) throw txErr;
 
-      if (txErr) {
-        toast.error('Error al procesar retiro');
-        setIsWithdrawing(false);
-        return;
-      }
-
+      // Deduct from wallet
       const { error: updateErr } = await supabase
         .from('wallets')
-        .update({
-          balance: 0,
-          total_withdrawn: (wallet.total_withdrawn || 0) + walletBalance,
-        })
-        .eq('id', wallet.id);
+        .update({ balance: wallet.balance - amount })
+        .eq('id', walletId);
+      if (updateErr) throw updateErr;
 
-      if (updateErr) {
-        toast.error('Error al actualizar billetera');
-        setIsWithdrawing(false);
-        return;
-      }
-
-      setHasWithdrawnToday(true);
-      setWalletBalance(0);
-      toast.success('Retiro solicitado! Procesamiento: 24 horas.');
+      setWalletBalance(wallet.balance - amount);
+      setShowTransfer(false);
+      setTransferPhone('');
+      setTransferAmount('');
+      toast.success(`Transferencia de ${formatCurrency(amount)} enviada al ${phone}`);
       fetchData();
-    } catch (err) {
-      console.error('Withdrawal error:', err);
-      toast.error('Error al procesar retiro');
+    } catch (err: any) {
+      console.error('Transfer error:', err);
+      toast.error('Error al procesar la transferencia. Intenta de nuevo.');
     } finally {
-      setIsWithdrawing(false);
+      setTransferLoading(false);
     }
   };
 
@@ -278,7 +593,7 @@ export default function DriverEarnings() {
         <p className="text-sm text-gray-400 mt-0.5">Resumen de tus ingresos</p>
       </motion.div>
 
-      {/* Today's Earnings Card - Like reference app */}
+      {/* Today's Earnings Card */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -315,48 +630,140 @@ export default function DriverEarnings() {
         </div>
       </motion.div>
 
-      {/* Wallet Balance + Bonuses Row */}
+      {/* Wallet Balance Card — Major upgrade */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08 }}
-        className="grid grid-cols-2 gap-3"
+        className="glass rounded-2xl p-5 border border-cyan-500/10"
       >
-        {/* Wallet */}
-        <div className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <WalletIcon className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs text-gray-500">Saldo de la tarjeta</span>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <WalletIcon className="w-5 h-5 text-cyan-400" />
+            <span className="text-sm font-semibold text-white">Billetera RIDA</span>
           </div>
-          <p className="text-lg font-bold text-white">CRC{walletBalance.toLocaleString()}</p>
+          <div className="flex items-center gap-1 text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            Activa
+          </div>
+        </div>
+
+        {/* Balance Display */}
+        <div className="text-center py-3">
+          <p className="text-xs text-gray-400 mb-1">Saldo disponible</p>
+          <p className="text-4xl font-bold text-white">{formatCurrency(walletBalance)}</p>
+        </div>
+
+        {/* Action Buttons — 2 columns */}
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          {/* Retirar */}
           <button
-            onClick={() => toast.info('Funcion de recarga proximamente')}
-            className="mt-2 w-full py-1.5 rounded-lg bg-white/5 text-[10px] text-gray-300 font-medium hover:bg-white/10 transition-colors"
+            type="button"
+            onClick={() => setShowWithdraw(true)}
+            className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
           >
-            Recarga
+            <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ArrowUpCircle className="w-5 h-5 text-blue-400" />
+            </div>
+            <span className="text-xs font-medium text-gray-300">Retirar</span>
+          </button>
+
+          {/* Transferir */}
+          <button
+            type="button"
+            onClick={() => setShowTransfer(true)}
+            className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
+          >
+            <div className="w-10 h-10 rounded-xl bg-purple-500/15 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Send className="w-5 h-5 text-purple-400" />
+            </div>
+            <span className="text-xs font-medium text-gray-300">Transferir</span>
           </button>
         </div>
-        {/* Bonuses */}
-        <div className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Gift className="w-4 h-4 text-purple-400" />
-            <span className="text-xs text-gray-500">Bonificaciones</span>
-          </div>
-          <p className="text-lg font-bold text-white">{formatCurrency(bonuses)}</p>
-          <div className="flex items-center gap-1 mt-2 text-cyan-400">
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-[10px] font-medium">Ver mas</span>
-          </div>
+
+        {/* Quick info */}
+        <div className="flex items-center justify-center gap-1.5 mt-3 text-[10px] text-gray-500">
+          <Info className="w-3 h-3" />
+          Min. ₡10,000 &middot; 1 retiro/dia &middot; Sistema de fila &middot; 24h
         </div>
       </motion.div>
 
-      {/* Stats Row */}
+      {/* Queue Status Banner */}
+      <AnimatePresence>
+        {queueInfo && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`rounded-2xl p-4 border ${
+              queueInfo.status === 'processing'
+                ? 'bg-cyan-500/10 border-cyan-500/30'
+                : 'bg-amber-500/10 border-amber-500/30'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                queueInfo.status === 'processing'
+                  ? 'bg-cyan-500/20'
+                  : 'bg-amber-500/20'
+              }`}>
+                {queueInfo.status === 'processing' ? (
+                  <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                ) : (
+                  <Users className="w-6 h-6 text-amber-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                {queueInfo.status === 'processing' ? (
+                  <>
+                    <p className="text-sm font-semibold text-white">Procesando retiro</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(queueInfo.amount)} — Tu retiro se esta procesando ahora</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-white">
+                      Retiro en fila
+                      <span className="ml-2 text-cyan-400 font-bold">#{queueInfo.position}</span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {formatCurrency(queueInfo.amount)}
+                      {queueInfo.position === 1
+                        ? ' — Eres el siguiente'
+                        : ' — ' + (queueInfo.position - 1) + ' persona(s) adelante'
+                      }
+                    </p>
+                  </>
+                )}
+              </div>
+              {queueInfo.status === 'queued' && (
+                <button
+                  type="button"
+                  onClick={handleCancelQueue}
+                  disabled={cancelLoading}
+                  className="px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-medium hover:bg-red-500/25 transition-colors disabled:opacity-50 shrink-0"
+                >
+                  {cancelLoading ? '...' : 'Salir'}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bonuses + Stats Row */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         className="grid grid-cols-3 gap-2"
       >
+        <div className="glass rounded-xl p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Gift className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-[10px] text-gray-500">Bonos</span>
+          </div>
+          <p className="text-sm font-bold text-white">{formatCurrency(bonuses)}</p>
+        </div>
         <div className="glass rounded-xl p-3 text-center">
           <TrendingUp className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
           <p className="text-sm font-bold text-white">15%</p>
@@ -369,11 +776,6 @@ export default function DriverEarnings() {
             <div className="bg-gradient-to-r from-amber-500 to-orange-500 h-1 rounded-full transition-all" style={{ width: `${(workHours / maxHours) * 100}%` }} />
           </div>
           <p className="text-[9px] text-gray-600 mt-0.5">de {maxHours}h</p>
-        </div>
-        <div className="glass rounded-xl p-3 text-center">
-          <CreditCard className="w-4 h-4 text-cyan-400 mx-auto mb-1" />
-          <p className="text-sm font-bold text-white">{formatCurrency(totalWeekly)}</p>
-          <p className="text-[10px] text-gray-500">Esta semana</p>
         </div>
       </motion.div>
 
@@ -481,7 +883,7 @@ export default function DriverEarnings() {
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
                 <span className="text-xs text-gray-300">Calificacion promedio</span>
                 <div className="flex items-center gap-1">
-                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  <CreditCard className="w-3 h-3 text-amber-400" />
                   <span className="text-xs font-bold text-white">5.00</span>
                 </div>
               </div>
@@ -496,39 +898,6 @@ export default function DriverEarnings() {
             </div>
           )}
         </div>
-      </motion.div>
-
-      {/* Withdraw Button */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="space-y-2"
-      >
-        <button
-          onClick={handleWithdraw}
-          disabled={isWithdrawing || hasWithdrawnToday}
-          className={`w-full font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
-            hasWithdrawnToday
-              ? 'bg-white/5 border border-white/10 text-gray-500 cursor-not-allowed'
-              : 'btn-neon text-white'
-          }`}
-        >
-          {isWithdrawing ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <>
-              <Banknote className="w-4 h-4" />
-              {hasWithdrawnToday ? 'Retiro ya realizado hoy' : 'Retirar Ganancias'}
-            </>
-          )}
-        </button>
-        {hasWithdrawnToday && (
-          <div className="flex items-center justify-center gap-1.5 text-xs text-gray-500">
-            <Info className="w-3 h-3" />
-            Puedes retirar de nuevo manana. Minimo: ₡10,000. Tiempo: 24h.
-          </div>
-        )}
       </motion.div>
 
       {/* Recent Transactions */}
@@ -547,9 +916,15 @@ export default function DriverEarnings() {
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {transactions.map((tx) => (
               <div key={tx.id} className="glass rounded-xl p-3 flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tx.type === 'ride' ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  tx.type === 'ride' ? 'bg-emerald-500/20' :
+                  tx.type === 'transfer' ? 'bg-purple-500/20' :
+                  'bg-red-500/20'
+                }`}>
                   {tx.type === 'ride' ? (
                     <ArrowUpCircle className="w-5 h-5 text-emerald-400" />
+                  ) : tx.type === 'transfer' ? (
+                    <Send className="w-5 h-5 text-purple-400" />
                   ) : (
                     <ArrowDownCircle className="w-5 h-5 text-red-400" />
                   )}
@@ -558,8 +933,12 @@ export default function DriverEarnings() {
                   <p className="text-sm font-medium text-white truncate">{tx.desc}</p>
                   <p className="text-xs text-gray-500">{tx.time}</p>
                 </div>
-                <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {tx.amount > 0 ? '+' : ''}₡{Math.abs(tx.amount).toLocaleString()}
+                <p className={`text-sm font-semibold ${
+                  tx.type === 'ride' ? 'text-emerald-400' :
+                  tx.type === 'transfer' ? 'text-purple-400' :
+                  'text-red-400'
+                }`}>
+                  {tx.type === 'ride' ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
                 </p>
               </div>
             ))}
@@ -570,6 +949,310 @@ export default function DriverEarnings() {
           </div>
         )}
       </motion.div>
+
+      {/* ═══════════════════════════════════════════════ */}
+      {/* MODALS */}
+      {/* ═══════════════════════════════════════════════ */}
+
+      {/* ─── WITHDRAW MODAL ─────────────────────────── */}
+      <AnimatePresence>
+        {showWithdraw && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-4"
+            onClick={() => setShowWithdraw(false)}
+          >
+            <motion.div
+              initial={{ y: 300, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 300, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25 }}
+              className="glass-strong rounded-2xl p-5 w-full max-w-sm space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                    <ArrowUpCircle className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Retirar Ganancias</h3>
+                    <p className="text-[10px] text-gray-500">Disponible: {formatCurrency(walletBalance)}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setShowWithdraw(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              {/* Queue Status / Already Withdrawn Today */}
+              {queueInfo ? (
+                <div className="text-center py-4">
+                  {queueInfo.status === 'processing' ? (
+                    <>
+                      <Loader2 className="w-10 h-10 text-cyan-400 mx-auto mb-3 animate-spin" />
+                      <p className="text-sm font-medium text-white">Procesando tu retiro...</p>
+                      <p className="text-xs text-gray-400 mt-1">Monto: {formatCurrency(queueInfo.amount)}</p>
+                      <p className="text-xs text-cyan-400 mt-2 font-medium">Tu retiro se esta procesando ahora</p>
+                    </>
+                  ) : (
+                    <>
+                      <Users className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+                      <p className="text-sm font-medium text-white">Posicion en la fila</p>
+                      <p className="text-3xl font-bold text-cyan-400 mt-1">#{queueInfo.position}</p>
+                      <p className="text-xs text-gray-400 mt-1">Monto: {formatCurrency(queueInfo.amount)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {queueInfo.position === 1
+                          ? 'Eres el siguiente en ser procesado'
+                          : 'Espera estimada: ~' + ((queueInfo.position - 1) * 30) + ' segundos'
+                        }
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleCancelQueue}
+                        disabled={cancelLoading}
+                        className="mt-3 px-4 py-2 rounded-xl bg-red-500/20 text-red-400 text-xs font-medium hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                      >
+                        {cancelLoading ? 'Cancelando...' : 'Cancelar retiro'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : hasWithdrawnToday ? (
+                <div className="text-center py-6">
+                  <Info className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-white">Ya retiraste hoy</p>
+                  <p className="text-xs text-gray-400 mt-1">Puedes realizar otro retiro manana. Maximo 1 retiro por dia.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Amount Input */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-gray-400 block">Monto a retirar</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-medium">₡</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={withdrawAmount}
+                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                        placeholder="0"
+                        max={walletBalance}
+                        className="w-full glass rounded-xl p-3 pl-8 text-white text-lg font-bold bg-transparent outline-none focus:ring-1 focus:ring-blue-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    </div>
+                    {/* Quick percent buttons */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: '25%', pct: 0.25 },
+                        { label: '50%', pct: 0.5 },
+                        { label: 'Todo', pct: 1 },
+                      ].map(btn => (
+                        <button
+                          key={btn.label}
+                          type="button"
+                          onClick={() => setWithdrawAmount(String(Math.floor(walletBalance * btn.pct)))}
+                          className={`py-2 rounded-xl text-xs font-medium transition-all ${
+                            withdrawAmount === String(Math.floor(walletBalance * btn.pct))
+                              ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
+                              : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Monto a retirar</span>
+                      <span className="text-white font-medium">{withdrawAmount ? formatCurrency(parseInt(withdrawAmount)) : '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Saldo restante</span>
+                      <span className="text-white font-medium">
+                        {withdrawAmount ? formatCurrency(walletBalance - parseInt(withdrawAmount)) : formatCurrency(walletBalance)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Tiempo estimado</span>
+                      <span className="text-amber-400 font-medium">24 horas</span>
+                    </div>
+                  </div>
+
+                  {/* Warning */}
+                  {withdrawAmount && parseInt(withdrawAmount) > walletBalance && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                      <Info className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-red-400">El monto excede tu saldo disponible</p>
+                    </div>
+                  )}
+
+                  {/* Withdraw Button */}
+                  <button
+                    type="button"
+                    onClick={handleWithdraw}
+                    disabled={withdrawLoading || !withdrawAmount || parseInt(withdrawAmount) < 10000 || parseInt(withdrawAmount) > walletBalance}
+                    className="w-full btn-neon text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+                  >
+                    {withdrawLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Banknote className="w-4 h-4" />
+                        Retirar {withdrawAmount ? formatCurrency(parseInt(withdrawAmount)) : ''}
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── TRANSFER MODAL ─────────────────────────── */}
+      <AnimatePresence>
+        {showTransfer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-4"
+            onClick={() => setShowTransfer(false)}
+          >
+            <motion.div
+              initial={{ y: 300, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 300, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25 }}
+              className="glass-strong rounded-2xl p-5 w-full max-w-sm space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                    <Send className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Transferir</h3>
+                    <p className="text-[10px] text-gray-500">Disponible: {formatCurrency(walletBalance)}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setShowTransfer(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              {/* SINPE Label */}
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                <Smartphone className="w-4 h-4 text-purple-400" />
+                <div>
+                  <p className="text-xs font-medium text-purple-300">Transferencia SINPE Movil</p>
+                  <p className="text-[10px] text-gray-500">Envia dinero a cualquier numero de telefono</p>
+                </div>
+              </div>
+
+              {/* Phone Input */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-400 block">Numero de destino</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">+506</span>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={transferPhone}
+                    onChange={(e) => setTransferPhone(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                    placeholder="8XXX XXXX"
+                    className="w-full glass rounded-xl p-3 pl-14 text-white text-sm bg-transparent outline-none focus:ring-1 focus:ring-purple-500/50"
+                  />
+                </div>
+              </div>
+
+              {/* Amount Input */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-400 block">Monto a transferir</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-medium">₡</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    placeholder="0"
+                    className="w-full glass rounded-xl p-3 pl-8 text-white text-lg font-bold bg-transparent outline-none focus:ring-1 focus:ring-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+                {/* Quick Amounts */}
+                <div className="grid grid-cols-4 gap-2">
+                  {[1000, 5000, 10000, 25000].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setTransferAmount(String(amt))}
+                      className={`py-2 rounded-xl text-xs font-medium transition-all ${
+                        transferAmount === String(amt)
+                          ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
+                          : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      {(amt / 1000)}k
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Summary */}
+              {transferAmount && (
+                <div className="flex items-center justify-between text-xs glass rounded-lg px-3 py-2">
+                  <span className="text-gray-500">Total a enviar</span>
+                  <span className="text-white font-bold">{formatCurrency(parseInt(transferAmount))}</span>
+                </div>
+              )}
+
+              {/* Warning */}
+              {transferAmount && parseInt(transferAmount) > walletBalance && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <Info className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-red-400">Saldo insuficiente para esta transferencia</p>
+                </div>
+              )}
+
+              {/* Transfer Button */}
+              <button
+                type="button"
+                onClick={handleTransfer}
+                disabled={transferLoading || !transferPhone || !transferAmount || parseInt(transferAmount) < 500 || parseInt(transferAmount) > walletBalance}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+              >
+                {transferLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Transferir {transferAmount ? formatCurrency(parseInt(transferAmount)) : ''}
+                  </>
+                )}
+              </button>
+
+              {/* Security Note */}
+              <div className="flex items-start gap-2 p-2 rounded-lg bg-purple-500/5">
+                <Shield className="w-3.5 h-3.5 text-purple-400 mt-0.5 shrink-0" />
+                <p className="text-[10px] text-gray-500 leading-relaxed">
+                  Las transferencias SINPE son inmediatas. Verifica el numero antes de enviar.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

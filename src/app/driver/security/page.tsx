@@ -2,223 +2,255 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { Lock, Eye, EyeOff, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import {
-  ArrowLeft, Lock, Eye, EyeOff, Shield, Check, Loader2, KeyRound
-} from 'lucide-react';
 
 export default function DriverSecurity() {
-  const router = useRouter();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const handleChange = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
-  };
-
-  const strength = (password: string) => {
-    let score = 0;
-    if (password.length >= 6) score++;
-    if (password.length >= 10) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-    if (score <= 2) return { label: 'Debil', color: 'text-red-400', bg: 'bg-red-500/20', percent: 33 };
-    if (score <= 3) return { label: 'Media', color: 'text-amber-400', bg: 'bg-amber-500/20', percent: 66 };
-    return { label: 'Fuerte', color: 'text-emerald-400', bg: 'bg-emerald-500/20', percent: 100 };
-  };
-
-  const pwdStrength = strength(form.newPassword);
-
-  const handleSubmit = async () => {
-    if (!form.currentPassword || !form.newPassword || !form.confirmPassword) {
-      toast.error('Todos los campos son obligatorios');
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('Completa todos los campos');
       return;
     }
-    if (form.newPassword.length < 6) {
+    if (newPassword.length < 6) {
       toast.error('La nueva contrasena debe tener al menos 6 caracteres');
       return;
     }
-    if (form.newPassword !== form.confirmPassword) {
+    if (newPassword !== confirmPassword) {
       toast.error('Las contrasenas no coinciden');
       return;
     }
+    if (currentPassword === newPassword) {
+      toast.error('La nueva contrasena debe ser diferente a la actual');
+      return;
+    }
 
-    setSaving(true);
+    setIsLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: form.newPassword });
-      if (error) throw error;
-      toast.success('Contrasena actualizada correctamente');
-      setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      router.back();
-    } catch (err: any) {
-      toast.error(err.message || 'Error al cambiar contrasena');
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        if (error.message.includes('Invalid login credentials') || error.message.includes('Credentials')) {
+          toast.error('La contrasena actual es incorrecta');
+        } else {
+          toast.error('Error al cambiar contrasena: ' + error.message);
+        }
+      } else {
+        setSuccess(true);
+        toast.success('Contrasena cambiada exitosamente');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setTimeout(() => setSuccess(false), 3000);
+      }
+    } catch {
+      toast.error('Error de conexion. Intenta de nuevo.');
     } finally {
-      setSaving(false);
+      setIsLoading(false);
     }
   };
 
-  const requirements = [
-    { label: '6+ caracteres', met: form.newPassword.length >= 6 },
-    { label: 'Mayuscula', met: /[A-Z]/.test(form.newPassword) },
-    { label: 'Numero', met: /[0-9]/.test(form.newPassword) },
-    { label: 'Caracter especial', met: /[^A-Za-z0-9]/.test(form.newPassword) },
-  ];
+  const passwordStrength = (pass: string) => {
+    let score = 0;
+    if (pass.length >= 6) score++;
+    if (pass.length >= 10) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    if (score <= 1) return { label: 'Debil', color: 'bg-red-500', textColor: 'text-red-400' };
+    if (score <= 2) return { label: 'Regular', color: 'bg-amber-500', textColor: 'text-amber-400' };
+    if (score <= 3) return { label: 'Buena', color: 'bg-cyan-500', textColor: 'text-cyan-400' };
+    if (score <= 4) return { label: 'Fuerte', color: 'bg-emerald-500', textColor: 'text-emerald-400' };
+    return { label: 'Excelente', color: 'bg-emerald-400', textColor: 'text-emerald-300' };
+  };
+
+  const strength = passwordStrength(newPassword);
 
   return (
-    <div className="min-h-screen bg-rida-dark">
+    <div className="p-4 space-y-6">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-rida-dark/80 backdrop-blur-xl border-b border-white/5">
-        <div className="flex items-center gap-3 p-4">
-          <button onClick={() => router.back()} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center">
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </button>
-          <h1 className="text-lg font-bold text-white">Seguridad</h1>
-        </div>
-      </div>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-xl font-bold text-white">Seguridad</h1>
+        <p className="text-sm text-gray-400 mt-1">Protege tu cuenta</p>
+      </motion.div>
 
-      <div className="p-4 space-y-4">
-        {/* Illustration */}
+      {success && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-2xl p-6 flex flex-col items-center"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-strong rounded-2xl p-6 text-center space-y-3"
         >
-          <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-3">
-            <Shield className="w-10 h-10 text-emerald-400" />
-          </div>
-          <h2 className="text-lg font-bold text-white">Cambiar Contrasena</h2>
-          <p className="text-xs text-gray-500 mt-1">Mantén tu cuenta segura</p>
+          <CheckCircle className="w-16 h-16 text-emerald-400 mx-auto" />
+          <h2 className="text-lg font-bold text-white">Contrasena Actualizada</h2>
+          <p className="text-sm text-gray-400">Tu contrasena ha sido cambiada exitosamente.</p>
         </motion.div>
+      )}
 
-        {/* Password Form */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="glass rounded-2xl p-4 space-y-4"
-        >
-          {/* Current Password */}
-          <div>
-            <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-              <KeyRound className="w-3 h-3" /> Contrasena actual
-            </label>
-            <div className="relative">
-              <input
-                type={showCurrent ? 'text' : 'password'}
-                value={form.currentPassword}
-                onChange={(e) => handleChange('currentPassword', e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
-              />
-              <button
-                onClick={() => setShowCurrent(!showCurrent)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-              >
-                {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+      {!success && (
+        <>
+          {/* Security Tips */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="glass rounded-2xl p-4 border border-cyan-500/20"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="w-4 h-4 text-cyan-400" />
+              <span className="text-sm font-semibold text-white">Consejos de seguridad</span>
             </div>
-          </div>
+            <ul className="space-y-1.5">
+              <li className="text-xs text-gray-400 flex items-start gap-2">
+                <span className="text-cyan-400 mt-0.5">&#8226;</span>
+                Usa una contrasena que no uses en otras plataformas
+              </li>
+              <li className="text-xs text-gray-400 flex items-start gap-2">
+                <span className="text-cyan-400 mt-0.5">&#8226;</span>
+                Combina letras, numeros y simbolos
+              </li>
+              <li className="text-xs text-gray-400 flex items-start gap-2">
+                <span className="text-cyan-400 mt-0.5">&#8226;</span>
+                No compartas tu contrasena con nadie
+              </li>
+              <li className="text-xs text-gray-400 flex items-start gap-2">
+                <span className="text-cyan-400 mt-0.5">&#8226;</span>
+                Cambia tu contrasena periodicamente
+              </li>
+            </ul>
+          </motion.div>
 
-          {/* New Password */}
-          <div>
-            <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-              <Lock className="w-3 h-3" /> Nueva contrasena
-            </label>
-            <div className="relative">
-              <input
-                type={showNew ? 'text' : 'password'}
-                value={form.newPassword}
-                onChange={(e) => handleChange('newPassword', e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
-              />
-              <button
-                onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-              >
-                {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+          {/* Change Password Form */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="glass-strong rounded-2xl p-6 space-y-4"
+          >
+            <h3 className="text-base font-semibold text-white">Cambiar Contrasena</h3>
 
-            {/* Strength Bar */}
-            {form.newPassword && (
-              <div className="mt-2">
-                <div className="w-full bg-white/10 rounded-full h-1.5">
-                  <div
-                    className={`h-1.5 rounded-full transition-all ${pwdStrength.bg}`}
-                    style={{ width: `${pwdStrength.percent}%` }}
-                  />
-                </div>
-                <p className={`text-[10px] mt-1 ${pwdStrength.color}`}>Fuerza: {pwdStrength.label}</p>
+            {/* Current Password */}
+            <div className="space-y-2">
+              <label className="text-xs text-gray-400 font-medium">Contrasena actual</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type={showCurrent ? 'text' : 'password'}
+                  placeholder="Tu contrasena actual"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrent(!showCurrent)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                >
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
-            )}
+            </div>
 
-            {/* Requirements */}
-            {form.newPassword && (
-              <div className="grid grid-cols-2 gap-1.5 mt-2">
-                {requirements.map((req) => (
-                  <div key={req.label} className={`flex items-center gap-1.5 text-[10px] ${req.met ? 'text-emerald-400' : 'text-gray-500'}`}>
-                    <Check className={`w-3 h-3 ${req.met ? 'opacity-100' : 'opacity-30'}`} />
-                    {req.label}
+            {/* New Password */}
+            <div className="space-y-2">
+              <label className="text-xs text-gray-400 font-medium">Nueva contrasena</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type={showNew ? 'text' : 'password'}
+                  placeholder="Minimo 6 caracteres"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew(!showNew)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                >
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {/* Strength indicator */}
+              {newPassword.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${strength.color}`} style={{ width: `${(strength.label === 'Debil' ? 20 : strength.label === 'Regular' ? 40 : strength.label === 'Buena' ? 60 : strength.label === 'Fuerte' ? 80 : 100)}%` }} />
+                    </div>
+                    <span className={`text-[10px] font-medium ${strength.textColor}`}>{strength.label}</span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Confirm Password */}
-          <div>
-            <label className="text-xs text-gray-400 font-medium flex items-center gap-1.5 mb-1.5">
-              <Lock className="w-3 h-3" /> Confirmar contrasena
-            </label>
-            <div className="relative">
-              <input
-                type={showConfirm ? 'text' : 'password'}
-                value={form.confirmPassword}
-                onChange={(e) => handleChange('confirmPassword', e.target.value)}
-                placeholder="••••••••"
-                className={`w-full bg-white/5 border rounded-xl px-4 py-3 pr-10 text-white text-sm placeholder-gray-600 focus:outline-none ${
-                  form.confirmPassword && form.confirmPassword !== form.newPassword
-                    ? 'border-red-500/50 focus:border-red-500/50'
-                    : 'border-white/10 focus:border-cyan-500/50'
-                }`}
-              />
-              <button
-                onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-              >
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+                </div>
+              )}
             </div>
-            {form.confirmPassword && form.confirmPassword !== form.newPassword && (
-              <p className="text-[10px] text-red-400 mt-1">Las contrasenas no coinciden</p>
-            )}
-          </div>
-        </motion.div>
 
-        {/* Submit Button */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          onClick={handleSubmit}
-          disabled={saving}
-          className="w-full bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
-          {saving ? 'Actualizando...' : 'Actualizar Contrasena'}
-        </motion.button>
-      </div>
+            {/* Confirm Password */}
+            <div className="space-y-2">
+              <label className="text-xs text-gray-400 font-medium">Confirmar nueva contrasena</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type={showConfirm ? 'text' : 'password'}
+                  placeholder="Repite tu nueva contrasena"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                >
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {confirmPassword.length > 0 && newPassword !== confirmPassword && (
+                <p className="text-xs text-red-400">Las contrasenas no coinciden</p>
+              )}
+            </div>
+
+            {/* Submit */}
+            <button
+              onClick={handleChangePassword}
+              disabled={isLoading || !currentPassword || !newPassword || !confirmPassword}
+              className="w-full btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+            >
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  Actualizar Contrasena
+                </>
+              )}
+            </button>
+          </motion.div>
+
+          {/* Two Factor Info */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="glass rounded-2xl p-4 flex items-center gap-3"
+          >
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-white">Verificacion en dos pasos</p>
+              <p className="text-xs text-gray-500">Proximamente disponible</p>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-medium">Proximo</span>
+          </motion.div>
+        </>
+      )}
     </div>
   );
 }

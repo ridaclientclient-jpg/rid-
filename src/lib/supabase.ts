@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -22,7 +22,7 @@ export type Profile = {
   name: string;
   email: string;
   phone?: string;
-  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier' | 'super_admin';
+  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
   avatar?: string;
   is_verified: boolean;
   is_active: boolean;
@@ -57,6 +57,8 @@ export type Vehicle = {
   verified: boolean;
 };
 
+export type PaymentMethodType = 'cash' | 'wallet' | 'card' | 'sinpe';
+
 export type Ride = {
   id: string;
   rider_id: string;
@@ -80,6 +82,10 @@ export type Ride = {
   driver_rating?: number;
   review?: string;
   is_third_party: boolean;
+  payment_method?: PaymentMethodType;
+  payment_status?: string;
+  card_last_four?: string;
+  sinpe_phone?: string;
   created_at: string;
   profiles?: Profile;
   drivers?: Driver;
@@ -162,6 +168,45 @@ export type SOS = {
   latitude: number;
   longitude: number;
   status: 'active' | 'resolved';
+  created_at: string;
+};
+
+// ─── Chat System Types ───────────────────────────────────────
+
+export type SupportChat = {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_role: 'client' | 'driver' | 'vendor' | 'courier';
+  subject: string;
+  status: 'open' | 'closed' | 'resolved';
+  last_message_at: string;
+  last_message_preview: string;
+  unread_by_admin: number;
+  unread_by_user: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  chat_id: string;
+  sender_type: 'user' | 'admin';
+  sender_id?: string;
+  content: string;
+  message_type: 'text' | 'image' | 'system';
+  created_at: string;
+};
+
+export type SavedCard = {
+  id: string;
+  user_id: string;
+  card_number: string;
+  card_holder: string;
+  card_expiry: string;
+  card_brand: 'visa' | 'mastercard' | 'amex' | 'other';
+  last_four: string;
+  is_default: boolean;
   created_at: string;
 };
 

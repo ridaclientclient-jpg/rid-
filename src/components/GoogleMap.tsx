@@ -13,9 +13,11 @@ interface MarkerData {
   animation?: 'BOUNCE' | 'DROP';
 }
 
-interface DraggablePinConfig {
+export interface DraggablePinData {
   position: { lat: number; lng: number };
-  color: string;
+  color: string;         // e.g. '#10b981' for origin, '#ef4444' for destination
+  label?: string;       // e.g. 'A' or 'B'
+  title?: string;       // tooltip shown on hover
 }
 
 interface GoogleMapProps {
@@ -28,24 +30,16 @@ interface GoogleMapProps {
   showRoute?: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } };
   waypoints?: { lat: number; lng: number }[];
   showDirections?: boolean;
-  draggablePin?: DraggablePinConfig | null;
-  onDraggablePinMove?: (lat: number, lng: number) => void;
   className?: string;
   style?: React.CSSProperties;
   showUserLocation?: boolean;
   height?: string;
+  /** Draggable precision pin */
+  draggablePin?: DraggablePinData | null;
+  onDragPinEnd?: (lat: number, lng: number) => void;
 }
 
 const CR_CENTER = { lat: 9.7489, lng: -83.7534 };
-
-function createPinIcon(color: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="52" viewBox="0 0 40 52">
-    <defs><filter id="ds" x="-20%" y="-10%" width="140%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/></filter></defs>
-    <path d="M20 2C10.06 2 2 10.06 2 20c0 14 18 30 18 30s18-16 18-30C38 10.06 29.94 2 20 2z" fill="${color}" stroke="#fff" stroke-width="2.5" filter="url(#ds)"/>
-    <circle cx="20" cy="20" r="9" fill="#fff"/>
-  </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
 
 export default function GoogleMap({
   center = CR_CENTER,
@@ -57,19 +51,18 @@ export default function GoogleMap({
   showRoute,
   waypoints = [],
   showDirections = false,
-  draggablePin = null,
-  onDraggablePinMove,
   className = '',
   style = {},
   showUserLocation = true,
   height = '100%',
+  draggablePin = null,
+  onDragPinEnd,
 }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
-  const draggablePinRef = useRef<google.maps.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const hasCenteredOnUserRef = useRef(false);
   const gpsResolvedRef = useRef(false);
@@ -78,6 +71,8 @@ export default function GoogleMap({
   const [errorMsg, setErrorMsg] = useState('');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<'searching' | 'found' | 'denied' | 'unavailable'>('searching');
+  const draggableMarkerRef = useRef<google.maps.Marker | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const addUserMarker = useCallback((map: google.maps.Map, position: { lat: number; lng: number }) => {
     if (userMarkerRef.current) {
@@ -293,9 +288,9 @@ export default function GoogleMap({
         userMarkerRef.current.setMap(null);
         userMarkerRef.current = null;
       }
-      if (draggablePinRef.current) {
-        draggablePinRef.current.setMap(null);
-        draggablePinRef.current = null;
+      if (draggableMarkerRef.current) {
+        draggableMarkerRef.current.setMap(null);
+        draggableMarkerRef.current = null;
       }
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
@@ -310,80 +305,6 @@ export default function GoogleMap({
       gpsResolvedRef.current = false;
     };
   }, []);
-
-  // Create or remove draggable pin — only runs when mode activates/deactivates or color changes
-  const pinActiveRef = useRef<boolean>(false);
-  useEffect(() => {
-    if (!mapInstanceRef.current || !isLoaded) return;
-
-    const shouldExist = !!draggablePin;
-
-    // If state hasn't changed, skip (position-only updates handled by next effect)
-    if (shouldExist === pinActiveRef.current && draggablePinRef.current) return;
-    pinActiveRef.current = shouldExist;
-
-    // Remove existing
-    if (draggablePinRef.current) {
-      draggablePinRef.current.setMap(null);
-      draggablePinRef.current = null;
-    }
-
-    if (!draggablePin) return;
-
-    loadGoogleMaps().then(() => {
-      if (!mapInstanceRef.current || !draggablePin) return;
-
-      const pinIcon = createPinIcon(draggablePin.color);
-
-      const marker = new google.maps.Marker({
-        map: mapInstanceRef.current,
-        position: draggablePin.position,
-        draggable: true,
-        icon: {
-          url: pinIcon,
-          scaledSize: new google.maps.Size(40, 52),
-          anchor: new google.maps.Point(20, 52),
-        },
-        zIndex: 2000,
-        animation: google.maps.Animation.DROP,
-      });
-
-      marker.addListener('drag', () => {
-        const pos = marker.getPosition();
-        if (pos && onDraggablePinMove) {
-          onDraggablePinMove(pos.lat(), pos.lng());
-        }
-      });
-
-      marker.addListener('dragend', () => {
-        const pos = marker.getPosition();
-        if (pos && onDraggablePinMove) {
-          onDraggablePinMove(pos.lat(), pos.lng());
-        }
-      });
-
-      draggablePinRef.current = marker;
-
-      // Pan map to pin position on first create
-      mapInstanceRef.current.panTo(draggablePin.position);
-      mapInstanceRef.current.setZoom(17);
-    });
-
-    return () => {
-      if (draggablePinRef.current) {
-        draggablePinRef.current.setMap(null);
-        draggablePinRef.current = null;
-      }
-      pinActiveRef.current = false;
-    };
-  }, [!!draggablePin, draggablePin?.color, isLoaded, onDraggablePinMove]);
-
-  // Update draggable pin position without recreating the marker
-  useEffect(() => {
-    if (!draggablePinRef.current || !draggablePin) return;
-    // Only update if the pin was NOT being dragged by the user
-    draggablePinRef.current.setPosition(draggablePin.position);
-  }, [draggablePin?.position?.lat, draggablePin?.position?.lng]);
 
   // Update markers
   useEffect(() => {
@@ -479,6 +400,86 @@ export default function GoogleMap({
     };
   }, [routeKey, showRoute, showDirections, waypoints, isLoaded]);
 
+  // ─── Draggable Precision Pin ─────────────────────────────────
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded) return;
+
+    // Remove existing draggable marker
+    if (draggableMarkerRef.current) {
+      draggableMarkerRef.current.setMap(null);
+      draggableMarkerRef.current = null;
+    }
+
+    // If no draggable pin data, nothing to do
+    if (!draggablePin?.position) return;
+
+    loadGoogleMaps().then(() => {
+      if (!mapInstanceRef.current || !draggablePin?.position) return;
+
+      const pinColor = draggablePin.color || '#06b6d4';
+      const pinLabel = draggablePin.label || '';
+      const pinTitle = draggablePin.title || 'Arrastra para ajustar la posicion';
+
+      // Build a custom SVG push-pin icon (alfiler) — small circle head + thin point
+      const svgPin = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="32" viewBox="0 0 22 32">
+        <defs>
+          <filter id="s" x="-30%" y="-20%" width="160%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <circle cx="11" cy="8" r="7" fill="${pinColor}" stroke="#fff" stroke-width="1.8" filter="url(#s)"/>
+        <circle cx="11" cy="8" r="4" fill="#fff" opacity="0.92"/>
+        ${pinLabel ? `<text x="11" y="11.5" text-anchor="middle" font-size="7" font-weight="bold" fill="${pinColor}">${pinLabel}</text>` : ''}
+        <path d="M11 15 L8 30 L11 27 L14 30 Z" fill="${pinColor}"/>
+      </svg>`;
+
+      const marker = new google.maps.Marker({
+        map: mapInstanceRef.current,
+        position: draggablePin.position,
+        title: pinTitle,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgPin),
+          scaledSize: new google.maps.Size(22, 32),
+          anchor: new google.maps.Point(11, 30),
+        },
+        draggable: true,
+        zIndex: 2000,
+        animation: google.maps.Animation.DROP,
+      });
+
+      // Center map on pin when placed
+      mapInstanceRef.current.panTo(draggablePin.position);
+      mapInstanceRef.current.setZoom(17);
+
+      // Handle drag events
+      marker.addListener('dragstart', () => {
+        setIsDragging(true);
+      });
+
+      marker.addListener('drag', () => {
+        // Live feedback — could update label here if needed
+      });
+
+      marker.addListener('dragend', () => {
+        setIsDragging(false);
+        const pos = marker.getPosition();
+        if (pos && onDragPinEnd) {
+          onDragPinEnd(pos.lat(), pos.lng());
+        }
+      });
+
+      draggableMarkerRef.current = marker;
+    });
+
+    return () => {
+      if (draggableMarkerRef.current) {
+        draggableMarkerRef.current.setMap(null);
+        draggableMarkerRef.current = null;
+      }
+      setIsDragging(false);
+    };
+  }, [draggablePin?.position?.lat, draggablePin?.position?.lng, draggablePin?.color, draggablePin?.label, isLoaded, onDragPinEnd]);
+
   // Re-center on user location
   const handleRecenter = useCallback(() => {
     if (!mapInstanceRef.current || !userLocation) return;
@@ -551,7 +552,7 @@ export default function GoogleMap({
       )}
 
       {/* Re-center button — only show when location found */}
-      {showUserLocation && locationStatus === 'found' && userLocation && (
+      {showUserLocation && locationStatus === 'found' && userLocation && !draggablePin && (
         <button
           onClick={handleRecenter}
           className="absolute bottom-3 right-3 z-10 glass-strong rounded-xl p-2.5 text-gray-400 hover:text-cyan-400 transition-colors"
@@ -559,6 +560,18 @@ export default function GoogleMap({
         >
           <Crosshair className="w-5 h-5" />
         </button>
+      )}
+
+      {/* Draggable Pin Mode Banner */}
+      {draggablePin && (
+        <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-center pointer-events-none">
+          <div className="glass-strong rounded-xl px-4 py-2 flex items-center gap-2 border border-cyan-500/30 pointer-events-auto">
+            <div className={`w-3 h-3 rounded-full ${isDragging ? 'bg-amber-400 animate-pulse' : 'bg-cyan-400'} ${!isDragging ? 'animate-bounce' : ''}`} />
+            <span className="text-[11px] text-white font-medium">
+              {isDragging ? 'Suelta el pin en la posicion exacta...' : 'Arrastra el pin para ajustar la ubicacion'}
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );

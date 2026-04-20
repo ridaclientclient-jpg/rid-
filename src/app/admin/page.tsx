@@ -195,8 +195,8 @@ function DashboardSkeleton() {
         <Skeleton className="h-9 w-64 bg-white/10" />
         <Skeleton className="h-5 w-80 mt-2 bg-white/5" />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="glass rounded-2xl p-5">
             <div className="flex items-start justify-between mb-3">
               <Skeleton className="w-11 h-11 rounded-xl bg-white/10" />
@@ -267,6 +267,7 @@ export default function AdminDashboardPage() {
         todayRidesRes,
         onlineDriversRes,
         todayRevenueRes,
+        todayCommissionRes,
         recentRidesRes,
         notificationsRes,
         allRidesRes,
@@ -282,6 +283,10 @@ export default function AdminDashboardPage() {
           .eq('status', 'online'),
         // Revenue today (completed rides)
         supabase.from('rides').select('price')
+          .gte('created_at', todayStart)
+          .eq('status', 'completed'),
+        // Commission today
+        supabase.from('rides').select('commission')
           .gte('created_at', todayStart)
           .eq('status', 'completed'),
         // Recent rides with rider profile and driver info
@@ -309,6 +314,7 @@ export default function AdminDashboardPage() {
       const driversOnline = onlineDriversRes.count ?? 0;
       const revenueItems = todayRevenueRes.data ?? [];
       const revenueToday = revenueItems.reduce((sum, r) => sum + (r.price ?? 0), 0);
+      const commissionToday = (todayCommissionRes.data ?? []).reduce((sum, r) => sum + (Number(r.commission) || 0), 0);
 
       setStats([
         {
@@ -342,6 +348,14 @@ export default function AdminDashboardPage() {
           icon: DollarSign,
           color: 'from-purple-600 to-blue-600',
           bgGlow: 'shadow-purple-500/20',
+        },
+        {
+          label: 'Comision Hoy',
+          value: formatCurrency(commissionToday),
+          change: null,
+          icon: TrendingUp,
+          color: 'from-amber-500 to-orange-500',
+          bgGlow: 'shadow-amber-500/20',
         },
       ]);
 
@@ -472,7 +486,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         {stats.length > 0 ? stats.map((stat, i) => (
           <motion.div
             key={i}
@@ -497,7 +511,7 @@ export default function AdminDashboardPage() {
             <p className="text-sm text-gray-400 mt-0.5">{stat.label}</p>
           </motion.div>
         )) : (
-          <div className="xl:col-span-4 glass rounded-2xl p-8 text-center">
+          <div className="xl:col-span-5 glass rounded-2xl p-8 text-center">
             <p className="text-gray-500">Sin datos disponibles</p>
           </div>
         )}

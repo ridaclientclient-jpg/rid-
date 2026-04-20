@@ -1,150 +1,198 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/store/authStore';
-import { toast } from 'sonner';
-import SupportChat from '@/components/SupportChat';
 import {
-  MessageCircle, Phone, Mail, AlertTriangle,
-  Send, Loader2, HelpCircle, ChevronDown, ChevronUp
+  MessageCircle,
+  Phone,
+  Mail,
+  ChevronRight,
+  ChevronDown,
+  Search,
+  Send,
+  HelpCircle,
+  AlertTriangle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
-const faqs = [
+const faqItems = [
   {
-    q: 'Como acepto una entrega?',
-    a: 'Cuando recibas una notificacion de nueva entrega, abrela y presiona "Aceptar". La entrega aparecera en tu lista de entregas activas con la direccion de recogida y entrega.',
+    question: 'No recibo solicitudes de entrega, que puedo hacer?',
+    answer:
+      'Verifica que tu estado este activo en la pantalla principal. Asegurate de estar en una zona con alta demanda de entregas. Manten una calificacion superior a 4.5 estrellas para recibir prioridad en las asignaciones. Tambien puedes activar notificaciones push para no perderte ninguna solicitud.',
   },
   {
-    q: 'Que hago si el cliente no esta en la direccion?',
-    a: 'Intenta contactar al cliente por la app. Si no responde en 5 minutos, puedes reportar el problema desde la pantalla de la entrega. El sistema registrara el incidente.',
+    question: 'Como retiro mis ganancias?',
+    answer:
+      'Dirigete a la seccion Ganancias en el menu inferior y selecciona Retirar. Puedes solicitar un retiro cuando tu saldo supere el minimo establecido. Los retiros se procesan en un plazo de 1 a 3 dias habiles segun tu metodo de pago. Asegrate de que tus datos bancarios esten correctos en tu perfil.',
   },
   {
-    q: 'Como reclamo por un pago incorrecto?',
-    a: 'Ve a la seccion de Ganancias, selecciona la entrega con el problema y toca "Reportar". El equipo de soporte revisara y realizara el ajuste correspondiente dentro de 48 horas.',
+    question: 'Que hago si el cliente no esta en la direccion de entrega?',
+    answer:
+      'Intenta comunicarte con el cliente a traves de los datos de contacto proporcionados en el pedido. Espera al menos 5 minutos en el lugar. Si no hay respuesta, puedes marcar el pedido como "Cliente no encontrado" y contactar con soporte para instrucciones adicionales. No dejes el paquete sin confirmacion del destinatario.',
   },
   {
-    q: 'Puedo rechazar una entrega?',
-    a: 'Si, puedes rechazar entregas sin penalidad siempre que no excedas 3 rechazos consecutivas. Demasiados rechazos pueden afectar tu prioridad en la asignacion de entregas.',
+    question: 'Como reporto un problema durante una entrega?',
+    answer:
+      'Durante una entrega activa, puedes usar el boton de Soporte en la pantalla de seguimiento para reportar cualquier incidente. Describe el problema con el mayor detalle posible e incluye fotos si es necesario. Para emergencias, llama al 911 inmediatamente y luego reporta el incidente a nuestro equipo de soporte.',
+  },
+];
+
+const contactOptions = [
+  {
+    icon: MessageCircle,
+    label: 'Chat en vivo',
+    desc: 'Respuesta inmediata',
+    color: 'text-cyan-400 bg-cyan-500/20',
+    navigate: '/courier/support/chat',
   },
   {
-    q: 'Que pasa si el paquete se dania durante el envio?',
-    a: 'Toma fotos del dano inmediatamente y reportalo desde la pantalla de la entrega. El equipo de soporte coordinara con el vendedor y cliente.',
+    icon: Phone,
+    label: 'WhatsApp',
+    desc: '+506 8783-8329',
+    color: 'text-emerald-400 bg-emerald-500/20',
+    href: 'https://wa.me/50687838329',
   },
   {
-    q: 'Como actualizo mi vehiculo de entrega?',
-    a: 'Desde tu perfil, ve a la seccion de configuracion donde podras cambiar el tipo de vehiculo (moto, bici o carro). Los cambios se reflejaran en tu proxima sesion.',
+    icon: Mail,
+    label: 'Email',
+    desc: 'soporte@rida.app',
+    color: 'text-blue-400 bg-blue-500/20',
+    href: 'mailto:soporte@rida.app',
   },
 ];
 
 export default function CourierSupport() {
-  const { user } = useAuthStore();
-  const [sending, setSending] = useState(false);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  const [subject, setSubject] = useState('');
-  const [chatOpen, setChatOpen] = useState(false);
+  const router = useRouter();
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const handleSubmit = async () => {
-    if (!subject.trim() || !message.trim()) {
-      toast.error('Asunto y mensaje son obligatorios');
-      return;
-    }
-    setSending(true);
-    try {
-      const { error } = await supabase.from('reports').insert({
-        user_id: user?.id,
-        type: 'complaint',
-        description: `[Soporte Courier] ${subject}\n\n${message}`,
-      });
-      if (error) throw error;
-      toast.success('Mensaje enviado. Te responderemos pronto.');
-      setSubject('');
-      setMessage('');
-    } catch (err) {
-      console.error('Error sending support:', err);
-      toast.error('Error al enviar mensaje');
-    } finally {
-      setSending(false);
-    }
-  };
+  const filteredFaq = faqItems.filter(
+    (item) =>
+      item.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.answer.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-5">
+      {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-xl font-bold text-white">Soporte</h1>
         <p className="text-sm text-gray-400 mt-1">Estamos aqui para ayudarte 24/7</p>
       </motion.div>
 
-      {/* Quick Actions */}
+      {/* SOS Banner */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
+        className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3"
+      >
+        <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
+          <AlertTriangle className="w-6 h-6 text-red-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-white">Emergencia?</p>
+          <p className="text-xs text-gray-400">
+            Si estas en peligro, llama al 911 inmediatamente y usa el boton SOS durante tu entrega activa.
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Contact Buttons */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
         className="grid grid-cols-3 gap-2"
       >
-        <button
-          onClick={() => toast.info('Llamada al soporte (proximamente)')}
-          className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
-        >
-          <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <Phone className="w-5 h-5 text-emerald-400" />
-          </div>
-          <span className="text-[10px] text-gray-400">Llamar</span>
-        </button>
-        <button
-          onClick={() => setChatOpen(true)}
-          className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
-        >
-          <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-            <MessageCircle className="w-5 h-5 text-blue-400" />
-          </div>
-          <span className="text-[10px] text-gray-400">Chat</span>
-        </button>
-        <button
-          onClick={() => window.open('mailto:ridsoport@gmail.com', '_blank')}
-          className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
-        >
-          <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-            <Mail className="w-5 h-5 text-amber-400" />
-          </div>
-          <span className="text-[10px] text-gray-400">Email</span>
-        </button>
+        {contactOptions.map((item, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              if (item.navigate) {
+                router.push(item.navigate);
+              } else if (item.href) {
+                window.open(item.href, '_blank');
+              }
+            }}
+            className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
+          >
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}
+            >
+              <item.icon className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-medium text-white">{item.label}</span>
+            <span className="text-[10px] text-gray-500">{item.desc}</span>
+          </button>
+        ))}
+      </motion.div>
+
+      {/* FAQ Search */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.13 }}
+        className="relative"
+      >
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <input
+          type="text"
+          placeholder="Buscar en preguntas frecuentes..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500"
+        />
       </motion.div>
 
       {/* FAQ Section */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="glass rounded-2xl p-4"
+        transition={{ delay: 0.16 }}
       >
-        <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
           <HelpCircle className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-sm font-semibold text-white">Preguntas Frecuentes</h2>
-        </div>
+          Preguntas frecuentes
+        </h3>
         <div className="space-y-2">
-          {faqs.map((faq, i) => (
-            <div key={i} className="border border-white/5 rounded-xl overflow-hidden">
+          {(searchQuery ? filteredFaq : faqItems).map((item, index) => (
+            <div key={index} className="glass rounded-xl overflow-hidden">
               <button
-                onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                className="w-full p-3 flex items-center gap-2 text-left"
+                type="button"
+                onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
+                className="w-full p-3 flex items-center gap-2 text-left hover:bg-white/5 transition-colors"
               >
-                <span className="flex-1 text-xs text-gray-300">{faq.q}</span>
-                {openFaq === i ? (
-                  <ChevronUp className="w-3 h-3 text-gray-500 shrink-0" />
+                <span className="flex-1 text-sm text-white">{item.question}</span>
+                {expandedFaq === index ? (
+                  <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
                 ) : (
-                  <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
                 )}
               </button>
-              {openFaq === i && (
-                <div className="px-3 pb-3">
-                  <p className="text-[11px] text-gray-400 leading-relaxed">{faq.a}</p>
-                </div>
+              {expandedFaq === index && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  className="px-3 pb-3"
+                >
+                  <div className="border-t border-white/5 pt-2">
+                    <p className="text-xs text-gray-400 leading-relaxed">{item.answer}</p>
+                  </div>
+                </motion.div>
               )}
             </div>
           ))}
+          {searchQuery && filteredFaq.length === 0 && (
+            <div className="text-center py-6">
+              <p className="text-sm text-gray-500">
+                No se encontraron resultados para &quot;{searchQuery}&quot;
+              </p>
+            </div>
+          )}
         </div>
       </motion.div>
 
@@ -152,45 +200,39 @@ export default function CourierSupport() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="glass rounded-2xl p-4 space-y-3"
+        transition={{ delay: 0.2 }}
+        className="glass-strong rounded-2xl p-4 space-y-3"
       >
-        <div className="flex items-center gap-2 mb-1">
-          <AlertTriangle className="w-4 h-4 text-amber-400" />
-          <h2 className="text-sm font-semibold text-white">Reportar un Problema</h2>
-        </div>
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <Send className="w-4 h-4 text-cyan-400" />
+          Envanos un mensaje
+        </h3>
         <div>
-          <label className="text-xs text-gray-400 font-medium mb-1.5 block">Asunto</label>
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Describe tu problema brevemente"
-            className="w-full bg-white/10 border border-white/15 rounded-xl px-4 py-3 text-white text-sm placeholder:text-gray-500 focus:outline-none focus:border-cyan-500/50"
-          />
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500"
+          >
+            <option value="" className="bg-rida-dark">Selecciona un tema</option>
+            <option value="delivery" className="bg-rida-dark">Problema con entrega</option>
+            <option value="earnings" className="bg-rida-dark">Ganancias y pagos</option>
+            <option value="safety" className="bg-rida-dark">Seguridad</option>
+            <option value="technical" className="bg-rida-dark">Problema tecnico</option>
+            <option value="other" className="bg-rida-dark">Otro</option>
+          </select>
         </div>
-        <div>
-          <label className="text-xs text-gray-400 font-medium mb-1.5 block">Mensaje</label>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Explica en detalle lo que sucedio..."
-            rows={4}
-            className="w-full bg-white/10 border border-white/15 rounded-xl px-4 py-3 text-white text-sm placeholder:text-gray-500 focus:outline-none focus:border-cyan-500/50 resize-none"
-          />
-        </div>
+        <textarea
+          placeholder="Describe tu problema o consulta..."
+          rows={4}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 resize-none"
+        />
         <button
-          onClick={handleSubmit}
-          disabled={sending}
-          className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+          type="button"
+          onClick={() => toast.success('Mensaje enviado. Te responderemos pronto.')}
+          className="w-full btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2"
         >
-          {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-          {sending ? 'Enviando...' : 'Enviar Mensaje'}
+          <Send className="w-4 h-4" />
+          Enviar mensaje
         </button>
       </motion.div>
-
-      {/* Chat en Vivo */}
-      <SupportChat source="courier" isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, MapPin } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, Banknote, Wallet, CreditCard, Smartphone, MapPin, CheckCircle, Calendar, Info } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
-import { useFavoritePlacesStore } from '@/store/favoritePlacesStore';
 import { toast } from 'sonner';
-import GoogleMap from '@/components/GoogleMap';
+import PaymentMethodSelector, { getPaymentLabel, getPaymentIcon, type PaymentMethod } from '@/components/PaymentMethodSelector';
+import GoogleMap, { type DraggablePinData } from '@/components/GoogleMap';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
 import DraggableBottomSheet from '@/components/DraggableBottomSheet';
 import { reverseGeocode } from '@/lib/googleMaps';
@@ -23,44 +23,68 @@ interface Stop {
   coords: CoordData | null;
 }
 
-const STOP_LABELS = ['C', 'D', 'E'];
-const STOP_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899'];
+const STOP_LABELS = ['C', 'D', 'E', 'F', 'G', 'H'];
+const STOP_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
 
 export default function ClientRide() {
   const router = useRouter();
   const { currentRide, createRide, cancelRide, completeRide, isCreating } = useRideStore();
-  const { prefill, prefillTarget, clearPrefill } = useFavoritePlacesStore();
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [originCoords, setOriginCoords] = useState<CoordData | null>(null);
   const [destCoords, setDestCoords] = useState<CoordData | null>(null);
-
-  // Pre-fill origin or destination from favorite places store
-  useEffect(() => {
-    if (prefill && prefillTarget) {
-      if (prefillTarget === 'origin') {
-        setOrigin(prefill.address);
-        setOriginCoords(prefill.lat && prefill.lng ? { lat: prefill.lat, lng: prefill.lng } : null);
-      } else if (prefillTarget === 'destination') {
-        setDestination(prefill.address);
-        setDestCoords(prefill.lat && prefill.lng ? { lat: prefill.lat, lng: prefill.lng } : null);
-      }
-      clearPrefill();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [rideType, setRideType] = useState<string>('standard');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [paymentExtra, setPaymentExtra] = useState<{ cardLastFour?: string; sinpePhone?: string }>({});
   const [showThirdParty, setShowThirdParty] = useState(false);
   const [stops, setStops] = useState<Stop[]>([]);
   const [gettingLocation, setGettingLocation] = useState(false);
   const [userGPS, setUserGPS] = useState<{ lat: number; lng: number } | null>(null);
   const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // Draggable pin state
-  const [pinTarget, setPinTarget] = useState<'origin' | 'destination' | null>(null);
-  const [pinPosition, setPinPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const [pinAddress, setPinAddress] = useState<string>('');
-  const [pinGeocoding, setPinGeocoding] = useState(false);
-  const pinDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ─── Drag Pin Precision Mode ─────────────────────────────────
+  const [dragTarget, setDragTarget] = useState<'origin' | 'destination' | null>(null);
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
+
+  // ─── Schedule Mode ─────────────────────────────────
+  const searchParams = useSearchParams();
+  const isScheduleMode = searchParams.get('mode') === 'schedule';
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+
+  // Compute the draggable pin data based on dragTarget
+  const draggablePin: DraggablePinData | null = (() => {
+    if (dragTarget === 'origin' && originCoords) {
+      return { position: originCoords, color: '#10b981', label: 'A', title: 'Arrastra para ajustar punto de partida' };
+    }
+    if (dragTarget === 'destination' && destCoords) {
+      return { position: destCoords, color: '#ef4444', label: 'B', title: 'Arrastra para ajustar destino' };
+    }
+    return null;
+  })();
+
+  // Handle pin drag end — reverse geocode and update address
+  const handleDragPinEnd = useCallback(async (lat: number, lng: number) => {
+    setIsReverseGeocoding(true);
+    try {
+      const address = await reverseGeocode(lat, lng);
+      const displayAddress = address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+      if (dragTarget === 'origin') {
+        setOrigin(displayAddress);
+        setOriginCoords({ lat, lng });
+        toast.success('Punto de partida ajustado');
+      } else if (dragTarget === 'destination') {
+        setDestination(displayAddress);
+        setDestCoords({ lat, lng });
+        toast.success('Destino ajustado');
+      }
+    } catch {
+      toast.error('No se pudo obtener la direccion en esta posicion');
+    } finally {
+      setIsReverseGeocoding(false);
+    }
+  }, [dragTarget]);
 
   // Capture user GPS from map and keep it synced
   const handleMapUserLocation = useCallback((location: { lat: number; lng: number } | null) => {
@@ -69,60 +93,6 @@ export default function ClientRide() {
       userGPSRef.current = location;
     }
   }, []);
-
-  // Start pin mode — user picks a point on the map
-  const startPinMode = async (target: 'origin' | 'destination') => {
-    const startPos = userGPSRef.current || { lat: 9.7489, lng: -83.7534 };
-    setPinTarget(target);
-    setPinPosition(startPos);
-    setPinGeocoding(true);
-    setPinAddress('Obteniendo direccion...');
-    try {
-      const addr = await reverseGeocode(startPos.lat, startPos.lng);
-      setPinAddress(addr || `${startPos.lat.toFixed(5)}, ${startPos.lng.toFixed(5)}`);
-    } catch {
-      setPinAddress(`${startPos.lat.toFixed(5)}, ${startPos.lng.toFixed(5)}`);
-    }
-    setPinGeocoding(false);
-  };
-
-  // Handle pin drag with debounced reverse geocoding
-  const handlePinDrag = useCallback((lat: number, lng: number) => {
-    setPinPosition({ lat, lng });
-    setPinGeocoding(true);
-    if (pinDebounceRef.current) clearTimeout(pinDebounceRef.current);
-    pinDebounceRef.current = setTimeout(async () => {
-      try {
-        const addr = await reverseGeocode(lat, lng);
-        setPinAddress(addr || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-      } catch {
-        setPinAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-      }
-      setPinGeocoding(false);
-    }, 400);
-  }, []);
-
-  // Confirm pin selection
-  const confirmPin = () => {
-    if (!pinTarget || !pinPosition || !pinAddress) return;
-    if (pinTarget === 'origin') {
-      setOrigin(pinAddress);
-      setOriginCoords(pinPosition);
-    } else {
-      setDestination(pinAddress);
-      setDestCoords(pinPosition);
-    }
-    setPinTarget(null);
-    setPinPosition(null);
-    setPinAddress('');
-    toast.success(`${pinTarget === 'origin' ? 'Origen' : 'Destino'} seleccionado en el mapa`);
-  };
-
-  const cancelPinMode = () => {
-    setPinTarget(null);
-    setPinPosition(null);
-    setPinAddress('');
-  };
 
   const handleOriginChange = (val: string, _placeId?: string, lat?: number, lng?: number) => {
     setOrigin(val);
@@ -167,8 +137,8 @@ export default function ClientRide() {
 
   // Add a new intermediate stop
   const addStop = () => {
-    if (stops.length >= 3) {
-      toast.error('Maximo 3 paradas intermedias');
+    if (stops.length >= 6) {
+      toast.error('Maximo 6 paradas intermedias');
       return;
     }
     setStops([...stops, { id: 'stop-' + Date.now(), address: '', coords: null }]);
@@ -209,12 +179,6 @@ export default function ClientRide() {
   const mapDest = currentRide ? activeRideDest : destCoords;
   const mapWaypoints = currentRide ? activeWaypoints : stops.filter(s => s.coords).map(s => ({ lat: s.coords!.lat, lng: s.coords!.lng }));
 
-  // Memoize route object to prevent GoogleMap from re-rendering directions on every state change (fixes blue line flickering)
-  const memoizedRoute = useMemo(() => {
-    if (mapOrigin && mapDest) return { origin: mapOrigin, destination: mapDest };
-    return undefined;
-  }, [mapOrigin?.lat, mapOrigin?.lng, mapDest?.lat, mapDest?.lng]);
-
   if (mapOrigin) mapMarkers.push({ ...mapOrigin, label: 'A', color: '#10b981' });
   if (currentRide) {
     (currentRide.stops || []).forEach((stop: any, i: number) => {
@@ -230,6 +194,30 @@ export default function ClientRide() {
     });
   }
   if (mapDest) mapMarkers.push({ ...mapDest, label: 'B', color: '#ef4444' });
+
+  // ─── Schedule Helpers ─────────────────────────────────
+  const getTodayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+  };
+
+  const getMinTime = (date: string) => {
+    if (date !== getTodayStr()) return undefined;
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 30);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  const getQuickTimes = (date: string) => {
+    const now = new Date();
+    const baseTimes = ['06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00','21:30','22:00'];
+    if (date !== getTodayStr()) return baseTimes;
+    const minMinutes = now.getHours() * 60 + now.getMinutes() + 30;
+    return baseTimes.filter(t => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m >= minMinutes;
+    });
+  };
 
   const handleCreateRide = async () => {
     if (!origin || !destination) {
@@ -258,7 +246,8 @@ export default function ClientRide() {
         origin, destination,
         originCoords?.lat, originCoords?.lng,
         destCoords?.lat, destCoords?.lng,
-        rideType, stopsData
+        rideType, stopsData,
+        paymentMethod, paymentExtra
       );
       if (rideId) {
         toast.success('Viaje creado! Buscando conductor...');
@@ -270,6 +259,58 @@ export default function ClientRide() {
     } catch (error: any) {
       console.error('Ride creation failed:', error);
       toast.error('Error al crear viaje: ' + (error?.message || 'Intenta de nuevo'));
+    }
+  };
+
+  const handleScheduleRide = async () => {
+    if (!scheduleDate || !scheduleTime) {
+      toast.error('Selecciona fecha y hora para programar');
+      return;
+    }
+    const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`);
+    const minTime = new Date(Date.now() + 30 * 60000);
+    if (scheduledAt < minTime) {
+      toast.error('El viaje debe programarse con al menos 30 minutos de anticipacion');
+      return;
+    }
+    if (!origin || !destination) {
+      toast.error('Selecciona origen y destino');
+      return;
+    }
+    if (origin === destination) {
+      toast.error('Origen y destino no pueden ser iguales');
+      return;
+    }
+    const emptyStop = stops.find(s => !s.address);
+    if (emptyStop) {
+      toast.error('Completa todas las paradas intermedias o eliminalas');
+      return;
+    }
+
+    const stopsData = stops.map(s => ({
+      address: s.address,
+      lat: s.coords?.lat,
+      lng: s.coords?.lng,
+    }));
+
+    try {
+      const rideId = await createRide(
+        origin, destination,
+        originCoords?.lat, originCoords?.lng,
+        destCoords?.lat, destCoords?.lng,
+        rideType, stopsData,
+        paymentMethod, paymentExtra,
+        scheduledAt.toISOString()
+      );
+      if (rideId) {
+        toast.success('Viaje programado correctamente!');
+        router.push('/client');
+      } else {
+        toast.error('No se pudo programar el viaje. Intenta de nuevo.');
+      }
+    } catch (error: any) {
+      console.error('Schedule ride failed:', error);
+      toast.error('Error al programar viaje: ' + (error?.message || 'Intenta de nuevo'));
     }
   };
 
@@ -292,12 +333,16 @@ export default function ClientRide() {
           zoom={mapOrigin && mapDest ? 13 : undefined}
           markers={mapMarkers}
           waypoints={mapWaypoints.length > 0 ? mapWaypoints : undefined}
-          showRoute={memoizedRoute}
-          showDirections={!!(mapOrigin && mapDest)}
-          draggablePin={pinTarget && pinPosition ? { position: pinPosition, color: pinTarget === 'origin' ? '#10b981' : '#ef4444' } : null}
-          onDraggablePinMove={handlePinDrag}
+          showRoute={
+            mapOrigin && mapDest && !draggablePin
+              ? { origin: mapOrigin, destination: mapDest }
+              : undefined
+          }
+          showDirections={!!(mapOrigin && mapDest) && !draggablePin}
           showUserLocation={true}
           onUserLocation={handleMapUserLocation}
+          draggablePin={draggablePin}
+          onDragPinEnd={handleDragPinEnd}
           className="absolute inset-0"
           height="100%"
         />
@@ -308,7 +353,6 @@ export default function ClientRide() {
         initialSnap="peek"
         minHeight={140}
         className="glass-strong rounded-t-3xl"
-        disabled={!!pinTarget}
       >
         <div className="p-5 space-y-4">
         {!currentRide ? (
@@ -336,35 +380,32 @@ export default function ClientRide() {
                 </div>
               </button>
 
-              {/* Set on map buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => startPinMode('origin')}
-                  disabled={!!currentRide}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl glass hover:bg-white/10 transition-all text-left disabled:opacity-50"
-                >
-                  <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-xs text-gray-300">Origen en mapa</span>
-                </button>
-                <button
-                  onClick={() => startPinMode('destination')}
-                  disabled={!!currentRide}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl glass hover:bg-white/10 transition-all text-left disabled:opacity-50"
-                >
-                  <MapPin className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                  <span className="text-xs text-gray-300">Destino en mapa</span>
-                </button>
-              </div>
-
               {/* Origin */}
-              <PlacesAutocomplete
-                value={origin}
-                onChange={handleOriginChange}
-                placeholder="O escribe una direccion de partida"
-                dotColor="bg-emerald-400"
-                userLocation={userGPS}
-                searchRadius={50000}
-              />
+              <div className="relative">
+                <PlacesAutocomplete
+                  value={origin}
+                  onChange={handleOriginChange}
+                  placeholder="O escribe una direccion de partida"
+                  dotColor="bg-emerald-400"
+                  userLocation={userGPS}
+                  searchRadius={15000}
+                />
+                {/* Precision pin button — only show when origin has coords */}
+                {originCoords && !currentRide && (
+                  <button
+                    type="button"
+                    onClick={() => setDragTarget(dragTarget === 'origin' ? null : 'origin')}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all z-20 ${
+                      dragTarget === 'origin'
+                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                        : 'bg-white/5 text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
+                    }`}
+                    title="Precisar punto en el mapa"
+                  >
+                    <MapPin className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
 
               {/* Intermediate Stops */}
               <AnimatePresence>
@@ -397,14 +438,14 @@ export default function ClientRide() {
                       placeholder={`Parada intermedia ${index + 1}`}
                       dotColor=""
                       userLocation={userGPS}
-                      searchRadius={50000}
+                      searchRadius={15000}
                     />
                   </motion.div>
                 ))}
               </AnimatePresence>
 
               {/* Add Stop Button */}
-              {stops.length < 3 && (
+              {stops.length < 6 && (
                 <motion.button
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -417,14 +458,31 @@ export default function ClientRide() {
               )}
 
               {/* Destination */}
-              <PlacesAutocomplete
-                value={destination}
-                onChange={handleDestinationChange}
-                placeholder="A donde vas?"
-                dotColor="bg-red-400"
-                userLocation={userGPS}
-                searchRadius={50000}
-              />
+              <div className="relative">
+                <PlacesAutocomplete
+                  value={destination}
+                  onChange={handleDestinationChange}
+                  placeholder="A donde vas?"
+                  dotColor="bg-red-400"
+                  userLocation={userGPS}
+                  searchRadius={15000}
+                />
+                {/* Precision pin button — only show when destination has coords */}
+                {destCoords && !currentRide && (
+                  <button
+                    type="button"
+                    onClick={() => setDragTarget(dragTarget === 'destination' ? null : 'destination')}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all z-20 ${
+                      dragTarget === 'destination'
+                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
+                        : 'bg-white/5 text-gray-500 hover:text-red-400 hover:bg-red-500/10'
+                    }`}
+                    title="Precisar punto en el mapa"
+                  >
+                    <MapPin className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Stops summary */}
@@ -435,48 +493,199 @@ export default function ClientRide() {
               </div>
             )}
 
+            {/* Schedule Mode — Date/Time Picker */}
+            {isScheduleMode && !currentRide && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-3"
+              >
+                {/* Schedule Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                      <Calendar className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-purple-300">Programar Viaje</p>
+                      <p className="text-[10px] text-gray-500">Selecciona fecha y hora</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push('/client/ride')}
+                    className="text-[10px] text-cyan-400 hover:underline"
+                  >
+                    Pedir ahora
+                  </button>
+                </div>
+
+                {/* Date Picker */}
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1.5 block">Fecha del viaje</label>
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    min={getTodayStr()}
+                    onChange={(e) => { setScheduleDate(e.target.value); setScheduleTime(''); }}
+                    className="w-full glass rounded-xl p-3 text-white bg-transparent text-sm outline-none focus:ring-1 focus:ring-purple-500/50 [color-scheme:dark]"
+                  />
+                  {/* Quick Date Buttons */}
+                  <div className="flex gap-2 mt-2">
+                    {[0, 1, 2, 3].map(offset => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + offset);
+                      const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                      const dayLabel = offset === 0 ? 'Hoy' : offset === 1 ? 'Manana' : d.toLocaleDateString('es-CR', { weekday: 'short', day: 'numeric' });
+                      return (
+                        <button
+                          key={offset}
+                          type="button"
+                          onClick={() => { setScheduleDate(dateStr); setScheduleTime(''); }}
+                          className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                            scheduleDate === dateStr
+                              ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
+                              : 'glass text-gray-400 hover:text-white hover:bg-white/10'
+                          }`}
+                        >
+                          {dayLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Time Picker — only show when date is selected */}
+                {scheduleDate && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2"
+                  >
+                    <label className="text-xs font-medium text-gray-400 mb-1.5 block">Hora del viaje</label>
+                    <input
+                      type="time"
+                      value={scheduleTime}
+                      min={getMinTime(scheduleDate)}
+                      onChange={(e) => setScheduleTime(e.target.value)}
+                      className="w-full glass rounded-xl p-3 text-white bg-transparent text-sm outline-none focus:ring-1 focus:ring-purple-500/50 [color-scheme:dark]"
+                    />
+                    {/* Quick Time Slots */}
+                    <div className="flex gap-1.5 flex-wrap">
+                      {getQuickTimes(scheduleDate).map(time => (
+                        <button
+                          key={time}
+                          type="button"
+                          onClick={() => setScheduleTime(time)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            scheduleTime === time
+                              ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
+                              : 'glass text-gray-400 hover:text-white hover:bg-white/10'
+                          }`}
+                        >
+                          {time}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Info Card — show when both date and time selected */}
+                {scheduleDate && scheduleTime && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-start gap-2 p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20"
+                  >
+                    <Info className="w-3.5 h-3.5 text-purple-400 mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      Se buscara un conductor 15 minutos antes de la hora programada. Recibiras una notificacion cuando se asigne.
+                    </p>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+
             {/* Ride Types */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
               {rideTypes.map((type) => {
                 const TypeIcon = type.icon;
                 return (
                   <button
                     key={type.id}
                     onClick={() => setRideType(type.id)}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl transition-all ${
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
                       rideType === type.id
-                        ? 'bg-white/10 border-2 border-cyan-500/60 glow-cyan'
-                        : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                        ? 'glass-strong border-cyan-500/50 glow-cyan'
+                        : 'glass hover:bg-white/10'
                     }`}
                   >
                     <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                         rideType === type.id
                           ? `bg-gradient-to-br ${type.color}`
                           : 'bg-white/10'
                       }`}
                     >
-                      <TypeIcon className="w-4 h-4 text-white" />
+                      <TypeIcon className="w-5 h-5 text-white" />
                     </div>
-                    <div className="flex-1 text-left min-w-0">
-                      <p className="text-xs font-semibold text-white truncate">{type.name}</p>
-                      <p className="text-[10px] text-gray-500 truncate">{type.time}</p>
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-semibold text-white">{type.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {type.desc} - {type.time} de espera
+                      </p>
                     </div>
-                    <p className="text-xs font-bold text-cyan-400 shrink-0">{type.price}</p>
+                    <p className="text-sm font-bold text-cyan-400">{type.price}</p>
                   </button>
                 );
               })}
             </div>
 
+            {/* Payment Method Selector */}
+            <PaymentMethodSelector
+              selected={paymentMethod}
+              onChange={(method, extra) => {
+                setPaymentMethod(method);
+                if (extra) setPaymentExtra(extra);
+              }}
+              estimatedPrice={rideTypes.find(t => t.id === rideType)?.price
+                ? parseInt((rideTypes.find(t => t.id === rideType)?.price || '0').replace(/[^0-9]/g, ''))
+                : undefined}
+            />
+
+            {/* Selected payment summary */}
+            <div className="flex items-center justify-between glass rounded-lg px-3 py-2">
+              <span className="text-xs text-gray-500">Pago seleccionado</span>
+              <div className="flex items-center gap-1.5">
+                {(() => {
+                  const PIcon = getPaymentIcon(paymentMethod);
+                  return <PIcon className="w-3.5 h-3.5 text-cyan-400" />;
+                })()}
+                <span className="text-xs font-medium text-white">{getPaymentLabel(paymentMethod)}</span>
+              </div>
+            </div>
+
             <button
-              onClick={handleCreateRide}
-              disabled={isCreating || !origin || !destination}
-              className="w-full btn-neon text-white font-semibold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 text-lg"
+              onClick={isScheduleMode ? handleScheduleRide : handleCreateRide}
+              disabled={
+                isCreating || !origin || !destination ||
+                (isScheduleMode && (!scheduleDate || !scheduleTime))
+              }
+              className={`w-full text-white font-semibold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 text-lg ${
+                isScheduleMode
+                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:shadow-lg hover:shadow-purple-500/25'
+                  : 'btn-neon'
+              }`}
             >
               {isCreating ? (
                 <>
                   <Search className="w-5 h-5 animate-spin" />
-                  Buscando conductor...
+                  {isScheduleMode ? 'Programando...' : 'Buscando conductor...'}
+                </>
+              ) : isScheduleMode ? (
+                <>
+                  <Calendar className="w-5 h-5" />
+                  Programar Viaje
                 </>
               ) : (
                 <>
@@ -495,6 +704,8 @@ export default function ClientRide() {
                   className={`w-3 h-3 rounded-full ${
                     currentRide.status === 'searching'
                       ? 'bg-amber-400 animate-pulse'
+                      : currentRide.status === 'scheduled'
+                      ? 'bg-purple-400'
                       : currentRide.status === 'assigned'
                       ? 'bg-blue-400 animate-pulse'
                       : currentRide.status === 'arriving'
@@ -504,26 +715,51 @@ export default function ClientRide() {
                       : 'bg-gray-400'
                   }`}
                 />
-                <span className="text-sm font-semibold text-white capitalize">
-                  {currentRide.status === 'searching' && 'Buscando conductor...'}
-                  {currentRide.status === 'assigned' && 'Conductor asignado'}
-                  {currentRide.status === 'arriving' && 'Conductor en camino'}
-                  {currentRide.status === 'started' && 'Viaje en curso'}
-                  {currentRide.status === 'completed' && 'Viaje completado'}
-                </span>
+                <div>
+                  <span className="text-sm font-semibold text-white capitalize">
+                    {currentRide.status === 'scheduled' && 'Viaje programado'}
+                    {currentRide.status === 'searching' && 'Buscando conductor...'}
+                    {currentRide.status === 'assigned' && 'Conductor asignado'}
+                    {currentRide.status === 'arriving' && 'Conductor en camino'}
+                    {currentRide.status === 'started' && 'Viaje en curso'}
+                    {currentRide.status === 'completed' && 'Viaje completado'}
+                  </span>
+                  {currentRide.status === 'scheduled' && (currentRide as any).scheduled_at && (
+                    <p className="text-[10px] text-purple-400 mt-0.5">
+                      {new Date((currentRide as any).scheduled_at).toLocaleString('es-CR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                </div>
               </div>
               {currentRide.status !== 'completed' && (
                 <button
                   onClick={() => cancelRide(currentRide.id)}
                   className="text-xs text-red-400 hover:underline"
                 >
-                  Cancelar
+                  {currentRide.status === 'scheduled' ? 'Cancelar programacion' : 'Cancelar'}
                 </button>
               )}
             </div>
 
+            {/* Scheduled Ride Info */}
+            {currentRide.status === 'scheduled' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 glass rounded-xl border border-purple-500/20"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-medium text-purple-300">Detalle del viaje programado</span>
+                </div>
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Tu viaje esta programado y se buscara un conductor 15 minutos antes de la hora indicada. Recibiras una notificacion cuando se asigne un conductor.
+                </p>
+              </motion.div>
+            )}
+
             {/* Driver Info */}
-            {currentRide.status !== 'searching' && (
+            {currentRide.status !== 'searching' && currentRide.status !== 'scheduled' && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -616,13 +852,23 @@ export default function ClientRide() {
               </div>
             </div>
 
-            {/* Price & Actions */}
+            {/* Price & Payment Method & Actions */}
             <div className="flex items-center justify-between pt-2">
               <div>
                 <p className="text-xs text-gray-500">Precio estimado</p>
                 <p className="text-2xl font-bold text-white">
                   ₡{currentRide.price.toLocaleString()}
                 </p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  {(() => {
+                    const pMethod = (currentRide as any).payment_method || 'cash';
+                    const PIcon = getPaymentIcon(pMethod as PaymentMethod);
+                    return <PIcon className="w-3 h-3 text-gray-500" />;
+                  })()}
+                  <span className="text-[10px] text-gray-500">
+                    Pago: {getPaymentLabel(((currentRide as any).payment_method || 'cash') as PaymentMethod)}
+                  </span>
+                </div>
               </div>
               {currentRide.status === 'started' && (
                 <button
@@ -675,44 +921,53 @@ export default function ClientRide() {
         </div>
       </DraggableBottomSheet>
 
-      {/* Pin Selection Overlay */}
+      {/* Drag Precision Mode — Floating Controls */}
       <AnimatePresence>
-        {pinTarget && pinPosition && (
+        {dragTarget && !currentRide && (
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 30 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="absolute bottom-44 left-4 right-4 z-30"
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-4 left-4 right-4 z-30"
           >
-            <div className="glass-strong rounded-2xl p-4 space-y-3 border border-white/10">
-              <div className="flex items-center gap-2">
-                <MapPin className={`w-4 h-4 ${pinTarget === 'origin' ? 'text-emerald-400' : 'text-red-400'}`} />
-                <span className="text-xs font-semibold text-white">
-                  {pinTarget === 'origin' ? 'Punto de recogida' : 'Destino'}
-                </span>
-                <span className="text-[10px] text-gray-500 ml-auto">Arrastra el pin</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${pinGeocoding ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-                <p className="text-sm text-white flex-1">
-                  {pinGeocoding ? 'Obteniendo direccion...' : pinAddress}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={confirmPin}
-                  disabled={pinGeocoding}
-                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4" /> Confirmar
-                </button>
-                <button
-                  onClick={cancelPinMode}
-                  className="px-5 glass text-gray-300 text-sm font-medium py-2.5 rounded-xl hover:bg-white/10 transition-colors"
-                >
-                  Cancelar
-                </button>
+            <div className="glass-strong rounded-2xl p-4 space-y-3 border border-cyan-500/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    dragTarget === 'origin' ? 'bg-emerald-500/20' : 'bg-red-500/20'
+                  }`}>
+                    <MapPin className={`w-4 h-4 ${dragTarget === 'origin' ? 'text-emerald-400' : 'text-red-400'}`} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white">
+                      Ajustando {dragTarget === 'origin' ? 'punto de partida' : 'destino'}
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      {isReverseGeocoding ? 'Obteniendo direccion...' : 'Arrastra el pin al lugar exacto'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDragTarget(null)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 transition-all text-sm"
+                  >
+                    <X className="w-4 h-4" />
+                    Cerrar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.success(`${dragTarget === 'origin' ? 'Punto de partida' : 'Destino'} confirmado en la posicion actual`);
+                      setDragTarget(null);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30 transition-all text-sm font-medium"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Confirmar
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>

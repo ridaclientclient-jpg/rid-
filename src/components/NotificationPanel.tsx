@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, X, MapPin, Wallet, AlertTriangle, Info, CheckCircle2, Shield, ChevronRight, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -35,11 +35,47 @@ export default function NotificationPanel() {
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  useEffect(() => {
-    if (isOpen && user) {
-      fetchNotifications();
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        // AbortError = lock contention with initAuth(), not a real error — polling will retry
+        if (error.name === 'AbortError' || error.message?.includes('Lock broken')) return;
+        console.error('Error notificaciones:', error.message, error.code);
+        setNotifications([]);
+        return;
+      }
+      if (data) setNotifications(data as unknown as NotificationItem[]);
+    } catch (err: any) {
+      // AbortError = lock contention, ignore silently
+      if (err?.name === 'AbortError' || err?.message?.includes('Lock broken')) return;
+      console.error('Error fetch notif:', err);
+      setNotifications([]);
+    } finally {
+      setLoading(false);
     }
-  }, [isOpen, user]);
+  }, [user]);
+
+  // Cargar al abrir panel
+  useEffect(() => {
+    if (isOpen && user) fetchNotifications();
+  }, [isOpen, user, fetchNotifications]);
+
+  // Cargar al montar + polling cada 30s para detectar nuevas
+  useEffect(() => {
+    if (!user) return;
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [user, fetchNotifications]);
 
   // Close on click outside
   useEffect(() => {
@@ -52,28 +88,6 @@ export default function NotificationPanel() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchNotifications = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (!error && data) {
-        setNotifications(data as unknown as NotificationItem[]);
-      }
-    } catch {
-      // If table doesn't exist or RLS blocks, show fallback
-      setNotifications([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const markAsRead = async (notifId: string) => {
     setNotifications(prev =>
       prev.map(n => n.id === notifId ? { ...n, is_read: true } : n)
@@ -83,8 +97,9 @@ export default function NotificationPanel() {
         .from('notifications')
         .update({ is_read: true })
         .eq('id', notifId);
-    } catch {
-      // silent
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.includes('Lock broken')) return;
+      // silent for other errors too
     }
   };
 
@@ -97,7 +112,8 @@ export default function NotificationPanel() {
         .update({ is_read: true })
         .eq('user_id', user.id)
         .eq('is_read', false);
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.includes('Lock broken')) return;
       // silent
     }
     toast.success('Todas las notificaciones leidas');
@@ -107,7 +123,8 @@ export default function NotificationPanel() {
     setNotifications(prev => prev.filter(n => n.id !== notifId));
     try {
       await supabase.from('notifications').delete().eq('id', notifId);
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.includes('Lock broken')) return;
       // silent
     }
   };

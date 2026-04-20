@@ -8,7 +8,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
+import { useCartStore } from '@/store/cartStore';
 import { supabase } from '@/lib/supabase';
+import CartSheet from '@/components/CartSheet';
 
 interface Product {
   id: string;
@@ -63,6 +65,7 @@ export default function ClientMarketPage() {
   const [filterCategory, setFilterCategory] = useState('Todos');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const { user } = useAuthStore();
+  const { addItem, itemCount, openCart } = useCartStore();
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -74,9 +77,22 @@ export default function ClientMarketPage() {
     });
   }, [search, filterCategory]);
 
+  // Get quantity of a product in cart
+  const getCartQty = (productId: string): number => {
+    return useCartStore.getState().items.find((i) => i.id === productId)?.quantity ?? 0;
+  };
+
   const handleAddToCart = (product: Product) => {
-    toast.success(`"${product.name}" agregado al carrito`, {
-      description: `₡${product.price.toLocaleString()}`,
+    addItem({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+    });
+    const qty = getCartQty(product.id);
+    toast.success(`"${product.name}" agregado`, {
+      description: qty > 1 ? `${qty} en el carrito — ₡${(product.price * qty).toLocaleString()}` : `₡${product.price.toLocaleString()}`,
       icon: <ShoppingCart className="w-4 h-4 text-cyan-400" />,
     });
   };
@@ -87,18 +103,17 @@ export default function ClientMarketPage() {
       return;
     }
 
-    const deliveryFee = Math.round(product.price * 0.10); // 10% delivery fee
+    const deliveryFee = Math.round(product.price * 0.10);
     const total = product.price + deliveryFee;
 
     try {
-      // Create delivery in Supabase
       const { data: delivery, error } = await supabase
         .from('deliveries')
         .insert({
           customer_id: user.id,
           status: 'pending',
           delivery_address: 'Direccion del cliente',
-          items: [{ id: product.id, name: product.name, price: product.price, qty: 1 }],
+          items: [{ id: product.id, name: product.name, price: product.price, qty: 1, category: product.category }],
           subtotal: product.price,
           delivery_fee: deliveryFee,
           total: total,
@@ -108,11 +123,9 @@ export default function ClientMarketPage() {
         .single();
 
       if (error) {
-        // Table might not exist yet, show toast anyway
         console.warn('Delivery insert error (table may not exist):', error.message);
       }
 
-      // Try to auto-assign to an online courier
       if (!error && delivery) {
         const { data: availableCourier } = await supabase
           .from('couriers')
@@ -146,6 +159,8 @@ export default function ClientMarketPage() {
       setSelectedProduct(null);
     }
   };
+
+  const cartCount = itemCount();
 
   return (
     <motion.div
@@ -206,6 +221,7 @@ export default function ClientMarketPage() {
         {categories.map((cat) => (
           <button
             key={cat}
+            type="button"
             onClick={() => setFilterCategory(cat)}
             className={`px-4 py-2 rounded-xl text-xs font-medium transition-all duration-200 whitespace-nowrap flex-shrink-0 ${
               filterCategory === cat
@@ -221,72 +237,91 @@ export default function ClientMarketPage() {
       {/* Product Grid */}
       <div className="grid grid-cols-2 gap-3">
         <AnimatePresence mode="popLayout">
-          {filtered.map((product, i) => (
-            <motion.div
-              key={product.id}
-              layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ delay: i * 0.04 }}
-              onClick={() => setSelectedProduct(product)}
-              className="glass rounded-2xl overflow-hidden text-left hover:glow-cyan transition-all duration-300 group cursor-pointer"
-            >
-              {/* Gradient Header */}
-              <div className={`h-24 bg-gradient-to-br ${categoryHeaderColors[product.category]} flex items-center justify-center relative`}>
-                {categoryIcons[product.category]}
-                {/* Stock indicator */}
-                <div
-                  className={`absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
-                    product.inStock
-                      ? 'bg-emerald-500/20 text-emerald-400 backdrop-blur-sm'
-                      : 'bg-red-500/20 text-red-400 backdrop-blur-sm'
-                  }`}
-                >
-                  <div className={`w-1 h-1 rounded-full ${product.inStock ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                  {product.inStock ? 'En stock' : 'Agotado'}
+          {filtered.map((product, i) => {
+            const qty = getCartQty(product.id);
+            return (
+              <motion.div
+                key={product.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ delay: i * 0.04 }}
+                onClick={() => setSelectedProduct(product)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') setSelectedProduct(product); }}
+                className="glass rounded-2xl overflow-hidden text-left hover:glow-cyan transition-all duration-300 group cursor-pointer"
+              >
+                {/* Gradient Header */}
+                <div className={`h-24 bg-gradient-to-br ${categoryHeaderColors[product.category]} flex items-center justify-center relative`}>
+                  {categoryIcons[product.category]}
+                  {/* Stock indicator */}
+                  <div
+                    className={`absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
+                      product.inStock
+                        ? 'bg-emerald-500/20 text-emerald-400 backdrop-blur-sm'
+                        : 'bg-red-500/20 text-red-400 backdrop-blur-sm'
+                    }`}
+                  >
+                    <div className={`w-1 h-1 rounded-full ${product.inStock ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                    {product.inStock ? 'En stock' : 'Agotado'}
+                  </div>
+                  {/* Cart quantity badge */}
+                  {qty > 0 && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute top-2 left-2 w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center"
+                    >
+                      <span className="text-[10px] font-bold text-white">{qty}</span>
+                    </motion.div>
+                  )}
                 </div>
-              </div>
 
-              {/* Content */}
-              <div className="p-3">
-                <h3 className="text-xs font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">
-                  {product.name}
-                </h3>
-                <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 leading-relaxed">
-                  {product.description}
-                </p>
+                {/* Content */}
+                <div className="p-3">
+                  <h3 className="text-xs font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">
+                    {product.name}
+                  </h3>
+                  <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 leading-relaxed">
+                    {product.description}
+                  </p>
 
-                <div className="flex items-center justify-between mt-2.5">
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${categoryBadgeColors[product.category]}`}>
-                    {product.category}
-                  </span>
-                  <p className="text-sm font-bold text-white">₡{product.price.toLocaleString()}</p>
+                  <div className="flex items-center justify-between mt-2.5">
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${categoryBadgeColors[product.category]}`}>
+                      {product.category}
+                    </span>
+                    <p className="text-sm font-bold text-white">₡{product.price.toLocaleString()}</p>
+                  </div>
+
+                  {/* Add to cart button */}
+                  <motion.button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!product.inStock) {
+                        toast.error('Producto agotado');
+                        return;
+                      }
+                      handleAddToCart(product);
+                    }}
+                    className={`w-full mt-3 py-2 rounded-xl text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                      product.inStock
+                        ? qty > 0
+                          ? 'bg-cyan-500/25 text-cyan-300 hover:bg-cyan-500/35 border border-cyan-500/30'
+                          : 'bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 border border-cyan-500/20'
+                        : 'bg-white/5 text-gray-600 cursor-not-allowed border border-white/5'
+                    }`}
+                    whileTap={product.inStock ? { scale: 0.95 } : {}}
+                  >
+                    <ShoppingCart className="w-3 h-3" />
+                    {product.inStock ? (qty > 0 ? `${qty} en carrito` : 'Agregar al carrito') : 'Agotado'}
+                  </motion.button>
                 </div>
-
-                {/* Add to cart button */}
-                <motion.button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!product.inStock) {
-                      toast.error('Producto agotado');
-                      return;
-                    }
-                    handleAddToCart(product);
-                  }}
-                  className={`w-full mt-3 py-2 rounded-xl text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
-                    product.inStock
-                      ? 'bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 border border-cyan-500/20'
-                      : 'bg-white/5 text-gray-600 cursor-not-allowed border border-white/5'
-                  }`}
-                  whileTap={product.inStock ? { scale: 0.95 } : {}}
-                >
-                  <ShoppingCart className="w-3 h-3" />
-                  {product.inStock ? 'Agregar al carrito' : 'Agotado'}
-                </motion.button>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
 
@@ -326,7 +361,32 @@ export default function ClientMarketPage() {
         </div>
       </motion.div>
 
-      {/* Product Detail Modal */}
+      {/* ── Floating Cart Button ─────────────────────────────────── */}
+      <AnimatePresence>
+        {cartCount > 0 && (
+          <motion.button
+            type="button"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={openCart}
+            className="fixed bottom-24 right-4 z-[60] w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-600 shadow-lg shadow-cyan-500/30 flex items-center justify-center"
+          >
+            <ShoppingCart className="w-6 h-6 text-white" />
+            <motion.span
+              key={cartCount}
+              initial={{ scale: 0.5 }}
+              animate={{ scale: 1 }}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-[#0a0e1a]"
+            >
+              {cartCount > 9 ? '9+' : cartCount}
+            </motion.span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* ── Product Detail Modal ─────────────────────────────────── */}
       <AnimatePresence>
         {selectedProduct && (
           <motion.div
@@ -350,6 +410,7 @@ export default function ClientMarketPage() {
 
               {/* Close button */}
               <button
+                type="button"
                 onClick={() => setSelectedProduct(null)}
                 className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors z-10"
               >
@@ -418,6 +479,7 @@ export default function ClientMarketPage() {
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-2">
                   <motion.button
+                    type="button"
                     onClick={() => handleAddToCart(selectedProduct)}
                     className={`flex-1 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all border ${
                       selectedProduct.inStock
@@ -431,6 +493,7 @@ export default function ClientMarketPage() {
                     Agregar al carrito
                   </motion.button>
                   <motion.button
+                    type="button"
                     onClick={() => handleBuy(selectedProduct)}
                     className={`flex-1 btn-neon text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 ${
                       !selectedProduct.inStock ? 'opacity-50 cursor-not-allowed' : ''
@@ -447,6 +510,9 @@ export default function ClientMarketPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Cart Sheet (slide-up drawer) ─────────────────────────── */}
+      <CartSheet />
     </motion.div>
   );
 }

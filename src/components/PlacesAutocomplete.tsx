@@ -73,9 +73,11 @@ export default function PlacesAutocomplete({
       const loc = userLocationRef.current;
       if (loc) {
         request.location = new google.maps.LatLng(loc.lat, loc.lng);
+        // Use smaller radius for tighter results near user (15km)
         request.radius = searchRadius;
-        // strictBounds would limit results ONLY to the radius — we want bias, not strict
-        // so results outside the radius are still shown, just ranked lower
+        // Use strictBounds so ONLY results within the radius appear
+        // This prevents showing Pali Guapiles when the user is near Pali Pococi
+        request.strictBounds = true;
       }
 
       autocompleteRef.current?.getPlacePredictions(
@@ -107,10 +109,16 @@ export default function PlacesAutocomplete({
   const handleSelect = (prediction: google.maps.places.AutocompletePrediction) => {
     if (!placesRef.current) return;
 
+    // Use the main text (place name) + secondary text as the display name
+    // e.g. "Maxi Pali" + "Pococi, Limon, Costa Rica" instead of full formatted_address
+    const mainText = prediction.structured_formatting?.main_text || prediction.description;
+    const secondaryText = prediction.structured_formatting?.secondary_text;
+    const displayName = secondaryText ? `${mainText}, ${secondaryText}` : mainText;
+
     placesRef.current.getDetails(
       {
         placeId: prediction.place_id,
-        fields: ['geometry', 'formatted_address'],
+        fields: ['geometry', 'formatted_address', 'name'],
       },
       (place, status) => {
         if (
@@ -119,7 +127,22 @@ export default function PlacesAutocomplete({
         ) {
           const lat = place.geometry.location.lat();
           const lng = place.geometry.location.lng();
-          const address = place.formatted_address || prediction.description;
+          // Prefer: place.name + formatted_address (most readable)
+          // Fallback: displayName from prediction
+          let address: string;
+          if (place.name && place.formatted_address) {
+            // Remove duplicate name from formatted_address if present
+            const formatted = place.formatted_address;
+            if (formatted.startsWith(place.name + ',')) {
+              address = formatted; // Already has the name
+            } else if (formatted.includes(place.name)) {
+              address = formatted; // Name is embedded
+            } else {
+              address = `${place.name}, ${formatted}`;
+            }
+          } else {
+            address = place.formatted_address || displayName;
+          }
           onChange(address, prediction.place_id, lat, lng);
           setSuggestions([]);
           setShowSuggestions(false);
@@ -170,11 +193,11 @@ export default function PlacesAutocomplete({
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full bg-white/10 border border-white/15 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:border-cyan-500 transition-colors disabled:opacity-50"
+          className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors disabled:opacity-50"
         />
       </div>
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1d2e]/95 backdrop-blur-lg rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar border border-white/10 shadow-xl">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-[#0d1220]/[0.97] backdrop-blur-xl rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar border border-white/10 shadow-2xl shadow-black/50">
           {userLocation && (
             <div className="px-4 py-2 border-b border-white/5 flex items-center gap-1.5">
               <Navigation className="w-3 h-3 text-cyan-400" />
@@ -190,7 +213,7 @@ export default function PlacesAutocomplete({
               className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                 i === selectedIndex
                   ? 'bg-cyan-500/20 text-cyan-300'
-                  : 'text-gray-300 hover:bg-white/5'
+                  : 'text-gray-300 hover:bg-white/10'
               }`}
             >
               <div className="flex items-start gap-2">
