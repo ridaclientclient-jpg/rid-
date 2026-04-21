@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, ShoppingCart, Clock, X, Eye, ChevronDown,
-  Package, User, MapPin, Check, XCircle
+  Package, User, MapPin, Check, XCircle, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 
 interface OrderItem {
   name: string;
@@ -16,6 +17,7 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  dbId: string;
   customer: string;
   email: string;
   phone: string;
@@ -26,121 +28,23 @@ interface Order {
   date: string;
 }
 
-const initialOrders: Order[] = [
-  {
-    id: '#ORD-2847',
-    customer: 'Ana García',
-    email: 'ana@email.com',
-    phone: '+506 8888-1234',
-    address: 'San José, Costa Rica',
-    items: [
-      { name: 'Ibuprofeno 600mg', quantity: 2, price: 3500 },
-      { name: 'Paracetamol 500mg', quantity: 1, price: 2200 },
-    ],
-    total: 9200,
-    status: 'Completed',
-    date: '2024-01-20 14:30',
-  },
-  {
-    id: '#ORD-2846',
-    customer: 'Luis Rojas',
-    email: 'luis@email.com',
-    phone: '+506 8777-5678',
-    address: 'Heredia, Costa Rica',
-    items: [
-      { name: 'Casado Tradicional', quantity: 1, price: 4500 },
-    ],
-    total: 4500,
-    status: 'Processing',
-    date: '2024-01-20 13:15',
-  },
-  {
-    id: '#ORD-2845',
-    customer: 'María López',
-    email: 'maria@email.com',
-    phone: '+506 8666-9012',
-    address: 'Alajuela, Costa Rica',
-    items: [
-      { name: 'Arroz Integral 1kg', quantity: 3, price: 2800 },
-      { name: 'Aceite de Oliva 500ml', quantity: 1, price: 7500 },
-      { name: 'Jabón de Avena', quantity: 2, price: 1800 },
-      { name: 'Café Molido 250g', quantity: 2, price: 3200 },
-      { name: 'Crema Hidratante 200ml', quantity: 1, price: 4500 },
-    ],
-    total: 28900,
-    status: 'Pending',
-    date: '2024-01-20 12:45',
-  },
-  {
-    id: '#ORD-2844',
-    customer: 'Pedro Sánchez',
-    email: 'pedro@email.com',
-    phone: '+506 8555-3456',
-    address: 'Cartago, Costa Rica',
-    items: [
-      { name: 'Sopa de Mariscos', quantity: 1, price: 6500 },
-      { name: 'Ensalada César', quantity: 1, price: 3800 },
-    ],
-    total: 10300,
-    status: 'Completed',
-    date: '2024-01-20 11:20',
-  },
-  {
-    id: '#ORD-2843',
-    customer: 'Laura Martínez',
-    email: 'laura@email.com',
-    phone: '+506 8444-7890',
-    address: 'San José, Costa Rica',
-    items: [
-      { name: 'Vitamina C 1000mg', quantity: 1, price: 5100 },
-    ],
-    total: 5100,
-    status: 'Cancelled',
-    date: '2024-01-20 10:05',
-  },
-  {
-    id: '#ORD-2842',
-    customer: 'Carlos Vega',
-    email: 'carlos@email.com',
-    phone: '+506 8333-2345',
-    address: 'Limón, Costa Rica',
-    items: [
-      { name: 'Omeprazol 20mg', quantity: 2, price: 4200 },
-      { name: 'Ibuprofeno 600mg', quantity: 1, price: 3500 },
-    ],
-    total: 11900,
-    status: 'Pending',
-    date: '2024-01-20 09:30',
-  },
-  {
-    id: '#ORD-2841',
-    customer: 'Isabel Ruiz',
-    email: 'isabel@email.com',
-    phone: '+506 8222-6789',
-    address: 'Puntarenas, Costa Rica',
-    items: [
-      { name: 'Casado Tradicional', quantity: 2, price: 4500 },
-      { name: 'Sopa de Mariscos', quantity: 1, price: 6500 },
-    ],
-    total: 15500,
-    status: 'Processing',
-    date: '2024-01-19 18:45',
-  },
-  {
-    id: '#ORD-2840',
-    customer: 'Roberto Solís',
-    email: 'roberto@email.com',
-    phone: '+506 8111-0123',
-    address: 'Guanacaste, Costa Rica',
-    items: [
-      { name: 'Arroz Integral 1kg', quantity: 2, price: 2800 },
-      { name: 'Aceite de Oliva 500ml', quantity: 1, price: 7500 },
-    ],
-    total: 13100,
-    status: 'Completed',
-    date: '2024-01-19 16:20',
-  },
-];
+// Map DB status → UI status
+const dbStatusToUi: Record<string, 'Pending' | 'Processing' | 'Completed' | 'Cancelled'> = {
+  pending: 'Pending',
+  assigned: 'Processing',
+  picked_up: 'Processing',
+  in_transit: 'Processing',
+  delivered: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+// Map UI status → DB status
+const uiStatusToDb: Record<string, string> = {
+  Pending: 'pending',
+  Processing: 'assigned',
+  Completed: 'delivered',
+  Cancelled: 'cancelled',
+};
 
 const statusLabels: Record<string, string> = {
   Pending: 'Pendiente',
@@ -165,11 +69,93 @@ const statusFilterLabels: Record<string, string> = {
   Cancelled: 'Cancelados',
 };
 
+const PAGE_SIZE = 20;
+
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20">
+      <Loader2 className="w-10 h-10 text-cyan-400 animate-spin mb-4" />
+      <p className="text-gray-400 text-sm">Cargando pedidos...</p>
+    </div>
+  );
+}
+
 export default function AdminOrdersPage() {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+
+  const fetchOrders = useCallback(async (offset = 0, append = false) => {
+    if (offset === 0) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select('*, profiles(name, email, phone), vendors(store_name)')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) throw error;
+
+      const mappedOrders: Order[] = (data || []).map((d) => {
+        const profile = d.profiles as { name?: string; email?: string; phone?: string } | null;
+        const items = (d.items || []) as OrderItem[];
+
+        const uiStatus = dbStatusToUi[d.status] || 'Pending';
+
+        const createdAt = d.created_at
+          ? new Date(d.created_at)
+          : new Date();
+        const dateStr = createdAt.toLocaleDateString('es-CR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }) + ' ' + createdAt.toLocaleTimeString('es-CR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
+        return {
+          id: '#ORD-' + d.id.slice(-4).toUpperCase(),
+          dbId: d.id,
+          customer: profile?.name || 'Sin nombre',
+          email: profile?.email || '',
+          phone: profile?.phone || '',
+          address: d.delivery_address || '',
+          items,
+          total: d.total || 0,
+          status: uiStatus,
+          date: dateStr,
+        };
+      });
+
+      if (append) {
+        setOrders((prev) => [...prev, ...mappedOrders]);
+      } else {
+        setOrders(mappedOrders);
+      }
+
+      setHasMore((data || []).length === PAGE_SIZE);
+    } catch (err) {
+      console.error('Error fetching orders:', err);
+      toast.error('Error al cargar pedidos');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const filtered = useMemo(() => {
     return orders.filter((o) => {
@@ -181,11 +167,29 @@ export default function AdminOrdersPage() {
     });
   }, [orders, search, filterStatus]);
 
-  const handleStatusChange = (orderId: string, newStatus: Order['status']) => {
+  const handleStatusChange = async (orderId: string, dbId: string, newStatus: Order['status']) => {
+    const prevOrders = [...orders];
+    const dbStatus = uiStatusToDb[newStatus];
+
+    // Optimistic update
     setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+      prev.map((o) => (o.dbId === dbId ? { ...o, status: newStatus } : o))
     );
-    toast.success(`Pedido ${orderId} actualizado a "${statusLabels[newStatus]}"`);
+
+    try {
+      const { error } = await supabase
+        .from('deliveries')
+        .update({ status: dbStatus })
+        .eq('id', dbId);
+
+      if (error) throw error;
+
+      toast.success(`Pedido ${orderId} actualizado a "${statusLabels[newStatus]}"`);
+    } catch (err) {
+      console.error('Error updating order status:', err);
+      setOrders(prevOrders);
+      toast.error('Error al actualizar el estado del pedido');
+    }
   };
 
   const counts = useMemo(() => ({
@@ -195,6 +199,18 @@ export default function AdminOrdersPage() {
     Completed: orders.filter((o) => o.status === 'Completed').length,
     Cancelled: orders.filter((o) => o.status === 'Cancelled').length,
   }), [orders]);
+
+  if (loading) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Pedidos Marketplace</h1>
+          <p className="text-gray-400 text-sm mt-1">Gestión de pedidos del marketplace</p>
+        </div>
+        <LoadingState />
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -252,7 +268,7 @@ export default function AdminOrdersPage() {
             <tbody>
               {filtered.map((order, i) => (
                 <motion.tr
-                  key={order.id}
+                  key={order.dbId}
                   className="border-b border-white/5 hover:bg-white/5 transition-colors"
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -273,7 +289,7 @@ export default function AdminOrdersPage() {
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <select
                         value={order.status}
-                        onChange={(e) => handleStatusChange(order.id, e.target.value as Order['status'])}
+                        onChange={(e) => handleStatusChange(order.id, order.dbId, e.target.value as Order['status'])}
                         className={`appearance-none text-[11px] font-medium px-2.5 py-1 rounded-full border pr-7 cursor-pointer focus:outline-none transition-colors ${statusColors[order.status]}`}
                       >
                         {statusOptions.filter((s) => s !== 'All').map((s) => (
@@ -312,7 +328,7 @@ export default function AdminOrdersPage() {
         <AnimatePresence mode="popLayout">
           {filtered.map((order, i) => (
             <motion.div
-              key={order.id}
+              key={order.dbId}
               layout
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -352,7 +368,7 @@ export default function AdminOrdersPage() {
                 <div className="relative" onClick={(e) => e.stopPropagation()}>
                   <select
                     value={order.status}
-                    onChange={(e) => handleStatusChange(order.id, e.target.value as Order['status'])}
+                    onChange={(e) => handleStatusChange(order.id, order.dbId, e.target.value as Order['status'])}
                     className={`appearance-none text-[11px] font-medium px-3 py-2 rounded-lg border pr-7 cursor-pointer focus:outline-none transition-colors bg-white/5 ${statusColors[order.status]}`}
                   >
                     {statusOptions.filter((s) => s !== 'All').map((s) => (
@@ -369,10 +385,28 @@ export default function AdminOrdersPage() {
         </AnimatePresence>
       </div>
 
-      {filtered.length === 0 && (
+      {filtered.length === 0 && orders.length === 0 && (
         <div className="text-center py-16">
           <ShoppingCart className="w-12 h-12 text-gray-600 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">No se encontraron pedidos</p>
+        </div>
+      )}
+
+      {/* Load More Button */}
+      {hasMore && (
+        <div className="flex justify-center pt-4">
+          <motion.button
+            onClick={() => fetchOrders(orders.length, true)}
+            disabled={loadingMore}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            whileHover={{ scale: loadingMore ? 1 : 1.02 }}
+            whileTap={{ scale: loadingMore ? 1 : 0.98 }}
+          >
+            {loadingMore ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : null}
+            {loadingMore ? 'Cargando...' : 'Cargar más'}
+          </motion.button>
         </div>
       )}
 
@@ -465,7 +499,7 @@ export default function AdminOrdersPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <motion.button
                       onClick={() => {
-                        handleStatusChange(selectedOrder.id, 'Pending');
+                        handleStatusChange(selectedOrder.id, selectedOrder.dbId, 'Pending');
                         setSelectedOrder(null);
                       }}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium transition-colors ${
@@ -481,7 +515,7 @@ export default function AdminOrdersPage() {
                     </motion.button>
                     <motion.button
                       onClick={() => {
-                        handleStatusChange(selectedOrder.id, 'Processing');
+                        handleStatusChange(selectedOrder.id, selectedOrder.dbId, 'Processing');
                         setSelectedOrder(null);
                       }}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium transition-colors ${
@@ -497,7 +531,7 @@ export default function AdminOrdersPage() {
                     </motion.button>
                     <motion.button
                       onClick={() => {
-                        handleStatusChange(selectedOrder.id, 'Completed');
+                        handleStatusChange(selectedOrder.id, selectedOrder.dbId, 'Completed');
                         setSelectedOrder(null);
                       }}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium transition-colors ${
@@ -513,7 +547,7 @@ export default function AdminOrdersPage() {
                     </motion.button>
                     <motion.button
                       onClick={() => {
-                        handleStatusChange(selectedOrder.id, 'Cancelled');
+                        handleStatusChange(selectedOrder.id, selectedOrder.dbId, 'Cancelled');
                         setSelectedOrder(null);
                       }}
                       className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium transition-colors ${

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Package, Pill, UtensilsCrossed, ShoppingBag,
-  X, Eye, Store, TrendingUp
+  X, Eye, Store, TrendingUp, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 
 interface Product {
   id: string;
@@ -17,57 +18,128 @@ interface Product {
   vendor: string;
   inStock: boolean;
   sold: number;
+  vendorCategory: string;
 }
 
-const initialProducts: Product[] = [
-  { id: '1', name: 'Ibuprofeno 600mg', description: 'Antiinflamatorio, caja 20 tabletas', price: 3500, category: 'Farmacia', vendor: 'Farmacia Central', inStock: true, sold: 145 },
-  { id: '2', name: 'Paracetamol 500mg', description: 'Analgésico, caja 30 tabletas', price: 2200, category: 'Farmacia', vendor: 'Farmacia Central', inStock: true, sold: 128 },
-  { id: '3', name: 'Vitamina C 1000mg', description: 'Suplemento, frasco 60 cápsulas', price: 5100, category: 'Farmacia', vendor: 'Farmacia Barrio', inStock: true, sold: 76 },
-  { id: '4', name: 'Omeprazol 20mg', description: 'Protector gástrico, caja 14 cápsulas', price: 4200, category: 'Farmacia', vendor: 'Farmacia Central', inStock: true, sold: 64 },
-  { id: '5', name: 'Casado Tradicional', description: 'Arroz, frijoles, ensalada, plátano', price: 4500, category: 'Comida', vendor: 'Comidas Doña María', inStock: true, sold: 98 },
-  { id: '6', name: 'Sopa de Mariscos', description: 'Con camarones, pescado y calamar', price: 6500, category: 'Comida', vendor: 'Sushi CR', inStock: true, sold: 52 },
-  { id: '7', name: 'Ensalada César', description: 'Lechuga, pollo, crutones, parmesano', price: 3800, category: 'Comida', vendor: 'Comidas Doña María', inStock: false, sold: 41 },
-  { id: '8', name: 'Arroz Integral 1kg', description: 'Arroz integral de grano largo', price: 2800, category: 'Tiendas', vendor: 'Mini Market Express', inStock: true, sold: 87 },
-  { id: '9', name: 'Aceite de Oliva 500ml', description: 'Extra virgen, first cold press', price: 7500, category: 'Tiendas', vendor: 'Mini Market Express', inStock: true, sold: 63 },
-  { id: '10', name: 'Jabón de Avena', description: 'Natural, hipoalergénico, 150g', price: 1800, category: 'Tiendas', vendor: 'Abarrotes Don Diego', inStock: true, sold: 54 },
-  { id: '11', name: 'Café Molido 250g', description: 'Café gourmet costarricense', price: 3200, category: 'Tiendas', vendor: 'Mini Market Express', inStock: false, sold: 92 },
-  { id: '12', name: 'Crema Hidratante 200ml', description: 'Piel seca, con aloe vera', price: 4500, category: 'Tiendas', vendor: 'Abarrotes Don Diego', inStock: true, sold: 33 },
-];
+const vendorCategoryMap: Record<string, string> = {
+  pharmacy: 'Farmacia',
+  food: 'Comida',
+  stores: 'Tiendas',
+  other: 'Otro',
+};
+
+const productCategoryMap: Record<string, string> = {
+  pharmacy: 'Farmacia',
+  food: 'Comida',
+  stores: 'Tiendas',
+  other: 'Otro',
+  Farmacia: 'Farmacia',
+  Comida: 'Comida',
+  Tiendas: 'Tiendas',
+  Otro: 'Otro',
+};
 
 const categoryIcons: Record<string, React.ReactNode> = {
   Farmacia: <Pill className="w-5 h-5" />,
   Comida: <UtensilsCrossed className="w-5 h-5" />,
   Tiendas: <ShoppingBag className="w-5 h-5" />,
+  Otro: <Package className="w-5 h-5" />,
 };
 
 const categoryColors: Record<string, string> = {
   Farmacia: 'from-emerald-500/20 to-green-500/20 text-emerald-400',
   Comida: 'from-amber-500/20 to-orange-500/20 text-amber-400',
   Tiendas: 'from-blue-500/20 to-cyan-500/20 text-blue-400',
+  Otro: 'from-purple-500/20 to-violet-500/20 text-purple-400',
 };
 
 const categoryBadgeColors: Record<string, string> = {
   Farmacia: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   Comida: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   Tiendas: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  Otro: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
 };
 
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20">
+      <Loader2 className="w-10 h-10 text-cyan-400 animate-spin mb-4" />
+      <p className="text-gray-400 text-sm">Cargando productos...</p>
+    </div>
+  );
+}
+
 export default function AdminProductsPage() {
+  const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('Todos');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, vendors(store_name, category)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const mappedProducts: Product[] = (data || []).map((p) => {
+        const vendor = p.vendors as { store_name?: string; category?: string } | null;
+        const vendorCat = vendor?.category || 'other';
+        const displayCat = productCategoryMap[p.category] || vendorCategoryMap[vendorCat] || p.category || 'Otro';
+
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description || '',
+          price: p.price,
+          category: displayCat,
+          vendor: vendor?.store_name || 'Sin vendedor',
+          inStock: p.in_stock,
+          sold: 0,
+          vendorCategory: vendorCategoryMap[vendorCat] || vendorCat,
+        };
+      });
+
+      setProducts(mappedProducts);
+    } catch (err) {
+      console.error('Error fetching products:', err);
+      toast.error('Error al cargar productos');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const filtered = useMemo(() => {
-    return initialProducts.filter((p) => {
+    return products.filter((p) => {
       const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.vendor.toLowerCase().includes(search.toLowerCase());
       const matchCat = filterCategory === 'Todos' || p.category === filterCategory;
       return matchSearch && matchCat;
     });
-  }, [search, filterCategory]);
+  }, [products, search, filterCategory]);
 
-  const totalProducts = initialProducts.length;
-  const inStockCount = initialProducts.filter((p) => p.inStock).length;
+  const totalProducts = products.length;
+  const inStockCount = products.filter((p) => p.inStock).length;
   const outOfStockCount = totalProducts - inStockCount;
+
+  if (loading) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Productos</h1>
+          <p className="text-gray-400 text-sm mt-1">Todos los productos del marketplace</p>
+        </div>
+        <LoadingState />
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -136,8 +208,8 @@ export default function AdminProductsPage() {
               className="glass rounded-2xl overflow-hidden group hover:glow-cyan transition-all duration-300"
             >
               {/* Category header */}
-              <div className={`h-32 bg-gradient-to-br ${categoryColors[product.category]} flex items-center justify-center relative`}>
-                {categoryIcons[product.category]}
+              <div className={`h-32 bg-gradient-to-br ${categoryColors[product.category] || categoryColors['Otro']} flex items-center justify-center relative`}>
+                {categoryIcons[product.category] || categoryIcons['Otro']}
                 {/* Stock indicator */}
                 <div className={`absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium ${
                   product.inStock
@@ -165,7 +237,7 @@ export default function AdminProductsPage() {
 
                 <div className="flex items-center justify-between mt-3">
                   <div>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[product.category]}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[product.category] || categoryBadgeColors['Otro']}`}>
                       {product.category}
                     </span>
                     <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
@@ -216,8 +288,8 @@ export default function AdminProductsPage() {
               exit={{ scale: 0.9, y: 20 }}
             >
               {/* Category header */}
-              <div className={`h-36 bg-gradient-to-br ${categoryColors[selectedProduct.category]} flex items-center justify-center relative rounded-t-2xl`}>
-                {categoryIcons[selectedProduct.category]}
+              <div className={`h-36 bg-gradient-to-br ${categoryColors[selectedProduct.category] || categoryColors['Otro']} flex items-center justify-center relative rounded-t-2xl`}>
+                {categoryIcons[selectedProduct.category] || categoryIcons['Otro']}
                 {/* Stock indicator */}
                 <div className={`absolute top-4 right-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium ${
                   selectedProduct.inStock
@@ -246,7 +318,7 @@ export default function AdminProductsPage() {
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-white/5">
                     <span className="text-sm text-gray-400">Categoría</span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${categoryBadgeColors[selectedProduct.category]}`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${categoryBadgeColors[selectedProduct.category] || categoryBadgeColors['Otro']}`}>
                       {selectedProduct.category}
                     </span>
                   </div>

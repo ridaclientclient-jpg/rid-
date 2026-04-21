@@ -1,16 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, FileText, AlertTriangle, Shield, AlertCircle,
   MessageSquare, CheckCircle2, Eye, Clock, ChevronDown,
-  ChevronUp
+  ChevronUp, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 
 type ReportType = 'incident' | 'fraud' | 'sos' | 'complaint';
 type ReportStatus = 'pending' | 'reviewed' | 'resolved';
+
+interface ReportRow {
+  id: string;
+  user_id: string;
+  type: ReportType;
+  description: string;
+  status: ReportStatus;
+  priority: 'high' | 'medium' | 'low';
+  ride_id: string | null;
+  details: string | null;
+  images: string[] | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: { name: string } | null;
+}
 
 interface ReportData {
   id: string;
@@ -23,44 +39,6 @@ interface ReportData {
   details: string;
   rideId?: string;
 }
-
-const initialReports: ReportData[] = [
-  {
-    id: 'REP-001', type: 'sos', user: 'María García', description: 'SOS activado durante viaje',
-    status: 'pending', date: '2026-04-15 14:30', priority: 'high',
-    details: 'La pasajera reportó sentirse insegura durante un viaje hacia Escazú. El conductor desvió la ruta sin previo aviso. Se activó el protocolo de emergencia y se contactó a las autoridades.',
-    rideId: 'R-12345'
-  },
-  {
-    id: 'REP-002', type: 'fraud', user: 'Pedro Jiménez', description: 'Cargo duplicado en tarjeta',
-    status: 'reviewed', date: '2026-04-15 12:00', priority: 'high',
-    details: 'El usuario reporta un cargo duplicado de ₡4,200 en su tarjeta de crédito por el viaje R-12348. Se está investigando con la pasarela de pagos.',
-    rideId: 'R-12348'
-  },
-  {
-    id: 'REP-003', type: 'complaint', user: 'Sofia Hernández', description: 'Conductor grosero y manejo agresivo',
-    status: 'pending', date: '2026-04-15 11:15', priority: 'medium',
-    details: 'La usuaria reporta que el conductor Luis Campos tuvo un comportamiento grosero y realizó maniobras peligrosas durante el trayecto Pavas-Moravia. Incluye comentarios denigrantes.',
-    rideId: 'R-12349'
-  },
-  {
-    id: 'REP-004', type: 'incident', user: 'Carlos Mendez', description: 'Accidente menor durante servicio',
-    status: 'resolved', date: '2026-04-14 18:00', priority: 'high',
-    details: 'El conductor reportó un accidente menor a la altura del cruce de la Rotonda de la Bandera. No hubo heridos. Se activó el protocolo de seguros. El vehículo quedó con daños en el parachoques delantero.',
-    rideId: 'R-12340'
-  },
-  {
-    id: 'REP-005', type: 'complaint', user: 'Diego Mora', description: 'Conductor no respetó la parada acordada',
-    status: 'pending', date: '2026-04-14 16:30', priority: 'low',
-    details: 'El conductor dejó al pasajero a 3 cuadras del destino indicado argumentando tráfico. El pasajero tuvo que caminar bajo lluvia.',
-    rideId: 'R-12339'
-  },
-  {
-    id: 'REP-006', type: 'fraud', user: 'Ana Rodríguez', description: 'Posible cuenta falsa de conductor',
-    status: 'reviewed', date: '2026-04-14 14:00', priority: 'medium',
-    details: 'Se detectó actividad sospechosa en la cuenta del conductor Roberto Vega. Posible suplantación de identidad. La foto del perfil no coincide con los documentos de verificación.',
-  },
-];
 
 const typeConfig: Record<ReportType, { label: string; color: string; icon: React.ElementType }> = {
   incident: { label: 'Incidente', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', icon: AlertTriangle },
@@ -84,12 +62,54 @@ const priorityConfig = {
 const typeFilters: string[] = ['Todos', 'Incidentes', 'Fraude', 'SOS', 'Quejas'];
 const statusFilters: string[] = ['Todos', 'Pendientes', 'Revisados', 'Resueltos'];
 
+function formatCreatedAt(dateStr: string): string {
+  const d = new Date(dateStr);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function ReportsPage() {
-  const [reports, setReports] = useState<ReportData[]>(initialReports);
+  const [reports, setReports] = useState<ReportData[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const fetchReports = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reports')
+        .select('id, user_id, type, description, status, priority, ride_id, details, images, created_at, updated_at, profiles(name)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const mapped: ReportData[] = (data as ReportRow[]).map((r) => ({
+        id: r.id,
+        type: r.type,
+        user: r.profiles?.name ?? 'Usuario desconocido',
+        description: r.description,
+        status: r.status,
+        date: formatCreatedAt(r.created_at),
+        priority: r.priority,
+        details: r.details ?? '',
+        rideId: r.ride_id ?? undefined,
+      }));
+
+      setReports(mapped);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al cargar reportes: ${message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
 
   const filteredReports = reports.filter((r) => {
     const matchSearch = r.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -114,25 +134,53 @@ export default function ReportsPage() {
     return matchSearch && matchType && matchStatus;
   });
 
-  const markAsReviewed = (id: string) => {
-    setReports((prev) => prev.map((r) => {
-      if (r.id === id) {
-        toast.success(`Reporte ${id} marcado como revisado`);
-        return { ...r, status: 'reviewed' as ReportStatus };
-      }
-      return r;
-    }));
+  const markAsReviewed = async (id: string) => {
+    setUpdatingId(id);
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .update({ status: 'reviewed', updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setReports((prev) => prev.map((r) =>
+        r.id === id ? { ...r, status: 'reviewed' as ReportStatus } : r
+      ));
+      toast.success(`Reporte ${id.slice(0, 8)} marcado como revisado`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al actualizar: ${message}`);
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
-  const markAsResolved = (id: string) => {
-    setReports((prev) => prev.map((r) => {
-      if (r.id === id) {
-        toast.success(`Reporte ${id} marcado como resuelto`);
-        return { ...r, status: 'resolved' as ReportStatus };
-      }
-      return r;
-    }));
+  const markAsResolved = async (id: string) => {
+    setUpdatingId(id);
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .update({ status: 'resolved', updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setReports((prev) => prev.map((r) =>
+        r.id === id ? { ...r, status: 'resolved' as ReportStatus } : r
+      ));
+      toast.success(`Reporte ${id.slice(0, 8)} marcado como resuelto`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al actualizar: ${message}`);
+    } finally {
+      setUpdatingId(null);
+    }
   };
+
+  const pendingCount = reports.filter((r) => r.status === 'pending').length;
+  const reviewedCount = reports.filter((r) => r.status === 'reviewed').length;
+  const resolvedCount = reports.filter((r) => r.status === 'resolved').length;
 
   return (
     <div className="space-y-6">
@@ -143,9 +191,9 @@ export default function ReportsPage() {
           <p className="text-gray-400 mt-1">{reports.length} reportes y incidentes</p>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          <span className="flex items-center gap-1.5 text-amber-400">{reports.filter(r => r.status === 'pending').length} pendientes</span>
-          <span className="flex items-center gap-1.5 text-blue-400">{reports.filter(r => r.status === 'reviewed').length} revisados</span>
-          <span className="flex items-center gap-1.5 text-emerald-400">{reports.filter(r => r.status === 'resolved').length} resueltos</span>
+          <span className="flex items-center gap-1.5 text-amber-400">{pendingCount} pendientes</span>
+          <span className="flex items-center gap-1.5 text-blue-400">{reviewedCount} revisados</span>
+          <span className="flex items-center gap-1.5 text-emerald-400">{resolvedCount} resueltos</span>
         </div>
       </div>
 
@@ -192,110 +240,123 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
+          <p className="text-sm">Cargando reportes...</p>
+        </div>
+      )}
+
       {/* Reports List */}
-      <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
-          {filteredReports.map((report, i) => {
-            const typeCfg = typeConfig[report.type];
-            const statusCfg = statusConfig[report.status];
-            const TypeIcon = typeCfg.icon;
-            const isExpanded = expandedId === report.id;
+      {!loading && (
+        <div className="space-y-3">
+          <AnimatePresence mode="popLayout">
+            {filteredReports.map((report, i) => {
+              const typeCfg = typeConfig[report.type];
+              const statusCfg = statusConfig[report.status];
+              const TypeIcon = typeCfg.icon;
+              const isExpanded = expandedId === report.id;
+              const isUpdating = updatingId === report.id;
 
-            return (
-              <motion.div
-                key={report.id}
-                layout
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ delay: i * 0.05 }}
-                className="glass rounded-xl overflow-hidden"
-              >
-                {/* Report Header */}
-                <div className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${typeCfg.color.split(' ')[0]}`}>
-                      <TypeIcon className={`w-5 h-5 ${typeCfg.color.split(' ')[1]}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-cyan-400 font-mono text-xs">{report.id}</span>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${typeCfg.color}`}>
-                          {typeCfg.label}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${statusCfg.color}`}>
-                          {statusCfg.label}
-                        </span>
-                        <span className={`text-[10px] font-medium ${priorityConfig[report.priority].color}`}>
-                          Prioridad: {priorityConfig[report.priority].label}
-                        </span>
+              return (
+                <motion.div
+                  key={report.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="glass rounded-xl overflow-hidden"
+                >
+                  {/* Report Header */}
+                  <div className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${typeCfg.color.split(' ')[0]}`}>
+                        <TypeIcon className={`w-5 h-5 ${typeCfg.color.split(' ')[1]}`} />
                       </div>
-                      <p className="text-sm text-white mt-1">{report.description}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span>{report.user}</span>
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {report.date}</span>
-                        {report.rideId && <span className="text-cyan-400/60">Viaje: {report.rideId}</span>}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-cyan-400 font-mono text-xs">{report.id.slice(0, 8)}</span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${typeCfg.color}`}>
+                            {typeCfg.label}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${statusCfg.color}`}>
+                            {statusCfg.label}
+                          </span>
+                          <span className={`text-[10px] font-medium ${priorityConfig[report.priority].color}`}>
+                            Prioridad: {priorityConfig[report.priority].label}
+                          </span>
+                        </div>
+                        <p className="text-sm text-white mt-1">{report.description}</p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                          <span>{report.user}</span>
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {report.date}</span>
+                          {report.rideId && <span className="text-cyan-400/60">Viaje: {report.rideId.slice(0, 8)}</span>}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {report.status !== 'resolved' && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {report.status !== 'resolved' && (
+                          <button
+                            onClick={() => markAsResolved(report.id)}
+                            disabled={isUpdating}
+                            className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                            title="Marcar resuelto"
+                          >
+                            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                          </button>
+                        )}
+                        {report.status === 'pending' && (
+                          <button
+                            onClick={() => markAsReviewed(report.id)}
+                            disabled={isUpdating}
+                            className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 hover:bg-blue-500/20 transition-all disabled:opacity-50"
+                            title="Marcar revisado"
+                          >
+                            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        )}
                         <button
-                          onClick={() => markAsResolved(report.id)}
-                          className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 transition-all"
-                          title="Marcar resuelto"
+                          onClick={() => setExpandedId(isExpanded ? null : report.id)}
+                          className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                         >
-                          <CheckCircle2 className="w-4 h-4" />
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
-                      )}
-                      {report.status === 'pending' && (
-                        <button
-                          onClick={() => markAsReviewed(report.id)}
-                          className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 hover:bg-blue-500/20 transition-all"
-                          title="Marcar revisado"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setExpandedId(isExpanded ? null : report.id)}
-                        className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-                      >
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Expanded Details */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="px-4 pb-4 border-t border-white/5 pt-3">
-                        <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Detalle del Reporte</h4>
-                        <p className="text-sm text-gray-300 leading-relaxed">{report.details}</p>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+                  {/* Expanded Details */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 pb-4 border-t border-white/5 pt-3">
+                          <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Detalle del Reporte</h4>
+                          <p className="text-sm text-gray-300 leading-relaxed">{report.details || 'Sin detalle adicional'}</p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
 
-        {filteredReports.length === 0 && (
-          <div className="text-center py-16 text-gray-500">
-            <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No se encontraron reportes</p>
-          </div>
-        )}
-      </div>
+          {filteredReports.length === 0 && (
+            <div className="text-center py-16 text-gray-500">
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No se encontraron reportes</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

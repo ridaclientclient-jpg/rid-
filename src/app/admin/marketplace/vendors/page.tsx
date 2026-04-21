@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Store, Star, Package, Eye, ShieldCheck, ShieldBan,
-  Calendar, DollarSign, ChevronDown, X, TrendingUp
+  Calendar, DollarSign, ChevronDown, X, TrendingUp, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 
 interface Vendor {
   id: string;
@@ -18,16 +19,15 @@ interface Vendor {
   status: 'active' | 'pending' | 'suspended';
   joined: string;
   earnings: string;
+  userId?: string;
 }
 
-const initialVendors: Vendor[] = [
-  { id: '1', name: 'Ana García', store: 'Farmacia Central', category: 'Farmacia', rating: 4.8, products: 45, status: 'active', joined: '2024-01-10', earnings: '₡450,000' },
-  { id: '2', name: 'Luis Rojas', store: 'Comidas Doña María', category: 'Comida', rating: 4.6, products: 22, status: 'active', joined: '2024-01-08', earnings: '₡320,000' },
-  { id: '3', name: 'María López', store: 'Mini Market Express', category: 'Tiendas', rating: 4.9, products: 38, status: 'active', joined: '2024-01-05', earnings: '₡280,000' },
-  { id: '4', name: 'Pedro Sánchez', store: 'Farmacia Barrio', category: 'Farmacia', rating: 4.3, products: 23, status: 'pending', joined: '2024-01-15', earnings: '₡0' },
-  { id: '5', name: 'Sofia Herrera', store: 'Sushi CR', category: 'Comida', rating: 4.7, products: 15, status: 'active', joined: '2024-01-12', earnings: '₡195,000' },
-  { id: '6', name: 'Diego Morales', store: 'Abarrotes Don Diego', category: 'Tiendas', rating: 4.5, products: 30, status: 'suspended', joined: '2024-01-03', earnings: '₡89,000' },
-];
+const categoryMap: Record<string, string> = {
+  pharmacy: 'Farmacia',
+  food: 'Comida',
+  stores: 'Tiendas',
+  other: 'Otro',
+};
 
 const statusBadge: Record<string, { label: string; className: string }> = {
   active: { label: 'Activo', className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
@@ -39,6 +39,7 @@ const categoryBadgeColors: Record<string, string> = {
   Farmacia: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   Comida: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   Tiendas: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  Otro: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
 };
 
 const filterTabs = [
@@ -62,11 +63,85 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20">
+      <Loader2 className="w-10 h-10 text-cyan-400 animate-spin mb-4" />
+      <p className="text-gray-400 text-sm">Cargando vendedores...</p>
+    </div>
+  );
+}
+
 export default function AdminVendorsPage() {
-  const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchVendors = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: vendorData, error: vendorError } = await supabase
+        .from('vendors')
+        .select('*, profiles(name, phone, email, is_active, created_at)')
+        .order('created_at', { ascending: false });
+
+      if (vendorError) throw vendorError;
+
+      const mappedVendors: Vendor[] = await Promise.all(
+        (vendorData || []).map(async (v) => {
+          let productCount = 0;
+          const { count } = await supabase
+            .from('products')
+            .select('id', { count: 'exact', head: true })
+            .eq('vendor_id', v.id);
+          productCount = count || 0;
+
+          const profile = v.profiles as { name?: string; is_active?: boolean; created_at?: string } | null;
+          const isActive = profile?.is_active !== false;
+          const isApproved = v.is_approved;
+
+          let status: 'active' | 'pending' | 'suspended';
+          if (isApproved && isActive) {
+            status = 'active';
+          } else if (!isApproved && isActive) {
+            status = 'pending';
+          } else {
+            status = 'suspended';
+          }
+
+          const joinedDate = profile?.created_at
+            ? new Date(profile.created_at).toLocaleDateString('es-CR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+            : 'N/A';
+
+          return {
+            id: v.id,
+            name: profile?.name || 'Sin nombre',
+            store: v.store_name,
+            category: categoryMap[v.category] || v.category,
+            rating: v.rating || 0,
+            products: productCount,
+            status,
+            joined: joinedDate,
+            earnings: '₡0',
+            userId: v.user_id,
+          };
+        })
+      );
+
+      setVendors(mappedVendors);
+    } catch (err) {
+      console.error('Error fetching vendors:', err);
+      toast.error('Error al cargar vendedores');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchVendors();
+  }, [fetchVendors]);
 
   const filtered = useMemo(() => {
     return vendors.filter((v) => {
@@ -78,22 +153,62 @@ export default function AdminVendorsPage() {
     });
   }, [vendors, search, filterStatus]);
 
-  const handleToggleStatus = (vendor: Vendor) => {
+  const handleToggleStatus = async (vendor: Vendor) => {
+    const prevVendors = [...vendors];
+    const prevVendor = { ...vendor };
+
+    // Optimistic update
     if (vendor.status === 'active') {
       setVendors((prev) =>
         prev.map((v) => (v.id === vendor.id ? { ...v, status: 'suspended' as const } : v))
       );
-      toast.success(`${vendor.store} ha sido suspendido`);
     } else if (vendor.status === 'suspended') {
       setVendors((prev) =>
         prev.map((v) => (v.id === vendor.id ? { ...v, status: 'active' as const } : v))
       );
-      toast.success(`${vendor.store} ha sido reactivado`);
     } else if (vendor.status === 'pending') {
       setVendors((prev) =>
         prev.map((v) => (v.id === vendor.id ? { ...v, status: 'active' as const } : v))
       );
-      toast.success(`${vendor.store} ha sido aprobado`);
+    }
+
+    try {
+      if (prevVendor.status === 'active') {
+        // Suspend: set profiles.is_active = false
+        const { error } = await supabase
+          .from('profiles')
+          .update({ is_active: false })
+          .eq('id', prevVendor.userId);
+        if (error) throw error;
+        toast.success(`${vendor.store} ha sido suspendido`);
+      } else if (prevVendor.status === 'suspended') {
+        // Reactivate: set is_approved = true AND profiles.is_active = true
+        const { error: vendorErr } = await supabase
+          .from('vendors')
+          .update({ is_approved: true })
+          .eq('id', prevVendor.id);
+        if (vendorErr) throw vendorErr;
+
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .update({ is_active: true })
+          .eq('id', prevVendor.userId);
+        if (profileErr) throw profileErr;
+        toast.success(`${vendor.store} ha sido reactivado`);
+      } else if (prevVendor.status === 'pending') {
+        // Approve: set is_approved = true
+        const { error } = await supabase
+          .from('vendors')
+          .update({ is_approved: true })
+          .eq('id', prevVendor.id);
+        if (error) throw error;
+        toast.success(`${vendor.store} ha sido aprobado`);
+      }
+    } catch (err) {
+      console.error('Error updating vendor status:', err);
+      // Revert optimistic update
+      setVendors(prevVendors);
+      toast.error('Error al cambiar el estado del vendedor');
     }
   };
 
@@ -103,6 +218,18 @@ export default function AdminVendorsPage() {
     pending: vendors.filter((v) => v.status === 'pending').length,
     suspended: vendors.filter((v) => v.status === 'suspended').length,
   }), [vendors]);
+
+  if (loading) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Vendedores</h1>
+          <p className="text-gray-400 text-sm mt-1">Gestión de vendedores del marketplace</p>
+        </div>
+        <LoadingState />
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -176,7 +303,7 @@ export default function AdminVendorsPage() {
               <div className="space-y-3 mb-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Categoría</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[vendor.category]}`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[vendor.category] || 'bg-gray-500/15 text-gray-400 border-gray-500/30'}`}>
                     {vendor.category}
                   </span>
                 </div>
@@ -295,7 +422,7 @@ export default function AdminVendorsPage() {
                     <p className="text-[11px] text-gray-500">Estado</p>
                   </div>
                   <div className="glass rounded-xl p-4">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[selectedVendor.category]}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[selectedVendor.category] || 'bg-gray-500/15 text-gray-400 border-gray-500/30'}`}>
                       {selectedVendor.category}
                     </span>
                     <p className="text-[11px] text-gray-500 mt-1">Categoría</p>

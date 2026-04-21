@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, MapPin, DollarSign, CheckCircle2, XCircle, Clock,
   Eye, RotateCcw, Ban, XCircle as XIcon, Loader2,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -13,6 +14,7 @@ type RideStatus = 'completed' | 'cancelled' | 'in_progress' | 'pending' | 'searc
 
 interface RideRow {
   id: string;
+  realId: string;
   passenger: string;
   driver: string;
   origin: string;
@@ -23,6 +25,8 @@ interface RideRow {
   duration: string;
   distance: string;
 }
+
+const PAGE_SIZE = 20;
 
 function mapRideStatus(raw: string): RideStatus {
   if (['started', 'assigned', 'arriving'].includes(raw)) return 'in_progress';
@@ -51,6 +55,23 @@ const statusConfig = {
 const filterTabs = ['Todos', 'Activos', 'Completados', 'Cancelados'] as const;
 const dateFilters = ['Hoy', 'Esta semana', 'Este mes'] as const;
 
+function buildDateFilter(dateFilter: string): string | null {
+  if (dateFilter === 'Hoy') {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.toISOString();
+  } else if (dateFilter === 'Esta semana') {
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return weekAgo.toISOString();
+  } else if (dateFilter === 'Este mes') {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return monthStart.toISOString();
+  }
+  return null;
+}
+
 export default function RidesPage() {
   const [rides, setRides] = useState<RideRow[]>([]);
   const [search, setSearch] = useState('');
@@ -58,15 +79,43 @@ export default function RidesPage() {
   const [dateFilter, setDateFilter] = useState<string>('Hoy');
   const [selectedRide, setSelectedRide] = useState<RideRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const fetchRides = useCallback(async () => {
+  const fetchRides = useCallback(async (currentDateFilter: string, currentPage: number) => {
     setLoading(true);
     try {
-      const { data: rideData, error } = await supabase
+      const dateThreshold = buildDateFilter(currentDateFilter);
+
+      // Build the count query with the same date filter
+      let countQuery = supabase
+        .from('rides')
+        .select('*', { count: 'exact', head: true });
+      if (dateThreshold) {
+        countQuery = countQuery.gte('created_at', dateThreshold);
+      }
+      const { count, error: countError } = await countQuery;
+
+      if (countError) {
+        console.error('Error fetching rides count:', countError);
+      }
+      setTotalCount(count || 0);
+
+      // Build the data query
+      const from = (currentPage - 1) * PAGE_SIZE;
+      const to = currentPage * PAGE_SIZE - 1;
+
+      let query = supabase
         .from('rides')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(from, to);
+
+      if (dateThreshold) {
+        query = query.gte('created_at', dateThreshold);
+      }
+
+      const { data: rideData, error } = await query;
 
       if (error) {
         console.error('Error fetching rides:', error);
@@ -125,6 +174,7 @@ export default function RidesPage() {
         const dist = r.distance ? `${r.distance.toFixed(1)} km` : '-';
         return {
           id: r.id.slice(0, 8).toUpperCase(),
+          realId: r.id,
           passenger: profileMap[r.rider_id] || 'Desconocido',
           driver: driverMap[r.driver_id || ''] || 'Sin asignar',
           origin: r.origin || r.origin_address || '-',
@@ -146,9 +196,10 @@ export default function RidesPage() {
     }
   }, []);
 
+  // Fetch on mount and when filters/page change
   useEffect(() => {
-    fetchRides();
-  }, [fetchRides]);
+    fetchRides(dateFilter, page);
+  }, [dateFilter, page, fetchRides]);
 
   const filteredRides = rides.filter((r) => {
     const matchSearch = r.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -169,14 +220,13 @@ export default function RidesPage() {
   const totalRevenue = rides.filter(r => r.status === 'completed').reduce((sum, r) => sum + r.price, 0);
 
   const stats = [
-    { label: 'Total Viajes', value: rides.length, color: 'text-white' },
+    { label: 'Total Viajes', value: totalCount, color: 'text-white' },
     { label: 'Completados', value: rides.filter(r => r.status === 'completed').length, color: 'text-emerald-400' },
     { label: 'Cancelados', value: rides.filter(r => r.status === 'cancelled').length, color: 'text-red-400' },
     { label: 'Ingresos', value: `₡${totalRevenue.toLocaleString()}`, color: 'text-cyan-400' },
   ];
 
   const cancelRide = async (rideShortId: string) => {
-    // Find the real ride ID from the short ID
     const ride = rides.find(r => r.id === rideShortId);
     if (!ride) return;
 
@@ -184,7 +234,7 @@ export default function RidesPage() {
       const { error } = await supabase
         .from('rides')
         .update({ status: 'cancelled' })
-        .eq('id', ride.id);
+        .eq('id', ride.realId);
 
       if (error) {
         toast.error('Error al cancelar viaje');
@@ -203,6 +253,28 @@ export default function RidesPage() {
 
   const refundRide = (id: string) => {
     toast.success(`Reembolso procesado para ${id}`);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const showingFrom = totalCount > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const showingTo = Math.min(page * PAGE_SIZE, totalCount);
+
+  // Generate page numbers to display
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    start = Math.max(1, end - maxVisible + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  }, [page, totalPages]);
+
+  const handleDateFilterChange = (df: string) => {
+    setDateFilter(df);
+    setPage(1); // Reset to first page when date filter changes
   };
 
   return (
@@ -240,7 +312,7 @@ export default function RidesPage() {
             {dateFilters.map((df) => (
               <button
                 key={df}
-                onClick={() => setDateFilter(df)}
+                onClick={() => handleDateFilterChange(df)}
                 className={`px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
                   dateFilter === df ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
                 }`}
@@ -295,7 +367,7 @@ export default function RidesPage() {
                     const StatusIcon = cfg.icon;
                     return (
                       <motion.tr
-                        key={ride.id}
+                        key={ride.realId}
                         className="border-b border-white/5 hover:bg-white/5 transition-colors"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -353,6 +425,62 @@ export default function RidesPage() {
               <div className="text-center py-12 text-gray-500">
                 <MapPin className="w-10 h-10 mx-auto mb-2 opacity-50" />
                 <p>No se encontraron viajes</p>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalCount > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
+                <p className="text-xs text-gray-400">
+                  Mostrando {showingFrom}-{showingTo} de {totalCount} viajes
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(1)}
+                    disabled={page === 1}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Primera pagina"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Pagina anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  {pageNumbers.map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      className={`min-w-[2rem] h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
+                        page === pageNum
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                          : 'text-gray-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Pagina siguiente"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setPage(totalPages)}
+                    disabled={page === totalPages}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Ultima pagina"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </>
