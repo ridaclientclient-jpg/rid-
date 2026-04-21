@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "### Descripción Detallada de la Captura de Pantalla: Panel de Administración para Ride-Sharing (TaxiCube)  \n\n#### **1. Layout General**  \nLa interfaz sigue un diseño **sidebar-left + contenido principal**, típico de paneles de administración. El sidebar (menú lateral) ocupa el 20% del ancho, mientras que el contenido principal (derecha) ocupa el 80%. El color base es blanco con acentos en azul (#2196F3) y naranja (#FF9800) para elementos interactivos.  \n\n\n### **2. Sidebar (Menú Lateral Izquierdo)**  \nContiene el logo, barra de búsqueda y menú de navegación jerárquico.  \n\n- **Logo y Nombre de la App**:  \n  - Icono: Coche amarillo con sombra.  \n  - Texto: *TAXICUBE* (negrita, negro).  \n\n- **Barra de Búsqueda**:  \n  - Input con placeholder *Search* (gris claro, borde gris).  \n\n- **Menú Principal**:  \n  - **HOME** (sección):  \n    - *Dashboard* (ícono de gráfico, texto gris).  \n    - *Server Monitoring* (ícono de servidor, texto gris).  \n  - **MEMBERS** (sección):  \n    - *Admin* (ícono de usuario, texto gris, desplegable).  \n    - *Rider* (ícono de pasajero, texto gris).  \n    - *Drivers* (ícono de conductor, texto blanco, fondo azul, seleccionado).  \n      - Submenú:  \n        - *Manage Driver* (círculo blanco, texto gris).  \n        - *Manage Driver Vehicles* (círculo blanco, texto gris).  \n    - *Manage Reward* (desplegable, círculo gris, texto gris).  \n      - Submenú:  \n        - *Report* (punto negro, texto gris).  \n        - *Setting* (punto azul, texto azul, seleccionado).  \n        - *Driver Subscription* (círculo blanco, texto gris, flecha derecha).  \n  - *Taxi Fleet Company* (ícono de empresa, texto gris).  \n\n\n### **3. Header del Contenido Principal**  \nBarra superior con información del usuario y acciones rápidas.  \n\n- **Usuario**:  \n  - Nombre: *Olivia Smith* (negrita, negro).  \n  - Rol: *Super Administrator* (gris claro).  \n- **Botones de Acción** (derecha):  \n  - Íconos: usuario, alerta, edición, configuración, apagado (todos grises).  \n\n\n### **4. Contenido Principal: \"Reward Setting\"**  \nSección central para configurar campañas de recompensas para conductores.  \n\n- **Título Principal**:  \n  - *Reward Setting* (negrita, negro, tamaño grande).  \n- **Subtítulo**:  \n  - *Active Campaign: Super reward* (gris claro, alineado a la derecha).  \n- **Descripción**:  \n  - *Admin can define the time duration for reward campaign and also set the criteria to achieve the Level and Rewards for Taxi Drivers.* (gris claro, tamaño pequeño).  \n\n\n### **5. Tarjetas de Niveles de Recompensa**  \nDos tarjetas lado a lado (Silver y Gold) con datos de configuración.  \n\n#### **Tarjeta 1: Silver Level**  \n- **Header**:  \n  - Fondo azul, texto blanco: *Silver* (con ícono de estrella).  \n- **Icono**:  \n  - Medalla plateada con texto *Silver Level* (centrado, grande).  \n- **Campos de Configuración**:  \n  - **Level** (requerido): Input con valor *Silver*.  \n  - **Status**: Dropdown con valor *Active*.  \n  - **Minimum Trips**: Input con valor *13*.  \n  - **Ratings**: Input con valor *4.00*.  \n  - **Cancellation Rate**: Input con valor *30* + % (sufijo).  \n  - **Acceptance Rate**: Input con valor *70* + % (sufijo).  \n\n#### **Tarjeta 2: Gold Level**  \n- **Header**:  \n  - Fondo azul, texto blanco: *Gold* (con ícono de estrella).  \n- **Icono**:  \n  - Medalla dorada con texto *Gold Level* (centrado, grande).  \n- **Campos de Configuración**:  \n  - **Level** (requerido): Input con valor *Gold*.  \n  - **Status**: Dropdown con valor *Active*.  \n  - **Minimum Trips**: Input con valor *15*.  \n  - **Ratings**: Input con valor *4.50*.  \n  - **Cancellation Rate**: Input con valor *20* + % (sufijo).  \n  - **Acceptance Rate**: Input con valor *80* + % (sufijo).  \n\n\n### **6. Elementos Visuales y Estilo**  \n- **Colores**:  \n  - Azul para elementos seleccionados (ej. *Drivers*, *Setting*).  \n  - Gris claro para texto secundario (descripciones, subtítulos).  \n  - Naranja para el título principal (*Reward Setting*).  \n- **Tipografía**:  \n  - Sans-serif (ej. Arial/Roboto) para legibilidad.  \n  - Tamaños: Título grande (24px), subtítulos (14px), campos (12px).  \n- **Espaciado**:  \n  - Márgenes internos en tarjetas (20px) y entre secciones (30px).  \n  - Separación clara entre menú, header y contenido.  \n\n\n### **7. Funcionalidad Implícita**  \n- Los inputs y dropdowns permiten editar criterios de recompensa (viajes mínimos, calificaciones, tasas).  \n- El menú lateral facilita la navegación a otras secciones (Dashboard, Drivers, Reports).  \n- El header muestra el usuario activo y acceso rápido a perfil/configuración.  \n\n\nEsta interfaz está diseñada para que un administrador defina fácilmente las condiciones para los niveles de recompensa de conductores, con una estructura clara y elementos visuales intuitivos.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1776790898,
+  "id": "2026042201004379c9d79907764a3e",
+  "model": "glm-4.6v",
+  "object": "chat.completion",
+  "request_id": "2026042201004379c9d79907764a3e",
+  "usage": {
+    "completion_tokens": 1366,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1590,
+    "prompt_tokens_details": {
+      "cached_tokens": 5
+    },
+    "total_tokens": 2956
+  }
+}
