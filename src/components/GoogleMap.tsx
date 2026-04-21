@@ -351,6 +351,14 @@ export default function GoogleMap({
 
     if (!mapInstanceRef.current || !showRoute || !showDirections || !isLoaded || !routeKey) return;
 
+    // Validate coordinates before requesting directions
+    const { origin, destination } = showRoute;
+    if (!origin?.lat || !origin?.lng || !destination?.lat || !destination?.lng) return;
+    if (origin.lat === 0 && origin.lng === 0) return;
+    if (destination.lat === 0 && destination.lng === 0) return;
+    // Skip if origin and destination are essentially the same point
+    if (Math.abs(origin.lat - destination.lat) < 0.0001 && Math.abs(origin.lng - destination.lng) < 0.0001) return;
+
     loadGoogleMaps().then((google) => {
       if (!mapInstanceRef.current) return;
       const directionsService = new google.maps.DirectionsService();
@@ -378,8 +386,8 @@ export default function GoogleMap({
 
       directionsService.route(
         {
-          origin: showRoute.origin,
-          destination: showRoute.destination,
+          origin,
+          destination,
           waypoints: waypoints.map(wp => ({ location: wp, stopover: true })),
           optimizeWaypoints: false,
           travelMode: google.maps.TravelMode.DRIVING,
@@ -387,6 +395,13 @@ export default function GoogleMap({
         (result, status) => {
           if (status === 'OK' && result) {
             directionsRenderer.setDirections(result);
+          } else {
+            // Silently handle direction errors — avoid console spam
+            // Common: UNKNOWN_ERROR (invalid coords), ZERO_RESULTS (no route), NOT_FOUND
+            if (status !== 'OK' && directionsRendererRef.current) {
+              directionsRendererRef.current.setMap(null);
+              directionsRendererRef.current = null;
+            }
           }
         }
       );
