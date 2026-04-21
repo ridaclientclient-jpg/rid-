@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -15,18 +16,30 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
   const pathname = usePathname();
   const { user, isAuthenticated, initAuth } = useAuthStore();
   const [checked, setChecked] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     // Safety timeout: force show content after 8s even if initAuth hangs
     const safetyTimeout = setTimeout(() => {
-      setChecked(true);
+      if (!cancelled) {
+        setChecked(true);
+        setAuthError('Tiempo de espera agotado. Recarga la pagina.');
+      }
     }, 8000);
 
     initAuth()
-      .then(() => setChecked(true))
-      .catch(() => setChecked(true));
+      .then(() => { if (!cancelled) setChecked(true); })
+      .catch((err) => {
+        if (!cancelled) {
+          setChecked(true);
+          setAuthError('Error de conexion. Verifica tu internet.');
+          console.error('[AuthGuard] initAuth failed:', err);
+        }
+      });
 
-    return () => clearTimeout(safetyTimeout);
+    return () => { cancelled = true; clearTimeout(safetyTimeout); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redirect unauthenticated users to login (only once)
@@ -99,5 +112,5 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
     );
   }
 
-  return <>{children}</>;
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 }
