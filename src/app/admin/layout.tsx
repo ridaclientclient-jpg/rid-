@@ -9,7 +9,7 @@ import {
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
   Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare,
   Receipt, Star, AlertTriangle, Trophy, Building2, MapPinned,
-  Tag, CarFront, Grid3X3
+  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -38,6 +38,10 @@ const navItems = [
   { href: '/admin/promo-codes', label: 'Codigos Promo', icon: Tag },
   { href: '/admin/vehicle-types', label: 'Tipos Vehiculo', icon: CarFront },
   { href: '/admin/services/categories', label: 'Cat. Servicio', icon: Grid3X3 },
+  { href: '/admin/banners', label: 'Banners', icon: Image },
+  { href: '/admin/geo-map', label: 'Mapa Zonas', icon: Map },
+  { href: '/admin/gods-view', label: "God's View", icon: Eye },
+  { href: '/admin/heat-map', label: 'Heat Map', icon: Flame },
   { href: '/admin/settings', label: 'Configuración', icon: Settings },
 ];
 

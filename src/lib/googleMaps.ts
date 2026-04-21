@@ -27,7 +27,7 @@ export async function loadGoogleMaps(): Promise<typeof google> {
     // Only load libraries we use: places (autocomplete), geometry (distance calc)
     // No 'marker' library — we use classic google.maps.Marker
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry,visualization`;
     script.async = true;
     script.defer = true;
 
@@ -72,7 +72,7 @@ export async function loadGoogleMaps(): Promise<typeof google> {
 
       const script = document.createElement('script');
       script.id = 'google-maps-script';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry,visualization`;
       script.async = true;
       script.defer = true;
 
