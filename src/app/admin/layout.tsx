@@ -7,7 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, LayoutDashboard, Users, Car, MapPin, DollarSign,
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
-  Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare
+  Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare,
+  Receipt, Star, AlertTriangle, Trophy, Building2, MapPinned,
+  Tag, CarFront, Grid3X3
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -25,8 +27,17 @@ const navItems = [
   { href: '/admin/marketplace/vendors', label: 'Vendedores', icon: Users },
   { href: '/admin/marketplace/products', label: 'Productos', icon: Package },
   { href: '/admin/marketplace/orders', label: 'Pedidos MKT', icon: ShoppingCart },
+  { href: '/admin/payment-report', label: 'Reporte Pagos', icon: Receipt },
+  { href: '/admin/reviews', label: 'Resenas', icon: Star },
+  { href: '/admin/driver-alerts', label: 'Alertas', icon: AlertTriangle },
   { href: '/admin/couriers', label: 'Repartidores', icon: Truck },
   { href: '/admin/chat', label: 'Chat Soporte', icon: MessageSquare },
+  { href: '/admin/rewards', label: 'Recompensas', icon: Trophy },
+  { href: '/admin/organizations', label: 'Organizaciones', icon: Building2 },
+  { href: '/admin/locations', label: 'Areas Geo.', icon: MapPinned },
+  { href: '/admin/promo-codes', label: 'Codigos Promo', icon: Tag },
+  { href: '/admin/vehicle-types', label: 'Tipos Vehiculo', icon: CarFront },
+  { href: '/admin/services/categories', label: 'Cat. Servicio', icon: Grid3X3 },
   { href: '/admin/settings', label: 'Configuración', icon: Settings },
 ];
 
