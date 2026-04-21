@@ -14,6 +14,7 @@ import PlacesAutocomplete from '@/components/PlacesAutocomplete';
 import DraggableBottomSheet from '@/components/DraggableBottomSheet';
 import { reverseGeocode } from '@/lib/googleMaps';
 import { supabase } from '@/lib/supabase';
+import RideChat, { ChatToggleButton } from '@/components/RideChat';
 
 interface CoordData {
   lat: number;
@@ -44,6 +45,7 @@ export default function ClientRide() {
   const [gettingLocation, setGettingLocation] = useState(false);
   const [userGPS, setUserGPS] = useState<{ lat: number; lng: number } | null>(null);
   const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   // ─── Promo Code ─────────────────────────────────
   const [promoCode, setPromoCode] = useState('');
@@ -1143,7 +1145,7 @@ export default function ClientRide() {
                     <Phone className="w-4 h-4 text-emerald-400" />
                   </button>
                   <button
-                    onClick={() => toast.info('Chat disponible pronto')}
+                    onClick={() => setShowChat(true)}
                     className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center hover:bg-blue-500/30"
                   >
                     <MessageSquare className="w-4 h-4 text-blue-400" />
@@ -1255,6 +1257,23 @@ export default function ClientRide() {
         )}
         </div>
       </DraggableBottomSheet>
+
+      {/* Ride Chat — Floating Panel */}
+      {currentRide && !['searching', 'scheduled', 'completed'].includes(currentRide.status) && (
+        <>
+          <div className="absolute bottom-4 right-4 z-40">
+            <ChatToggleButton onClick={() => setShowChat(!showChat)} />
+          </div>
+          <RideChat
+            rideId={currentRide.id}
+            currentUserRole="client"
+            currentUserId={user?.id || ''}
+            otherUserName={currentRide.driver_name || 'Conductor'}
+            isOpen={showChat}
+            onClose={() => setShowChat(false)}
+          />
+        </>
+      )}
 
       {/* Drag Precision Mode — Floating Controls */}
       <AnimatePresence>

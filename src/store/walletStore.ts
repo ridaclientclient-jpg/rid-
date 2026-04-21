@@ -26,12 +26,23 @@ interface WalletState {
   isLoading: boolean;
   isWithdrawing: boolean;
   isTopUp: boolean;
+  pageSize: number;
+  currentPage: number;
+  filterType: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  totalTxCount: number;
+  hasMore: boolean;
 
   fetchWallet: (userId: string) => Promise<void>;
   fetchTransactions: (walletId: string) => Promise<void>;
   requestWithdrawal: (walletId: string, amount: number) => Promise<{ success: boolean; error?: string }>;
   addBalance: (walletId: string, amount: number) => Promise<{ success: boolean; error?: string }>;
   subscribeToChanges: (walletId: string) => () => void;
+  setFilterType: (type: string) => void;
+  setDateRange: (from: string | null, to: string | null) => void;
+  loadMore: (walletId: string) => Promise<void>;
+  resetFilters: () => void;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -40,6 +51,13 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   isLoading: false,
   isWithdrawing: false,
   isTopUp: false,
+  pageSize: 10,
+  currentPage: 1,
+  filterType: 'all',
+  dateFrom: null,
+  dateTo: null,
+  totalTxCount: 0,
+  hasMore: false,
 
   fetchWallet: async (userId: string) => {
     set({ isLoading: true });
@@ -74,20 +92,81 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   fetchTransactions: async (walletId: string) => {
+    const state = get();
     try {
-      const { data, error } = await supabase
+      // Build count query
+      let countQuery = supabase
+        .from('transactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('wallet_id', walletId);
+
+      if (state.filterType !== 'all') {
+        countQuery = countQuery.eq('type', state.filterType);
+      }
+      if (state.dateFrom) {
+        countQuery = countQuery.gte('created_at', state.dateFrom + 'T00:00:00');
+      }
+      if (state.dateTo) {
+        countQuery = countQuery.lte('created_at', state.dateTo + 'T23:59:59');
+      }
+
+      const { count } = await countQuery;
+      const total = count || 0;
+
+      // Build data query
+      let dataQuery = supabase
         .from('transactions')
         .select('*')
-        .eq('wallet_id', walletId)
+        .eq('wallet_id', walletId);
+
+      if (state.filterType !== 'all') {
+        dataQuery = dataQuery.eq('type', state.filterType);
+      }
+      if (state.dateFrom) {
+        dataQuery = dataQuery.gte('created_at', state.dateFrom + 'T00:00:00');
+      }
+      if (state.dateTo) {
+        dataQuery = dataQuery.lte('created_at', state.dateTo + 'T23:59:59');
+      }
+
+      const end = state.currentPage * state.pageSize;
+      const { data, error } = await dataQuery
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(0, end - 1);
 
       if (!error && data) {
-        set({ transactions: data as TransactionItem[] });
+        set({
+          transactions: data as TransactionItem[],
+          totalTxCount: total,
+          hasMore: data.length < total,
+        });
       }
     } catch {
       // Silently ignore
     }
+  },
+
+  setFilterType: (type: string) => {
+    set({ filterType: type, currentPage: 1 });
+  },
+
+  setDateRange: (from: string | null, to: string | null) => {
+    set({ dateFrom: from, dateTo: to, currentPage: 1 });
+  },
+
+  loadMore: async (walletId: string) => {
+    const nextPage = get().currentPage + 1;
+    set({ currentPage: nextPage });
+    await get().fetchTransactions(walletId);
+  },
+
+  resetFilters: () => {
+    set({
+      filterType: 'all',
+      dateFrom: null,
+      dateTo: null,
+      currentPage: 1,
+    });
   },
 
   requestWithdrawal: async (walletId: string, amount: number) => {

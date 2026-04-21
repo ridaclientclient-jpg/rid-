@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import ClientNotificationPanel from '@/components/ClientNotificationPanel';
 
 interface NotificationItem {
   id: string;
@@ -32,6 +33,81 @@ export default function NotificationPanel() {
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
+
+  // ─── Client slide-out panel state ───
+  const [clientPanelOpen, setClientPanelOpen] = useState(false);
+
+  // ─── Unread count from app_notifications (client badge) ───
+  const [appUnreadCount, setAppUnreadCount] = useState(0);
+
+  const fetchAppUnreadCount = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { count, error } = await supabase
+        .from('app_notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      if (!error && count !== null) {
+        setAppUnreadCount(count);
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.includes('Lock broken')) return;
+      // silent
+    }
+  }, [user]);
+
+  // Fetch app_notifications unread count on mount + polling
+  useEffect(() => {
+    fetchAppUnreadCount();
+    const interval = setInterval(fetchAppUnreadCount, 15000);
+    return () => clearInterval(interval);
+  }, [user, fetchAppUnreadCount]);
+
+  // Subscribe to realtime new notifications from app_notifications
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`notif-badge-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const newNotif = payload.new as { is_read: boolean };
+          if (!newNotif.is_read) {
+            setAppUnreadCount((prev) => prev + 1);
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const old = payload.old as { is_read: boolean };
+          const updated = payload.new as { is_read: boolean };
+          if (!old.is_read && updated.is_read) {
+            setAppUnreadCount((prev) => Math.max(0, prev - 1));
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'app_notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const deleted = payload.old as { is_read: boolean };
+          if (!deleted.is_read) {
+            setAppUnreadCount((prev) => Math.max(0, prev - 1));
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
@@ -147,17 +223,18 @@ export default function NotificationPanel() {
   return (
     <div className="relative" ref={panelRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setClientPanelOpen(true)}
         className="relative p-2 rounded-xl hover:bg-white/5 transition-colors"
       >
         <Bell className="w-5 h-5 text-gray-400" />
-        {unreadCount > 0 && (
-          <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-cyan-500 flex items-center justify-center">
-            <span className="text-[8px] font-bold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>
+        {appUnreadCount > 0 && (
+          <div className="absolute top-1 right-1 min-w-[16px] h-4 rounded-full bg-cyan-500 flex items-center justify-center">
+            <span className="text-[8px] font-bold text-white px-0.5">{appUnreadCount > 9 ? '9+' : appUnreadCount}</span>
           </div>
         )}
       </button>
 
+      {/* Legacy dropdown (preserved for existing functionality) */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -255,6 +332,12 @@ export default function NotificationPanel() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Client slide-out notification panel */}
+      <ClientNotificationPanel
+        open={clientPanelOpen}
+        onClose={() => setClientPanelOpen(false)}
+      />
     </div>
   );
 }

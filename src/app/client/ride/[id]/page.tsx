@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRideStore } from '@/store/rideStore';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
 import SOSButton from '@/components/SOSButton';
@@ -75,11 +76,14 @@ export default function RideDetailsPage() {
   const router = useRouter();
   const rideId = params?.id as string;
   const { currentRide } = useRideStore();
+  const { user } = useAuthStore();
   const [ride, setRide] = useState<RideDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState(0);
   const [rated, setRated] = useState(false);
   const [showRating, setShowRating] = useState(false);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!rideId) return;
@@ -188,17 +192,31 @@ export default function RideDetailsPage() {
   };
 
   const submitRating = async () => {
-    if (!ride || rating === 0) return;
+    if (!ride || rating === 0 || !user) return;
+    setIsSubmitting(true);
     try {
+      // Keep existing rides.rider_rating update
       await supabase
         .from('rides')
         .update({ rider_rating: rating })
         .eq('id', ride.id);
+
+      // Also insert into reviews table
+      await supabase.from('reviews').insert({
+        ride_id: ride.id,
+        reviewer_id: user.id,
+        reviewee_id: ride.driver_id,
+        rating: rating,
+        comment: reviewComment.trim() || null,
+      });
+
       setRated(true);
       setShowRating(false);
       toast.success('Calificacion enviada! Gracias por tu opinion.');
     } catch {
       toast.error('Error al enviar calificacion');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -603,6 +621,22 @@ export default function RideDetailsPage() {
                   </button>
                 ))}
               </div>
+              {/* Comment textarea */}
+              <div className="space-y-1.5">
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 300) setReviewComment(e.target.value);
+                  }}
+                  placeholder="Deja un comentario (opcional)..."
+                  maxLength={300}
+                  rows={3}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
+                <p className="text-[10px] text-gray-500 text-right">
+                  {reviewComment.length}/300
+                </p>
+              </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowRating(false)}
@@ -612,10 +646,10 @@ export default function RideDetailsPage() {
                 </button>
                 <button
                   onClick={submitRating}
-                  disabled={rating === 0}
+                  disabled={rating === 0 || isSubmitting}
                   className="flex-1 btn-neon text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50"
                 >
-                  Enviar
+                  {isSubmitting ? 'Enviando...' : 'Enviar'}
                 </button>
               </div>
             </motion.div>

@@ -1,15 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   Power, PowerOff, MapPin, Clock, Star, Car, Navigation, AlertTriangle,
   Phone, MessageSquare, CheckCircle2, X as XIcon, ArrowRight,
+  ChevronRight, History, User,
 } from 'lucide-react';
 import GoogleMap from '@/components/GoogleMap';
 import { geocodeAddress } from '@/lib/googleMaps';
+import RideChat, { ChatToggleButton } from '@/components/RideChat';
 
 interface PendingRide {
   id: string;
@@ -66,12 +70,89 @@ const statusColors: Record<string, string> = {
   completed: 'bg-emerald-500/20 text-emerald-400',
 };
 
+interface CompletedRide {
+  id: string;
+  rider_id: string;
+  rider_name?: string;
+  origin: string;
+  destination: string;
+  price: number;
+  completed_at: string;
+  has_rated: boolean;
+}
+
 export default function DriverRides() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const [pendingRides, setPendingRides] = useState<PendingRide[]>([]);
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [showMap, setShowMap] = useState(true);
+  const [completedRides, setCompletedRides] = useState<CompletedRide[]>([]);
+  const [loadingCompleted, setLoadingCompleted] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+
+  // Fetch completed rides from Supabase
+  const fetchCompletedRides = useCallback(async () => {
+    if (!user) return;
+    setLoadingCompleted(true);
+    try {
+      const { data: ridesData } = await supabase
+        .from('rides')
+        .select('id, rider_id, origin, destination, price, updated_at')
+        .eq('driver_id', user.id)
+        .eq('status', 'completed')
+        .order('updated_at', { ascending: false })
+        .limit(10);
+
+      if (!ridesData || ridesData.length === 0) {
+        setCompletedRides([]);
+        setLoadingCompleted(false);
+        return;
+      }
+
+      // Check which rides the driver has already rated
+      const rideIds = ridesData.map((r) => r.id);
+      const { data: existingReviews } = await supabase
+        .from('reviews')
+        .select('ride_id')
+        .eq('reviewer_id', user.id)
+        .in('ride_id', rideIds);
+
+      const ratedRideIds = new Set(existingReviews?.map((r) => r.ride_id) || []);
+
+      // Fetch rider names
+      const riderIds = [...new Set(ridesData.map((r) => r.rider_id))];
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .in('id', riderIds);
+
+      const nameMap = new Map(profilesData?.map((p) => [p.id, (p as any).name]) || []);
+
+      const completed: CompletedRide[] = ridesData.map((r) => ({
+        id: r.id,
+        rider_id: r.rider_id,
+        rider_name: nameMap.get(r.rider_id) || undefined,
+        origin: r.origin,
+        destination: r.destination,
+        price: r.price,
+        completed_at: r.updated_at,
+        has_rated: ratedRideIds.has(r.id),
+      }));
+
+      setCompletedRides(completed);
+    } catch {
+      // Silently fail - completed rides section is supplementary
+    } finally {
+      setLoadingCompleted(false);
+    }
+  }, [user]);
+
+  // Fetch completed rides on mount
+  useEffect(() => {
+    fetchCompletedRides();
+  }, [fetchCompletedRides]);
 
   // Simulate new rides every 10 seconds when online and no active ride
   useEffect(() => {
@@ -137,7 +218,9 @@ export default function DriverRides() {
     if (!activeRide) return;
     toast.success('Viaje completado! +₡' + activeRide.price.toLocaleString());
     setActiveRide(null);
-  }, [activeRide]);
+    // Refresh completed rides list
+    fetchCompletedRides();
+  }, [activeRide, fetchCompletedRides]);
 
   // Build map markers for active ride
   const mapMarkers: { lat: number; lng: number; label: string; color: string }[] = [];
@@ -275,7 +358,7 @@ export default function DriverRides() {
                     <Phone className="w-4 h-4 text-emerald-400" />
                   </button>
                   <button
-                    onClick={() => toast.info('Abriendo chat...')}
+                    onClick={() => setShowChat(true)}
                     className="p-2 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 transition-colors"
                   >
                     <MessageSquare className="w-4 h-4 text-blue-400" />
@@ -406,6 +489,82 @@ export default function DriverRides() {
               </motion.div>
             )}
 
+            {/* Completed Rides */}
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold text-gray-400 flex items-center gap-2 mb-3">
+                <History className="w-4 h-4" />
+                Viajes completados recientes
+              </h2>
+
+              {loadingCompleted && (
+                <div className="flex items-center justify-center py-4">
+                  <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+                </div>
+              )}
+
+              {!loadingCompleted && completedRides.length === 0 && (
+                <div className="glass rounded-2xl p-6 text-center">
+                  <Car className="w-10 h-10 text-gray-600 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500">
+                    No tienes viajes completados aun
+                  </p>
+                </div>
+              )}
+
+              {completedRides.map((cr) => (
+                <motion.div
+                  key={cr.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="glass rounded-2xl p-4 space-y-2.5 mb-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center text-white text-xs font-bold">
+                        {cr.rider_name?.charAt(0) || <User className="w-3.5 h-3.5" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-white">
+                          {cr.rider_name || 'Pasajero'}
+                        </p>
+                        <p className="text-[10px] text-gray-500">
+                          {new Date(cr.completed_at).toLocaleDateString('es-CR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-400">
+                      {'₡'}{cr.price.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="flex items-start gap-2 text-xs text-gray-400">
+                    <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-emerald-400" />
+                    <span className="truncate">{cr.origin} → {cr.destination}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                      cr.has_rated
+                        ? 'bg-gray-500/20 text-gray-400'
+                        : 'bg-amber-500/20 text-amber-400'
+                    }`}>
+                      {cr.has_rated ? 'Calificado' : 'Sin calificar'}
+                    </span>
+                    {!cr.has_rated && (
+                      <button
+                        onClick={() => router.push(`/driver/ride-rating?rideId=${cr.id}`)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                      >
+                        <Star className="w-3.5 h-3.5" />
+                        Calificar pasajero
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
             <AnimatePresence>
               {pendingRides.map((ride, i) => (
                 <motion.div
@@ -479,6 +638,23 @@ export default function DriverRides() {
           </div>
         )}
       </div>
+
+      {/* Ride Chat — Floating Panel */}
+      {activeRide && activeRide.status !== 'completed' && (
+        <>
+          <div className="fixed bottom-20 right-3 z-40">
+            <ChatToggleButton onClick={() => setShowChat(!showChat)} />
+          </div>
+          <RideChat
+            rideId={activeRide.id}
+            currentUserRole='driver'
+            currentUserId={user?.id || ''}
+            otherUserName={activeRide.riderName || 'Pasajero'}
+            isOpen={showChat}
+            onClose={() => setShowChat(false)}
+          />
+        </>
+      )}
     </div>
   );
 }

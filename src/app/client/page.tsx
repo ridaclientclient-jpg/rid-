@@ -6,11 +6,12 @@ import { MapPin, Clock, Star, Shield, ChevronRight, Zap, Car, Wallet, Bell, Head
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { useRideStore } from '@/store/rideStore';
+import RideRatingModal from '@/components/RideRatingModal';
 
 export default function ClientHome() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { currentRide } = useRideStore();
+  const { currentRide, lastCompletedUnratedRide, markRideAsRated } = useRideStore();
 
   const quickActions = [
     { icon: Car, label: 'Pedir Viaje', desc: 'Transporte ahora', href: '/client/ride', color: 'from-blue-600 to-cyan-500' },
@@ -118,6 +119,18 @@ export default function ClientHome() {
           ))}
         </div>
       </motion.div>
+
+      {/* Ride Rating Modal — auto-shows after ride completion */}
+      {lastCompletedUnratedRide && user && (
+        <RideRatingModal
+          open={true}
+          rideId={lastCompletedUnratedRide.rideId}
+          driverName={lastCompletedUnratedRide.driverName}
+          driverId={lastCompletedUnratedRide.driverId}
+          userId={user.id}
+          onClose={() => markRideAsRated(lastCompletedUnratedRide.rideId)}
+        />
+      )}
 
       {/* Safety Banner */}
       <motion.div

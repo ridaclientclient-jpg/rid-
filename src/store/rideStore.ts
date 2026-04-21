@@ -4,11 +4,18 @@ import type { Ride, PaymentMethodType } from '@/lib/supabase';
 
 export type RideStatus = 'searching' | 'assigned' | 'arriving' | 'started' | 'completed' | 'cancelled' | 'scheduled';
 
+export interface UnratedRide {
+  rideId: string;
+  driverName: string;
+  driverId: string;
+}
+
 interface RideState {
   currentRide: (Ride & { driver_name?: string; driver_phone?: string; driver_vehicle?: string; driver_rating?: number; stops?: Array<{ address: string; lat?: number; lng?: number }>; scheduled_at?: string; is_scheduled?: boolean }) | null;
   rideHistory: (Ride & { driver_name?: string; driver_vehicle?: string })[];
   isCreating: boolean;
   availableDrivers: Array<{ id: string; name: string; vehicle: string; rating: number; distance: number; eta: number }>;
+  lastCompletedUnratedRide: UnratedRide | null;
 
   createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string, stops?: Array<{ address: string; lat?: number; lng?: number }>, paymentMethod?: PaymentMethodType, paymentExtra?: { cardLastFour?: string; sinpePhone?: string }, scheduledAt?: string) => Promise<string | null>;
   cancelRide: (rideId: string) => Promise<void>;
@@ -16,6 +23,7 @@ interface RideState {
   fetchRideHistory: (userId: string) => Promise<void>;
   subscribeToRideUpdates: (rideId: string) => () => void;
   searchNearbyDrivers: (lat: number, lng: number) => Promise<void>;
+  markRideAsRated: (rideId: string) => void;
 }
 
 const DEMO_DRIVERS = [
@@ -31,6 +39,7 @@ export const useRideStore = create<RideState>((set, get) => ({
   rideHistory: [],
   isCreating: false,
   availableDrivers: [],
+  lastCompletedUnratedRide: null,
 
   createRide: async (origin, destination, originLat, originLng, destLat, destLng, rideType = 'standard', stops = [], paymentMethod = 'cash', paymentExtra = {}, scheduledAt) => {
     set({ isCreating: true });
@@ -382,9 +391,16 @@ export const useRideStore = create<RideState>((set, get) => ({
       }).eq('id', rideId);
 
       if (state.currentRide) {
+        // Save unrated ride info before clearing currentRide
+        const unratedRide: UnratedRide = {
+          rideId: ride.id,
+          driverName: state.currentRide.driver_name || '',
+          driverId: state.currentRide.driver_id || '',
+        };
         set({
           rideHistory: [...state.rideHistory, { ...state.currentRide, status: 'completed' } as any],
           currentRide: null,
+          lastCompletedUnratedRide: unratedRide,
         });
       }
     } catch (error) {
@@ -428,6 +444,13 @@ export const useRideStore = create<RideState>((set, get) => ({
     return () => {
       supabase.removeChannel(channel);
     };
+  },
+
+  markRideAsRated: (rideId: string) => {
+    const state = get();
+    if (state.lastCompletedUnratedRide?.rideId === rideId) {
+      set({ lastCompletedUnratedRide: null });
+    }
   },
 
   searchNearbyDrivers: async (lat: number, lng: number) => {

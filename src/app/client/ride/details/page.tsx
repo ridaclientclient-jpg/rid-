@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, MapPin, Clock, Star, Phone, Shield, AlertTriangle, Package, FileText, ChevronRight, Eye, EyeOff, Loader2, Headphones, Banknote, Smartphone, CreditCard } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
 
@@ -66,12 +67,14 @@ function RideDetailsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rideId = searchParams.get('ride');
+  const { user } = useAuthStore();
 
   const [ride, setRide] = useState<RideDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isHidden, setIsHidden] = useState(false);
   const [ratingValue, setRatingValue] = useState(0);
   const [isRating, setIsRating] = useState(false);
+  const [reviewComment, setReviewComment] = useState('');
 
   useEffect(() => {
     if (!rideId) { router.replace('/client/history'); return; }
@@ -135,11 +138,22 @@ function RideDetailsContent() {
   };
 
   const handleRate = async () => {
-    if (!rideId || ratingValue === 0) return;
+    if (!rideId || ratingValue === 0 || !ride || !user) return;
     setIsRating(true);
     try {
+      // Keep existing rides.rider_rating update
       const { error } = await supabase.from('rides').update({ rider_rating: ratingValue }).eq('id', rideId);
       if (error) throw error;
+
+      // Also insert into reviews table
+      await supabase.from('reviews').insert({
+        ride_id: rideId,
+        reviewer_id: user.id,
+        reviewee_id: ride.driver_id,
+        rating: ratingValue,
+        comment: reviewComment.trim() || null,
+      });
+
       toast.success('Calificacion enviada!');
       setRide(prev => prev ? { ...prev, rider_rating: ratingValue } : prev);
     } catch {
@@ -286,6 +300,22 @@ function RideDetailsContent() {
                     <Star className={`w-7 h-7 ${s <= ratingValue ? 'text-amber-400 fill-amber-400' : 'text-gray-600'}`} />
                   </button>
                 ))}
+              </div>
+              {/* Comment textarea */}
+              <div className="space-y-1.5 mb-3">
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 300) setReviewComment(e.target.value);
+                  }}
+                  placeholder="Deja un comentario (opcional)..."
+                  maxLength={300}
+                  rows={3}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
+                <p className="text-[10px] text-gray-500 text-right">
+                  {reviewComment.length}/300
+                </p>
               </div>
               <button onClick={handleRate} disabled={ratingValue === 0 || isRating} className="btn-neon text-white text-sm py-2 px-6 rounded-xl disabled:opacity-40">
                 {isRating ? 'Enviando...' : 'Enviar calificacion'}

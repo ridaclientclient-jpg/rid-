@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet as WalletIcon, Plus, ArrowUpRight, ArrowDownLeft,
   CreditCard, Loader2, AlertCircle, Info, X, Send,
-  Smartphone, Shield, Users, Banknote,
+  Smartphone, Shield, Users, Banknote, Download,
+  TrendingUp, TrendingDown, Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { supabase, type Wallet, type Transaction, type SavedCard as DBSavedCard } from '@/lib/supabase';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 // ─── Helpers ────────────────────────────────────────
 function formatRelativeTime(dateStr: string): string {
@@ -117,6 +118,16 @@ export default function ClientWallet() {
     queueId: string;
   } | null>(null);
 
+  // ─── Filter & Pagination State ────────────────────
+  const [filterType, setFilterType] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const pageSize = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalTxCount, setTotalTxCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [txRefreshKey, setTxRefreshKey] = useState(0);
+
   // ─── Fetch Data ───────────────────────────────────
   const fetchData = useCallback(async (userId: string) => {
     try {
@@ -162,19 +173,6 @@ export default function ClientWallet() {
         .limit(1);
       setHasWithdrawnToday((todayTx?.length || 0) > 0);
 
-      // Fetch transactions
-      const { data: txData, error: txError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('wallet_id', walletData.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (txError) {
-        setTransactions([]);
-      } else {
-        setTransactions(txData || []);
-      }
-
       // Fetch saved cards from DB
       const { data: cardsData } = await supabase
         .from('saved_cards')
@@ -188,6 +186,9 @@ export default function ClientWallet() {
           setSelectedCardId(defaultCard.id);
         }
       }
+
+      // Signal transaction refresh
+      setTxRefreshKey(k => k + 1);
     } catch (err) {
       setError('Error al cargar la billetera');
     } finally {
@@ -198,6 +199,53 @@ export default function ClientWallet() {
   useEffect(() => {
     if (user?.id) fetchData(user.id);
   }, [user?.id, fetchData]);
+
+  // ─── Fetch Filtered & Paginated Transactions ──────
+  useEffect(() => {
+    if (!walletId) return;
+
+    const fetchTx = async () => {
+      try {
+        // Build count query
+        let countQuery = supabase
+          .from('transactions')
+          .select('*', { count: 'exact', head: true })
+          .eq('wallet_id', walletId);
+
+        if (filterType !== 'all') countQuery = countQuery.eq('type', filterType);
+        if (dateFrom) countQuery = countQuery.gte('created_at', dateFrom + 'T00:00:00');
+        if (dateTo) countQuery = countQuery.lte('created_at', dateTo + 'T23:59:59');
+
+        const { count } = await countQuery;
+        setTotalTxCount(count || 0);
+
+        // Build data query
+        let dataQuery = supabase
+          .from('transactions')
+          .select('*')
+          .eq('wallet_id', walletId);
+
+        if (filterType !== 'all') dataQuery = dataQuery.eq('type', filterType);
+        if (dateFrom) dataQuery = dataQuery.gte('created_at', dateFrom + 'T00:00:00');
+        if (dateTo) dataQuery = dataQuery.lte('created_at', dateTo + 'T23:59:59');
+
+        const end = currentPage * pageSize;
+        const { data, error } = await dataQuery
+          .order('created_at', { ascending: false })
+          .range(0, end - 1);
+
+        if (!error && data) {
+          setTransactions(data);
+        }
+      } catch {
+        // silently ignore
+      } finally {
+        setLoadingMore(false);
+      }
+    };
+
+    fetchTx();
+  }, [walletId, filterType, dateFrom, dateTo, currentPage, pageSize, txRefreshKey]);
 
   // ─── Queue Functions ──────────────────────────────
   const checkQueueStatus = useCallback(async () => {
@@ -632,6 +680,105 @@ export default function ClientWallet() {
     }
   };
 
+  // ─── Filter Helpers ───────────────────────────────
+  const applyQuickDate = useCallback((label: string) => {
+    const now = new Date();
+    let from = '';
+    switch (label) {
+      case 'Hoy':
+        from = now.toISOString().slice(0, 10);
+        break;
+      case 'Esta semana': {
+        const day = now.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - diff);
+        from = monday.toISOString().slice(0, 10);
+        break;
+      }
+      case 'Este mes':
+        from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        break;
+    }
+    setDateFrom(from);
+    setDateTo(now.toISOString().slice(0, 10));
+    setCurrentPage(1);
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFilterType('all');
+    setDateFrom('');
+    setDateTo('');
+    setCurrentPage(1);
+  }, []);
+
+  const loadMore = useCallback(() => {
+    setLoadingMore(true);
+    setCurrentPage(p => p + 1);
+  }, []);
+
+  const exportCSV = useCallback(() => {
+    if (transactions.length === 0) {
+      toast.error('No hay transacciones para exportar');
+      return;
+    }
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const filename = 'rida_transacciones_' + dateStr + '.csv';
+
+    const header = 'Fecha,Tipo,Descripcion,Monto,Saldo\n';
+    const reversed = [...transactions].reverse();
+    let balance = 0;
+    const rows = reversed.map(tx => {
+      balance += tx.type === 'credit' ? tx.amount : -tx.amount;
+      const fecha = new Date(tx.created_at).toLocaleString('es-CR');
+      const tipo = tx.type;
+      const desc = (tx.description || '').replace(/,/g, ';');
+      const monto = tx.type === 'credit' ? tx.amount : -tx.amount;
+      return fecha + ',' + tipo + ',' + desc + ',' + monto + ',' + balance;
+    }).join('\n');
+
+    const csv = '\uFEFF' + header + rows;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('CSV exportado exitosamente');
+  }, [transactions]);
+
+  const hasMore = currentPage * pageSize < totalTxCount;
+
+  // ─── Monthly Stats ────────────────────────────────
+  const monthlyStats = useMemo(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return transactions.reduce((acc, tx) => {
+      const txDate = new Date(tx.created_at);
+      if (txDate >= startOfMonth) {
+        if (tx.type === 'credit') {
+          acc.income += tx.amount;
+        } else {
+          acc.expenses += Math.abs(tx.amount);
+        }
+      }
+      return acc;
+    }, { income: 0, expenses: 0 });
+  }, [transactions]);
+
+  // ─── Filter Tabs Config ───────────────────────────
+  const filterTabs = useMemo(() => [
+    { label: 'Todos', value: 'all' },
+    { label: 'Cargas', value: 'credit' },
+    { label: 'Viajes', value: 'ride_payment' },
+    { label: 'Retiros', value: 'withdrawal' },
+    { label: 'Comisiones', value: 'commission' },
+  ], []);
+
   // ─── Loading & Error States ───────────────────────
   if (loading) {
     return (
@@ -694,6 +841,19 @@ export default function ClientWallet() {
           <span className="text-xs text-gray-400">Saldo disponible</span>
         </div>
         <p className="text-3xl font-bold text-white">{formatCurrency(walletBalance)}</p>
+
+        {/* Monthly Stats Row */}
+        <div className="flex items-center justify-center gap-3 mt-2 text-[10px]">
+          <span className="flex items-center gap-1 text-emerald-400">
+            <TrendingUp className="w-3 h-3" />
+            Ingresos este mes: {formatCurrency(monthlyStats.income)}
+          </span>
+          <span className="text-gray-600">|</span>
+          <span className="flex items-center gap-1 text-red-400">
+            <TrendingDown className="w-3 h-3" />
+            Gastos este mes: {formatCurrency(monthlyStats.expenses)}
+          </span>
+        </div>
 
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-3 mt-4">
@@ -861,17 +1021,109 @@ export default function ClientWallet() {
         </motion.div>
       )}
 
-      {/* Transactions */}
+      {/* Transactions Section */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
+        className="space-y-3"
       >
-        <h3 className="text-sm font-semibold text-gray-400 mb-3">Transacciones</h3>
+        {/* Section Header with Export */}
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-400">Transacciones</h3>
+          <button
+            type="button"
+            onClick={exportCSV}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Exportar CSV
+          </button>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {filterTabs.map(tab => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => { setFilterType(tab.value); setCurrentPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                filterType === tab.value
+                  ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20'
+                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Date Range + Quick Filters */}
+        <div className="glass rounded-xl p-3 space-y-2">
+          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+            <Calendar className="w-3 h-3" />
+            <span>Filtrar por fecha</span>
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => { setDateFrom(e.target.value); setCurrentPage(1); }}
+              placeholder="Desde"
+              className="flex-1 min-w-0 glass rounded-lg px-2.5 py-1.5 text-xs text-white bg-transparent [color-scheme:dark] outline-none focus:ring-1 focus:ring-cyan-500/50"
+            />
+            <span className="text-gray-600 text-xs shrink-0">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => { setDateTo(e.target.value); setCurrentPage(1); }}
+              placeholder="Hasta"
+              className="flex-1 min-w-0 glass rounded-lg px-2.5 py-1.5 text-xs text-white bg-transparent [color-scheme:dark] outline-none focus:ring-1 focus:ring-cyan-500/50"
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {['Hoy', 'Esta semana', 'Este mes'].map(label => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => applyQuickDate(label)}
+                className="px-2.5 py-1 rounded-md text-[10px] font-medium text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                {label}
+              </button>
+            ))}
+            {(dateFrom || dateTo || filterType !== 'all') && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="px-2.5 py-1 rounded-md text-[10px] font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Transaction Count */}
+        <p className="text-[10px] text-gray-500 px-1">
+          Mostrando {transactions.length} de {totalTxCount} transacciones
+        </p>
+
+        {/* Transaction List */}
         <div className="space-y-2">
           {transactions.length === 0 && (
             <div className="glass rounded-xl p-6 text-center">
               <p className="text-xs text-gray-500">No hay transacciones</p>
+              {(dateFrom || dateTo || filterType !== 'all') && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-2 text-xs text-cyan-400 hover:underline"
+                >
+                  Limpiar filtros
+                </button>
+              )}
             </div>
           )}
           {transactions.map(tx => {
@@ -894,6 +1146,23 @@ export default function ClientWallet() {
             );
           })}
         </div>
+
+        {/* Load More Button */}
+        {hasMore && (
+          <div className="flex justify-center pt-1">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-medium glass hover:bg-white/10 transition-colors disabled:opacity-50 text-cyan-400"
+            >
+              {loadingMore ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : null}
+              Cargar mas
+            </button>
+          </div>
+        )}
       </motion.div>
 
       {/* ═══════════════════════════════════════════════ */}
