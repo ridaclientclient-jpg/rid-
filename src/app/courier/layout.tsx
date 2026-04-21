@@ -53,9 +53,9 @@ export default function CourierLayout({ children }: { children: React.ReactNode 
   const sidebarMenuItems = [
     { icon: TrendingUp, label: 'Ganancias', desc: 'Tus ingresos', href: '/courier/earnings', badge: null },
     { icon: Trophy, label: 'Premios', desc: 'Recompensas', action: () => toast.info('Premios proximamente'), badge: { text: 'Nuevo', color: 'bg-emerald-500' } },
-    { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', action: () => toast.info('Funcion de invitacion proximamente'), badge: null },
+    { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', href: '/client/referral', badge: null },
     { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', action: () => router.push('/courier/support'), badge: null },
-    { icon: MessageSquare, label: 'Notificaciones', desc: notifCount > 0 ? `${notifCount} no leida(s)` : 'Sin novedad', action: () => toast.info('Notificaciones proximamente'), badge: notifCount > 0 ? { text: String(notifCount), color: 'bg-red-500' } : null },
+    { icon: MessageSquare, label: 'Notificaciones', desc: notifCount > 0 ? `${notifCount} no leida(s)` : 'Sin novedad', href: '/courier/notifications', badge: notifCount > 0 ? { text: String(notifCount), color: 'bg-red-500' } : null },
     { icon: InfoIcon, label: 'Centro de info', desc: 'Recursos', action: () => toast.info('Centro de informacion proximamente'), badge: null },
     { icon: Bike, label: 'Vehiculo', desc: 'Tu vehiculo de entrega', action: () => toast.info('Configuracion de vehiculo proximamente'), badge: null },
     { icon: Settings, label: 'Configuracion', desc: 'Ajustes de la app', action: () => toast.info('Configuracion proximamente'), badge: null },
@@ -87,7 +87,7 @@ export default function CourierLayout({ children }: { children: React.ReactNode 
               </div>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => toast.info(notifCount > 0 ? `Tienes ${notifCount} notificaciones` : 'Sin notificaciones nuevas')}
+                  onClick={() => router.push('/courier/notifications')}
                   className="relative p-2 rounded-xl hover:bg-white/5 transition-colors"
                 >
                   <Bell className="w-5 h-5 text-gray-400" />

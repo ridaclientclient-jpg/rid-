@@ -159,7 +159,7 @@ export default function DriverHome() {
                 Manten tu calificacion 4.85+ para subir de nivel
               </p>
               <button
-                onClick={() => toast.info('Funcion de beneficios proximamente')}
+                onClick={() => router.push('/driver/rewards')}
                 className="mt-2 w-full py-1.5 rounded-lg bg-white/5 text-xs text-gray-300 font-medium hover:bg-white/10 transition-colors"
               >
                 Ver beneficios

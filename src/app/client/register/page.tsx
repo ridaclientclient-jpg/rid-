@@ -3,14 +3,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, Zap, User, Phone, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Zap, User, Phone, ArrowRight, ArrowLeft, Gift } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { useReferralStore } from '@/store/referralStore';
 import { toast } from 'sonner';
 
 export default function ClientRegister() {
   const router = useRouter();
   const { register, isLoading } = useAuthStore();
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
+  const [referralCode, setReferralCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState(1);
 
@@ -33,6 +35,19 @@ export default function ClientRegister() {
     const result = await register(form.name, form.email, form.phone, form.password, 'client');
     if (result.success) {
       toast.success('Cuenta creada exitosamente!');
+      // Apply referral code if provided
+      if (referralCode.trim()) {
+        const { applyReferralCode } = useReferralStore.getState();
+        const userId = useAuthStore.getState().user?.id;
+        if (userId) {
+          const applyResult = await applyReferralCode(userId, referralCode.trim());
+          if (applyResult.success) {
+            toast.success(applyResult.message);
+          } else {
+            toast.error(applyResult.message);
+          }
+        }
+      }
       router.push('/client');
     } else {
       toast.error(result.error || 'Error al crear cuenta');
@@ -95,6 +110,17 @@ export default function ClientRegister() {
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input type="password" placeholder="Confirmar contrasena" value={form.confirmPassword} onChange={(e) => updateForm('confirmPassword', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500" />
+                </div>
+                {/* Referral Code - Optional */}
+                <div className="relative">
+                  <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Codigo de invitacion (opcional)"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 font-mono tracking-wide"
+                  />
                 </div>
                 <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-3">
                   <label className="flex items-start gap-2 cursor-pointer">

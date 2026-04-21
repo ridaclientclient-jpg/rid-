@@ -1,16 +1,19 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, Banknote, Wallet, CreditCard, Smartphone, MapPin, CheckCircle, Calendar, Info } from 'lucide-react';
+import { Navigation, Clock, Star, Phone, MessageSquare, Shield, AlertTriangle, X, Check, Car, Search, Bike, Truck, Package, Plus, CircleDot, Crosshair, Loader2, ChevronRight, FileText, Banknote, Wallet, CreditCard, Smartphone, MapPin, CheckCircle, Calendar, Info, Home, Briefcase, Dumbbell, UtensilsCrossed, ShoppingBag, GraduationCap, Heart, Tag } from 'lucide-react';
 import { useRideStore } from '@/store/rideStore';
+import { useAuthStore } from '@/store/authStore';
+import { useFavoritePlacesStore } from '@/store/favoritePlacesStore';
 import { toast } from 'sonner';
 import PaymentMethodSelector, { getPaymentLabel, getPaymentIcon, type PaymentMethod } from '@/components/PaymentMethodSelector';
 import GoogleMap, { type DraggablePinData } from '@/components/GoogleMap';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
 import DraggableBottomSheet from '@/components/DraggableBottomSheet';
 import { reverseGeocode } from '@/lib/googleMaps';
+import { supabase } from '@/lib/supabase';
 
 interface CoordData {
   lat: number;
@@ -42,6 +45,130 @@ export default function ClientRide() {
   const [userGPS, setUserGPS] = useState<{ lat: number; lng: number } | null>(null);
   const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
 
+  // ─── Promo Code ─────────────────────────────────
+  const [promoCode, setPromoCode] = useState('');
+  const [promoDiscount, setPromoDiscount] = useState<number>(0);
+  const [promoValidating, setPromoValidating] = useState(false);
+  const [promoError, setPromoError] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{
+    id: string;
+    code: string;
+    discount_type: string;
+    discount_value: number;
+    max_discount: number | null;
+  } | null>(null);
+
+  const validatePromoCode = async () => {
+    const trimmedCode = promoCode.trim().toUpperCase();
+    if (!trimmedCode) {
+      setPromoError('Ingresa un codigo de promocion');
+      return;
+    }
+
+    setPromoValidating(true);
+    setPromoError('');
+    setPromoDiscount(0);
+    setAppliedPromo(null);
+
+    try {
+      const { data: promo, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .eq('code', trimmedCode)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !promo) {
+        setPromoError('Codigo de promocion no valido');
+        return;
+      }
+
+      // Check date validity
+      const now = new Date();
+      const validFrom = new Date(promo.valid_from);
+      const validUntil = new Date(promo.valid_until);
+      if (now < validFrom || now > validUntil) {
+        setPromoError('Este codigo ha expirado o aun no esta vigente');
+        return;
+      }
+
+      // Check usage limit
+      if (promo.usage_limit !== null && promo.times_used >= promo.usage_limit) {
+        setPromoError('Este codigo ya alcanzo su limite de usos');
+        return;
+      }
+
+      // Check min ride amount against ride type price
+      const ridePriceStr = rideTypes.find(t => t.id === rideType)?.price || '0';
+      const ridePrice = parseInt(ridePriceStr.replace(/[^0-9]/g, '')) || 0;
+      if (promo.min_ride_amount && ridePrice < promo.min_ride_amount) {
+        setPromoError(`El monto minimo del viaje es ₡${promo.min_ride_amount.toLocaleString()}`);
+        return;
+      }
+
+      // Calculate discount
+      let discount = 0;
+      if (promo.discount_type === 'percentage') {
+        discount = Math.round(ridePrice * promo.discount_value / 100);
+        if (promo.max_discount && discount > promo.max_discount) {
+          discount = promo.max_discount;
+        }
+      } else {
+        // fixed
+        discount = promo.discount_value;
+        if (promo.max_discount) {
+          discount = Math.min(discount, promo.max_discount);
+        }
+      }
+
+      setPromoDiscount(discount);
+      setAppliedPromo({
+        id: promo.id,
+        code: promo.code,
+        discount_type: promo.discount_type,
+        discount_value: promo.discount_value,
+        max_discount: promo.max_discount,
+      });
+      toast.success(`Descuento de ₡${discount.toLocaleString()} aplicado!`);
+    } catch {
+      setPromoError('Error al validar el codigo. Intenta de nuevo.');
+    } finally {
+      setPromoValidating(false);
+    }
+  };
+
+  const removePromo = () => {
+    setPromoCode('');
+    setPromoDiscount(0);
+    setPromoError('');
+    setAppliedPromo(null);
+  };
+
+  const recordPromoUsage = async (rideId: string) => {
+    if (!appliedPromo) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // Increment times_used
+      await supabase.rpc('increment_times_used', { promo_id: appliedPromo.id }).catch(() => {
+        // Fallback: manual increment
+        supabase.from('promo_codes').select('times_used').eq('id', appliedPromo.id).single().then(({ data }) => {
+          if (data) {
+            supabase.from('promo_codes').update({ times_used: (data.times_used || 0) + 1 }).eq('id', appliedPromo.id);
+          }
+        });
+      });
+      // Insert usage record
+      await supabase.from('promo_code_usage').insert({
+        promo_code_id: appliedPromo.id,
+        user_id: user?.id,
+        ride_id: rideId,
+        used_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Failed to record promo usage:', err);
+    }
+  };
+
   // ─── Drag Pin Precision Mode ─────────────────────────────────
   const [dragTarget, setDragTarget] = useState<'origin' | 'destination' | null>(null);
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
@@ -51,6 +178,40 @@ export default function ClientRide() {
   const isScheduleMode = searchParams.get('mode') === 'schedule';
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
+
+  // ─── Favorite Places ─────────────────────────────────
+  const { user } = useAuthStore();
+  const { places, fetchPlaces, prefill, prefillTarget, clearPrefill } = useFavoritePlacesStore();
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [favTarget, setFavTarget] = useState<'origin' | 'destination'>('origin');
+
+  // Fetch favorite places when user is available
+  useEffect(() => {
+    if (user?.id) fetchPlaces(user.id);
+  }, [user?.id, fetchPlaces]);
+
+  // Handle prefill from store on mount
+  useEffect(() => {
+    if (prefill && prefillTarget) {
+      if (prefillTarget === 'origin') {
+        setOrigin(prefill.address);
+        if (prefill.lat != null && prefill.lng != null) {
+          setOriginCoords({ lat: prefill.lat, lng: prefill.lng });
+        }
+      } else {
+        setDestination(prefill.address);
+        if (prefill.lat != null && prefill.lng != null) {
+          setDestCoords({ lat: prefill.lat, lng: prefill.lng });
+        }
+      }
+      clearPrefill();
+    }
+  }, []);
+
+  const FAV_ICONS: Record<string, any> = {
+    home: Home, work: Briefcase, favorite: Heart, gym: Dumbbell,
+    restaurant: UtensilsCrossed, shopping: ShoppingBag, school: GraduationCap, other: Star
+  };
 
   // Compute the draggable pin data based on dragTarget
   const draggablePin: DraggablePinData | null = (() => {
@@ -253,6 +414,11 @@ export default function ClientRide() {
         toast.success('Viaje creado! Buscando conductor...');
         // Show third party popup after a delay
         setTimeout(() => setShowThirdParty(true), 2000);
+        // Record promo code usage if applied
+        if (appliedPromo) {
+          await recordPromoUsage(rideId);
+          removePromo();
+        }
       } else {
         toast.error('No se pudo crear el viaje. Intenta de nuevo.');
       }
@@ -304,6 +470,11 @@ export default function ClientRide() {
       );
       if (rideId) {
         toast.success('Viaje programado correctamente!');
+        // Record promo code usage if applied
+        if (appliedPromo) {
+          await recordPromoUsage(rideId);
+          removePromo();
+        }
         router.push('/client');
       } else {
         toast.error('No se pudo programar el viaje. Intenta de nuevo.');
@@ -379,6 +550,107 @@ export default function ClientRide() {
                   <p className="text-[10px] text-gray-500">Usar posicion actual como punto de partida</p>
                 </div>
               </button>
+
+              {/* Mis Lugares Toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFavorites(!showFavorites)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    showFavorites
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-white/5 text-gray-400 hover:text-cyan-400 hover:bg-white/10 border border-white/5'
+                  }`}
+                >
+                  <Star className={`w-3.5 h-3.5 ${showFavorites ? 'fill-cyan-400' : ''}`} />
+                  Mis lugares
+                </button>
+                {showFavorites && (
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setFavTarget('origin')}
+                      className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                        favTarget === 'origin'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Origen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFavTarget('destination')}
+                      className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                        favTarget === 'destination'
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      Destino
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Favorite Places Scrollable Row */}
+              <AnimatePresence>
+                {showFavorites && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {places.length > 0 ? (
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                        {places.map((place) => {
+                          const FavIcon = FAV_ICONS[place.icon] || Star;
+                          return (
+                            <button
+                              key={place.id}
+                              type="button"
+                              onClick={() => {
+                                if (favTarget === 'origin') {
+                                  setOrigin(place.address);
+                                  if (place.lat != null && place.lng != null) {
+                                    setOriginCoords({ lat: place.lat, lng: place.lng });
+                                  }
+                                } else {
+                                  setDestination(place.address);
+                                  if (place.lat != null && place.lng != null) {
+                                    setDestCoords({ lat: place.lat, lng: place.lng });
+                                  }
+                                }
+                                setShowFavorites(false);
+                                toast.success(`${favTarget === 'origin' ? 'Origen' : 'Destino'} establecido: ${place.name}`);
+                              }}
+                              className="flex items-center gap-2 px-3 py-2 rounded-xl glass hover:bg-white/10 transition-all shrink-0 min-w-fit"
+                            >
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                favTarget === 'origin' ? 'bg-emerald-500/20' : 'bg-red-500/20'
+                              }`}>
+                                <FavIcon className={`w-3.5 h-3.5 ${
+                                  favTarget === 'origin' ? 'text-emerald-400' : 'text-red-400'
+                                }`} />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs font-medium text-white leading-tight">{place.name}</p>
+                                <p className="text-[10px] text-gray-500 leading-tight truncate max-w-[120px]">{place.address}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-xl glass">
+                        <Star className="w-3.5 h-3.5 text-gray-500" />
+                        <p className="text-xs text-gray-500">No tienes lugares guardados</p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Origin */}
               <div className="relative">
@@ -652,6 +924,69 @@ export default function ClientRide() {
                 ? parseInt((rideTypes.find(t => t.id === rideType)?.price || '0').replace(/[^0-9]/g, ''))
                 : undefined}
             />
+
+            {/* Promo Code */}
+            <div className="space-y-2">
+              {!appliedPromo ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => { setPromoCode(e.target.value); setPromoError(''); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') validatePromoCode(); }}
+                      placeholder="Codigo de promocion"
+                      className="w-full glass rounded-lg pl-9 pr-3 py-2.5 text-sm text-white placeholder-gray-500 bg-transparent outline-none focus:ring-1 focus:ring-emerald-500/50"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={validatePromoCode}
+                    disabled={promoValidating || !promoCode.trim()}
+                    className="px-4 py-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  >
+                    {promoValidating ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      'Aplicar'
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between glass rounded-lg px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center">
+                      <Tag className="w-3 h-3 text-emerald-400" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-emerald-400">{appliedPromo.code}</span>
+                      <span className="text-[10px] text-gray-500 ml-1.5">
+                        {appliedPromo.discount_type === 'percentage'
+                          ? `${appliedPromo.discount_value}% dto.`
+                          : `₡${appliedPromo.discount_value.toLocaleString()} dto.`
+                        }
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-400">
+                      -₡{promoDiscount.toLocaleString()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={removePromo}
+                      className="p-1 rounded-md hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {promoError && (
+                <p className="text-[11px] text-red-400 pl-1">{promoError}</p>
+              )}
+            </div>
 
             {/* Selected payment summary */}
             <div className="flex items-center justify-between glass rounded-lg px-3 py-2">
