@@ -384,27 +384,34 @@ export default function GoogleMap({
 
       directionsRendererRef.current = directionsRenderer;
 
-      directionsService.route(
-        {
-          origin,
-          destination,
-          waypoints: waypoints.map(wp => ({ location: wp, stopover: true })),
-          optimizeWaypoints: false,
-          travelMode: google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === 'OK' && result) {
-            directionsRenderer.setDirections(result);
-          } else {
-            // Silently handle direction errors — avoid console spam
-            // Common: UNKNOWN_ERROR (invalid coords), ZERO_RESULTS (no route), NOT_FOUND
-            if (status !== 'OK' && directionsRendererRef.current) {
+      // Retry logic for transient errors (max 2 retries, 1.5s delay)
+      const requestDirections = (attempt: number = 0) => {
+        directionsService.route(
+          {
+            origin,
+            destination,
+            waypoints: waypoints.map(wp => ({ location: wp, stopover: true })),
+            optimizeWaypoints: false,
+            travelMode: google.maps.TravelMode.DRIVING,
+          },
+          (result, status) => {
+            if (status === 'OK' && result) {
+              directionsRenderer.setDirections(result);
+            } else if (status === 'UNKNOWN_ERROR' && attempt < 2) {
+              // Retry on transient Google server error
+              setTimeout(() => requestDirections(attempt + 1), 1500);
+            } else if (status !== 'OK' && directionsRendererRef.current) {
               directionsRendererRef.current.setMap(null);
               directionsRendererRef.current = null;
+              if (status !== 'ZERO_RESULTS' && status !== 'NOT_FOUND') {
+                console.warn(`[Directions API] Error: ${status} — origin:`, origin, 'destination:', destination);
+              }
             }
           }
-        }
-      );
+        );
+      };
+
+      requestDirections();
     });
 
     return () => {
