@@ -4,124 +4,205 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DollarSign, TrendingUp, Wallet, CreditCard, Smartphone,
-  Download, Search, Calendar, Loader2, ChevronLeft, ChevronRight,
-  ChevronsLeft, ChevronsRight, Filter, FileDown, CheckCircle2,
+  Download, Search, Calendar, Loader2, Filter, FileDown,
+  CheckCircle2, XCircle, ArrowDownCircle, Clock, BarChart3,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+
+/* ─── Types ──────────────────────────────────────────────────────────────── */
 
 type PaymentMethod = 'cash' | 'wallet' | 'card' | 'sinpe';
 
-interface PaymentRow {
+interface CompletedRide {
   id: string;
-  date: string;
-  passenger: string;
-  driver: string;
+  created_at: string;
+  rider_id: string;
+  driver_id?: string;
   price: number;
-  commissionRate: number;
-  commission: number;
-  driverEarnings: number;
-  paymentMethod: PaymentMethod;
-  paymentStatus: string;
+  commission_rate: number;
+  driver_earnings?: number;
+  payment_method?: string;
+  payment_status?: string;
+  rider_name?: string;
+  driver_name?: string;
 }
 
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+interface TransactionRow {
+  id: string;
+  created_at: string;
+  amount: number;
+  type: string;
+  status: string;
+  description?: string;
+  user_name?: string;
+}
+
+interface WithdrawalItem {
+  id: string;
+  user_id: string;
+  wallet_id?: string;
+  amount: number;
+  status: string;
+  created_at: string;
+  processed_at?: string;
+  error_message?: string;
+  user_name?: string;
+  user_phone?: string;
+}
+
+interface DailyRevenue {
+  date: string;
+  revenue: number;
+}
+
+/* ─── Constants ──────────────────────────────────────────────────────────── */
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Efectivo',
   wallet: 'Billetera',
   card: 'Tarjeta',
   sinpe: 'SINPE',
 };
 
-const PAYMENT_METHOD_ICONS: Record<PaymentMethod, React.ElementType> = {
-  cash: DollarSign,
-  wallet: Wallet,
-  card: CreditCard,
-  sinpe: Smartphone,
-};
-
-const PAYMENT_METHOD_COLORS: Record<PaymentMethod, string> = {
+const PAYMENT_METHOD_COLORS: Record<string, string> = {
   cash: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   wallet: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   card: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   sinpe: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
 };
 
-const METHOD_FILTERS: Array<{ key: string; label: string }> = [
-  { key: 'all', label: 'Todos' },
-  { key: 'cash', label: 'Efectivo' },
-  { key: 'wallet', label: 'Billetera' },
-  { key: 'card', label: 'Tarjeta' },
-  { key: 'sinpe', label: 'SINPE' },
-];
+const PAYMENT_METHOD_ICONS: Record<string, React.ElementType> = {
+  cash: DollarSign,
+  wallet: Wallet,
+  card: CreditCard,
+  sinpe: Smartphone,
+};
 
 const PAGE_SIZE = 20;
 
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toLocaleString('es-CR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
-function toLocalDateString(date: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+function shortDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
 }
+
+function formatCurrency(amount: number): string {
+  return `₡${Math.round(amount).toLocaleString()}`;
+}
+
+/* ─── CSS Bar Chart Component ────────────────────────────────────────────── */
+
+function RevenueChart({ data }: { data: DailyRevenue[] }) {
+  if (data.length === 0) return null;
+
+  const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
+
+  return (
+    <div className="flex items-end gap-1 h-40 px-2">
+      {data.map((day, i) => {
+        const height = Math.max((day.revenue / maxRevenue) * 100, 2);
+        const isToday = i === data.length - 1;
+        return (
+          <div key={day.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+            <span className="text-[9px] text-gray-500 truncate w-full text-center hidden sm:block">
+              {day.revenue > 0 ? formatCurrency(day.revenue) : ''}
+            </span>
+            <div
+              className={`w-full rounded-t-sm transition-all ${
+                isToday
+                  ? 'bg-gradient-to-t from-cyan-600 to-cyan-400'
+                  : 'bg-gradient-to-t from-cyan-600/60 to-cyan-400/40 hover:from-cyan-600/80 hover:to-cyan-400/60'
+              }`}
+              style={{ height: `${height}%` }}
+              title={`${day.date}: ${formatCurrency(day.revenue)}`}
+            />
+            <span className="text-[9px] text-gray-600">{shortDate(day.date)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── Skeleton Loaders ───────────────────────────────────────────────────── */
+
+function StatSkeleton() {
+  return (
+    <div className="glass rounded-xl p-4 space-y-2">
+      <Skeleton className="h-3 w-24 bg-white/10" />
+      <Skeleton className="h-7 w-32 bg-white/10" />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function PaymentReportPage() {
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const { session } = useAuthStore();
+
+  // Data states
+  const [completedRides, setCompletedRides] = useState<CompletedRide[]>([]);
+  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalItem[]>([]);
+  const [dailyRevenue, setDailyRevenue] = useState<DailyRevenue[]>([]);
+  const [totalWallets, setTotalWallets] = useState(0);
+
+  // UI states
   const [loading, setLoading] = useState(true);
+  const [loadingWithdrawals, setLoadingWithdrawals] = useState(false);
   const [search, setSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [activeTab, setActiveTab] = useState<'rides' | 'transactions' | 'withdrawals'>('rides');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
 
-  const fetchPayments = useCallback(async () => {
+  /* ── Fetch Financial Data ─────────────────────────────────────────── */
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
+      // 1. Fetch completed rides for stats
+      const { data: allCompleted, error: ridesErr } = await supabase
         .from('rides')
         .select('*')
         .eq('status', 'completed')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
 
-      if (dateFrom) {
-        query = query.gte('created_at', new Date(dateFrom).toISOString());
-      }
-      if (dateTo) {
-        const to = new Date(dateTo);
-        to.setHours(23, 59, 59, 999);
-        query = query.lte('created_at', to.toISOString());
-      }
+      if (ridesErr) throw ridesErr;
 
-      const { data: rideData, error } = await query;
-
-      if (error) throw error;
-
-      if (!rideData || rideData.length === 0) {
-        setPayments([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch rider profiles
-      const riderIds = [...new Set(rideData.map(r => r.rider_id).filter(Boolean))];
+      // Build profile maps
+      const riderIds = [...new Set((allCompleted || []).map(r => r.rider_id).filter(Boolean))];
+      const driverIds = [...new Set((allCompleted || []).map(r => r.driver_id).filter(Boolean))];
       const profileMap: Record<string, string> = {};
+      const driverNameMap: Record<string, string> = {};
 
       if (riderIds.length > 0) {
         const { data: riderProfiles } = await supabase
           .from('profiles')
           .select('id, name')
           .in('id', riderIds);
-        if (riderProfiles) {
-          riderProfiles.forEach(p => { profileMap[p.id] = p.name; });
-        }
+        if (riderProfiles) riderProfiles.forEach(p => { profileMap[p.id] = p.name; });
       }
-
-      // Fetch driver records → profiles
-      const driverIds = [...new Set(rideData.map(r => r.driver_id).filter(Boolean))];
-      const driverMap: Record<string, string> = {};
 
       if (driverIds.length > 0) {
         const { data: driverRecords } = await supabase
@@ -129,395 +210,807 @@ export default function PaymentReportPage() {
           .select('id, user_id')
           .in('id', driverIds);
         if (driverRecords) {
-          const driverIdToUserId: Record<string, string> = {};
-          driverRecords.forEach(d => { driverIdToUserId[d.id] = d.user_id; });
-          const driverUserIds = Object.values(driverIdToUserId).filter(Boolean);
-
-          if (driverUserIds.length > 0) {
-            const { data: driverProfiles } = await supabase
+          const dUserIds = driverRecords.map(d => d.user_id).filter(Boolean);
+          if (dUserIds.length > 0) {
+            const { data: dProfiles } = await supabase
               .from('profiles')
               .select('id, name')
-              .in('id', driverUserIds);
-            if (driverProfiles) {
-              const userProfileMap: Record<string, string> = {};
-              driverProfiles.forEach(p => { userProfileMap[p.id] = p.name; });
-              Object.entries(driverIdToUserId).forEach(([dId, uId]) => {
-                driverMap[dId] = userProfileMap[uId] || 'Desconocido';
-              });
+              .in('id', dUserIds);
+            if (dProfiles) {
+              const dMap: Record<string, string> = {};
+              dProfiles.forEach(p => { dMap[p.id] = p.name; });
+              driverRecords.forEach(d => { driverNameMap[d.id] = dMap[d.user_id || ''] || 'Sin asignar'; });
             }
           }
         }
       }
 
-      const mapped: PaymentRow[] = rideData.map(r => {
-        const rate = r.commission_rate || 0.15;
-        const price = r.price || 0;
-        const commission = price * rate;
-        const driverEarnings = r.driver_earnings ?? (price - commission);
-        return {
-          id: r.id,
-          date: formatDate(r.created_at),
-          passenger: profileMap[r.rider_id] || 'Desconocido',
-          driver: driverMap[r.driver_id || ''] || 'Sin asignar',
-          price,
-          commissionRate: rate,
-          commission: Math.round(commission),
-          driverEarnings: Math.round(driverEarnings),
-          paymentMethod: (r.payment_method as PaymentMethod) || 'cash',
-          paymentStatus: r.payment_status || 'paid',
-        };
-      });
+      const mappedRides: CompletedRide[] = (allCompleted || []).map(r => ({
+        id: r.id,
+        created_at: r.created_at,
+        rider_id: r.rider_id,
+        driver_id: r.driver_id,
+        price: r.price || 0,
+        commission_rate: r.commission_rate || 0.15,
+        driver_earnings: r.driver_earnings ?? (r.price || 0) * (1 - (r.commission_rate || 0.15)),
+        payment_method: r.payment_method || 'cash',
+        payment_status: r.payment_status || 'paid',
+        rider_name: profileMap[r.rider_id] || 'Desconocido',
+        driver_name: driverNameMap[r.driver_id || ''] || 'Sin asignar',
+      }));
 
-      setPayments(mapped);
+      setCompletedRides(mappedRides);
+
+      // 2. Fetch daily revenue for last 30 days
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentRides, error: recentErr } = await supabase
+        .from('rides')
+        .select('price, created_at')
+        .eq('status', 'completed')
+        .gte('created_at', thirtyDaysAgo);
+
+      if (!recentErr && recentRides) {
+        const dailyMap: Record<string, number> = {};
+        recentRides.forEach(r => {
+          const day = r.created_at.split('T')[0];
+          dailyMap[day] = (dailyMap[day] || 0) + (r.price || 0);
+        });
+
+        const chartData: DailyRevenue[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+          const key = d.toISOString().split('T')[0];
+          chartData.push({ date: key, revenue: dailyMap[key] || 0 });
+        }
+        setDailyRevenue(chartData);
+      }
+
+      // 3. Fetch transactions
+      const { data: txData, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (!txErr && txData) {
+        // Get user names for transactions
+        const walletIds = [...new Set(txData.map(t => t.wallet_id).filter(Boolean))];
+        let txUserMap: Record<string, { name: string; phone?: string }> = {};
+        if (walletIds.length > 0) {
+          const { data: wallets } = await supabase
+            .from('wallets')
+            .select('id, user_id')
+            .in('id', walletIds);
+          if (wallets) {
+            const txUserIds = wallets.map(w => w.user_id).filter(Boolean);
+            if (txUserIds.length > 0) {
+              const { data: txProfiles } = await supabase
+                .from('profiles')
+                .select('id, name, phone')
+                .in('id', txUserIds);
+              if (txProfiles) {
+                txProfiles.forEach(p => { txUserMap[p.id] = { name: p.name, phone: p.phone }; });
+              }
+            }
+          }
+        }
+
+        const walletToUser: Record<string, string> = {};
+        if (wallets) {
+          wallets.forEach(w => { walletToUser[w.id] = w.user_id; });
+        }
+
+        const mappedTx: TransactionRow[] = txData.map(t => ({
+          id: t.id,
+          created_at: t.created_at,
+          amount: t.amount,
+          type: t.type,
+          status: t.status,
+          description: t.description,
+          user_name: txUserMap[walletToUser[t.wallet_id] || '']?.name || 'Desconocido',
+        }));
+        setTransactions(mappedTx);
+      }
+
+      // 4. Fetch total wallet balances
+      const { data: walletBalances, error: walletErr } = await supabase
+        .from('wallets')
+        .select('balance');
+
+      if (!walletErr && walletBalances) {
+        setTotalWallets(walletBalances.reduce((sum, w) => sum + (w.balance || 0), 0));
+      }
+
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error desconocido';
-      toast.error(`Error al cargar pagos: ${message}`);
+      toast.error(`Error al cargar datos financieros: ${message}`);
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo]);
+  }, []);
 
+  /* ── Fetch Withdrawals ────────────────────────────────────────────── */
+  const fetchWithdrawals = useCallback(async () => {
+    setLoadingWithdrawals(true);
+    try {
+      const { data, error } = await supabase
+        .from('withdrawal_queue')
+        .select('*')
+        .in('status', ['queued', 'processing'])
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Get user info
+      const userIds = [...new Set((data || []).map(w => w.user_id).filter(Boolean))];
+      const profileMap: Record<string, { name: string; phone?: string }> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, phone')
+          .in('id', userIds);
+        if (profiles) {
+          profiles.forEach(p => { profileMap[p.id] = { name: p.name, phone: p.phone }; });
+        }
+      }
+
+      const mapped: WithdrawalItem[] = (data || []).map(w => ({
+        id: w.id,
+        user_id: w.user_id,
+        wallet_id: w.wallet_id,
+        amount: w.amount,
+        status: w.status,
+        created_at: w.created_at,
+        processed_at: w.processed_at,
+        error_message: w.error_message,
+        user_name: profileMap[w.user_id]?.name || 'Desconocido',
+        user_phone: profileMap[w.user_id]?.phone || '',
+      }));
+      setWithdrawals(mapped);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error';
+      toast.error(`Error al cargar retiros: ${message}`);
+    } finally {
+      setLoadingWithdrawals(false);
+    }
+  }, []);
+
+  /* ── Approve / Reject Withdrawals ─────────────────────────────────── */
+  const approveWithdrawal = useCallback(async (id: string) => {
+    try {
+      const token = session?.access_token;
+      if (!token) { toast.error('Sesion no valida'); return; }
+
+      const res = await fetch('/api/withdrawals/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ withdrawal_id: id }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+
+      toast.success('Retiro aprobado exitosamente');
+      fetchWithdrawals();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error';
+      toast.error(`Error al aprobar retiro: ${msg}`);
+    }
+  }, [session, fetchWithdrawals]);
+
+  const openRejectDialog = (id: string) => {
+    setRejectingId(id);
+    setRejectReason('');
+    setShowRejectDialog(true);
+  };
+
+  const rejectWithdrawal = useCallback(async () => {
+    if (!rejectingId || !rejectReason.trim()) return;
+    try {
+      const token = session?.access_token;
+      if (!token) { toast.error('Sesion no valida'); return; }
+
+      const res = await fetch('/api/withdrawals/reject', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ withdrawal_id: rejectingId, reason: rejectReason.trim() }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+
+      toast.success('Retiro rechazado. Monto devuelto a la billetera.');
+      setShowRejectDialog(false);
+      setRejectingId(null);
+      fetchWithdrawals();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error';
+      toast.error(`Error al rechazar retiro: ${msg}`);
+    }
+  }, [rejectingId, rejectReason, session, fetchWithdrawals]);
+
+  /* ── Effects ──────────────────────────────────────────────────────── */
+  useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
-    fetchPayments();
-  }, [fetchPayments]);
+    if (activeTab === 'withdrawals') fetchWithdrawals();
+  }, [activeTab, fetchWithdrawals]);
 
-  // Filtered data
-  const filteredPayments = useMemo(() => {
-    return payments.filter(p => {
-      const matchSearch = !search ||
-        p.passenger.toLowerCase().includes(search.toLowerCase()) ||
-        p.driver.toLowerCase().includes(search.toLowerCase()) ||
-        p.id.toLowerCase().includes(search.toLowerCase());
-
-      const matchMethod = methodFilter === 'all' || p.paymentMethod === methodFilter;
-
-      return matchSearch && matchMethod;
-    });
-  }, [payments, search, methodFilter]);
-
-  // Stats from ALL payments (before client-side filter for search, but after date filter)
+  /* ── Computed Stats ───────────────────────────────────────────────── */
   const stats = useMemo(() => {
-    const methodFiltered = methodFilter === 'all'
-      ? payments
-      : payments.filter(p => p.paymentMethod === methodFilter);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    const allRides = completedRides;
+    const todayRides = allRides.filter(r => r.created_at >= todayStart);
+    const weekRides = allRides.filter(r => r.created_at >= weekStart);
+    const monthRides = allRides.filter(r => r.created_at >= monthStart);
+
+    const sumRevenue = (rides: CompletedRide[]) => rides.reduce((s, r) => s + r.price, 0);
+    const sumCommission = (rides: CompletedRide[]) =>
+      rides.reduce((s, r) => s + r.price * r.commission_rate, 0);
+
+    const pendingWithdrawals = withdrawals
+      .filter(w => w.status === 'queued' || w.status === 'processing')
+      .reduce((s, w) => s + w.amount, 0);
+
     return {
-      totalIngresos: methodFiltered.reduce((sum, p) => sum + p.price, 0),
-      totalComisiones: methodFiltered.reduce((sum, p) => sum + p.commission, 0),
-      totalGananciasConductores: methodFiltered.reduce((sum, p) => sum + p.driverEarnings, 0),
-      viajesPagados: methodFiltered.length,
+      totalRevenue: sumRevenue(allRides),
+      revenueToday: sumRevenue(todayRides),
+      revenueWeek: sumRevenue(weekRides),
+      revenueMonth: sumRevenue(monthRides),
+      totalCommission: sumCommission(allRides),
+      pendingWithdrawals,
+      totalWallets,
+      totalRides: allRides.length,
     };
-  }, [payments, methodFilter]);
+  }, [completedRides, withdrawals, totalWallets]);
 
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
-  const paginatedPayments = filteredPayments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const showingFrom = filteredPayments.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const showingTo = Math.min(page * PAGE_SIZE, filteredPayments.length);
+  /* ── Filtered / Paginated Data ────────────────────────────────────── */
+  const dateFilteredRides = useMemo(() => {
+    let rides = completedRides;
+    if (dateFrom) {
+      rides = rides.filter(r => r.created_at >= new Date(dateFrom).toISOString());
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      rides = rides.filter(r => r.created_at <= to.toISOString());
+    }
+    if (methodFilter !== 'all') {
+      rides = rides.filter(r => r.payment_method === methodFilter);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      rides = rides.filter(r =>
+        r.rider_name?.toLowerCase().includes(q) ||
+        r.driver_name?.toLowerCase().includes(q) ||
+        r.id.toLowerCase().includes(q)
+      );
+    }
+    return rides;
+  }, [completedRides, dateFrom, dateTo, methodFilter, search]);
 
-  const pageNumbers = useMemo(() => {
-    const pages: number[] = [];
-    const maxVisible = 5;
-    let start = Math.max(1, page - Math.floor(maxVisible / 2));
-    const end = Math.min(totalPages, start + maxVisible - 1);
-    start = Math.max(1, end - maxVisible + 1);
-    for (let i = start; i <= end; i++) pages.push(i);
-    return pages;
-  }, [page, totalPages]);
+  const totalPages = Math.max(1, Math.ceil(dateFilteredRides.length / PAGE_SIZE));
+  const paginatedRides = dateFilteredRides.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const showingFrom = dateFilteredRides.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const showingTo = Math.min(page * PAGE_SIZE, dateFilteredRides.length);
 
-  // Reset page when filters change
-  useEffect(() => { setPage(1); }, [search, methodFilter]);
+  useEffect(() => { setPage(1); }, [search, methodFilter, dateFrom, dateTo]);
 
-  // CSV Export
+  /* ── CSV Export ───────────────────────────────────────────────────── */
   const exportCSV = async () => {
     setExporting(true);
     try {
-      const dataToExport = methodFilter === 'all'
-        ? payments
-        : payments.filter(p => p.paymentMethod === methodFilter);
+      const data = dateFilteredRides;
+      if (data.length === 0) { toast.error('No hay datos para exportar'); setExporting(false); return; }
 
-      if (dataToExport.length === 0) {
-        toast.error('No hay datos para exportar');
-        setExporting(false);
-        return;
-      }
-
-      const headers = [
-        'Fecha', 'Pasajero', 'Conductor', 'Tarifa (CRC)', 'Comision (%)',
-        'Comision (CRC)', 'Ganancia Conductor (CRC)', 'Metodo de Pago', 'Estado Pago'
-      ];
-      const rows = dataToExport.map(p => [
-        p.date,
-        `"${p.passenger}"`,
-        `"${p.driver}"`,
-        p.price.toString(),
-        `${(p.commissionRate * 100).toFixed(1)}%`,
-        p.commission.toString(),
-        p.driverEarnings.toString(),
-        PAYMENT_METHOD_LABELS[p.paymentMethod],
-        p.paymentStatus,
+      const headers = ['Fecha', 'Pasajero', 'Conductor', 'Tarifa (CRC)', 'Comision (%)', 'Comision (CRC)', 'Ganancia Conductor (CRC)', 'Metodo', 'Estado'];
+      const rows = data.map(r => [
+        formatDate(r.created_at), `"${r.rider_name}"`, `"${r.driver_name}"`,
+        r.price.toString(), `${(r.commission_rate * 100).toFixed(1)}%`,
+        Math.round(r.price * r.commission_rate).toString(),
+        Math.round(r.driver_earnings).toString(),
+        PAYMENT_METHOD_LABELS[r.payment_method] || r.payment_method,
+        r.payment_status || 'paid',
       ]);
 
-      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `reporte-pagos-${toLocalDateString(new Date())}.csv`;
+      link.download = `reporte-pagos-${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-
       toast.success('CSV exportado correctamente');
-    } catch {
-      toast.error('Error al exportar CSV');
-    } finally {
-      setExporting(false);
-    }
+    } catch { toast.error('Error al exportar CSV'); }
+    finally { setExporting(false); }
   };
 
+  /* ── Stat Cards ───────────────────────────────────────────────────── */
   const statCards = [
-    { label: 'Total Ingresos', value: `₡${stats.totalIngresos.toLocaleString()}`, color: 'text-cyan-400', icon: DollarSign },
-    { label: 'Total Comisiones', value: `₡${stats.totalComisiones.toLocaleString()}`, color: 'text-purple-400', icon: TrendingUp },
-    { label: 'Ganancias Conductores', value: `₡${stats.totalGananciasConductores.toLocaleString()}`, color: 'text-emerald-400', icon: Wallet },
-    { label: 'Viajes Pagados', value: stats.viajesPagados.toLocaleString(), color: 'text-amber-400', icon: CheckCircle2 },
+    { label: 'Ingresos Totales', value: formatCurrency(stats.totalRevenue), color: 'text-cyan-400', icon: DollarSign },
+    { label: 'Hoy', value: formatCurrency(stats.revenueToday), color: 'text-emerald-400', icon: TrendingUp },
+    { label: 'Esta Semana', value: formatCurrency(stats.revenueWeek), color: 'text-amber-400', icon: BarChart3 },
+    { label: 'Este Mes', value: formatCurrency(stats.revenueMonth), color: 'text-purple-400', icon: Calendar },
+    { label: 'Comisiones Totales', value: formatCurrency(stats.totalCommission), color: 'text-pink-400', icon: TrendingUp },
+    { label: 'Retiros Pendientes', value: formatCurrency(stats.pendingWithdrawals), color: 'text-orange-400', icon: ArrowDownCircle },
+    { label: 'En Billeteras', value: formatCurrency(stats.totalWallets), color: 'text-teal-400', icon: Wallet },
+    { label: 'Viajes Totales', value: stats.totalRides.toLocaleString(), color: 'text-blue-400', icon: CheckCircle2 },
   ];
+
+  /* ─── Render ──────────────────────────────────────────────────────────── */
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Reporte de Pagos</h1>
-          <p className="text-gray-400 mt-1">Analisis detallado de ingresos, comisiones y pagos de viajes completados</p>
+          <h1 className="text-3xl font-bold text-white">Reporte Financiero</h1>
+          <p className="text-gray-400 mt-1">Ingresos, comisiones, transacciones y retiros</p>
         </div>
         <button
+          type="button"
           onClick={exportCSV}
-          disabled={exporting || payments.length === 0}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-sm font-medium hover:bg-cyan-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={exporting || dateFilteredRides.length === 0}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-sm font-medium hover:bg-cyan-500/20 transition-all disabled:opacity-40"
         >
           {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
           Exportar CSV
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <motion.div
-              key={i}
-              className="glass rounded-xl p-4"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">{stat.label}</p>
-                <Icon className={`w-4 h-4 ${stat.color} opacity-60`} />
-              </div>
-              <p className={`text-xl lg:text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      {/* Filters */}
-      <div className="glass rounded-2xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm font-medium text-white">Filtros</span>
+      {/* Stats Grid */}
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => <StatSkeleton key={i} />)}
         </div>
-
-        {/* Date range + Search */}
-        <div className="flex flex-col md:flex-row gap-3 mb-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input
-              type="text"
-              placeholder="Buscar por pasajero, conductor o ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="pl-9 pr-3 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white text-sm outline-none transition-all [color-scheme:dark]"
-              />
-            </div>
-            <span className="text-gray-500 text-xs">a</span>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="pl-9 pr-3 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white text-sm outline-none transition-all [color-scheme:dark]"
-              />
-            </div>
-            {(dateFrom || dateTo) && (
-              <button
-                onClick={() => { setDateFrom(''); setDateTo(''); }}
-                className="px-3 py-2.5 rounded-xl bg-white/5 text-gray-400 hover:text-white text-xs hover:bg-white/10 transition-all"
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {statCards.map((stat, i) => {
+            const Icon = stat.icon;
+            return (
+              <motion.div
+                key={i}
+                className="glass rounded-xl p-4"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
               >
-                Limpiar
-              </button>
-            )}
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider">{stat.label}</p>
+                  <Icon className={`w-3.5 h-3.5 ${stat.color} opacity-60`} />
+                </div>
+                <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Revenue Chart */}
+      {!loading && dailyRevenue.length > 0 && (
+        <motion.div
+          className="glass rounded-2xl p-4"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-semibold text-white">Ingresos Diarios — Ultimos 30 Dias</h3>
           </div>
+          <RevenueChart data={dailyRevenue} />
+        </motion.div>
+      )}
+
+      {/* Tab Switcher + Filters */}
+      <div className="glass rounded-2xl p-4">
+        <div className="flex flex-col lg:flex-row gap-3">
+          {/* Tabs */}
+          <div className="flex gap-1 p-1 rounded-xl bg-white/5 flex-shrink-0">
+            {([
+              { key: 'rides', label: 'Viajes Completados', icon: CreditCard },
+              { key: 'transactions', label: 'Transacciones', icon: DollarSign },
+              { key: 'withdrawals', label: 'Cola de Retiros', icon: ArrowDownCircle },
+            ] as const).map(({ key, label, icon: TabIcon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                  activeTab === key
+                    ? 'bg-cyan-500/20 text-cyan-400 shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <TabIcon className="w-3.5 h-3.5" />
+                {label}
+                {key === 'withdrawals' && withdrawals.length > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-orange-500 text-white text-[10px] font-bold">
+                    {withdrawals.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Search + Date (for rides tab) */}
+          {activeTab === 'rides' && (
+            <div className="flex flex-col sm:flex-row gap-2 flex-1">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar por pasajero, conductor o ID..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="pl-9 pr-3 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white text-sm outline-none transition-all [color-scheme:dark]"
+                  />
+                </div>
+                <span className="text-gray-500 text-xs">a</span>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="pl-9 pr-3 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white text-sm outline-none transition-all [color-scheme:dark]"
+                  />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <button
+                    type="button"
+                    onClick={() => { setDateFrom(''); setDateTo(''); }}
+                    className="px-3 py-2.5 rounded-xl bg-white/5 text-gray-400 hover:text-white text-xs hover:bg-white/10 transition-all"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Payment method filters */}
-        <div className="flex flex-wrap gap-2">
-          {METHOD_FILTERS.map((mf) => (
-            <button
-              key={mf.key}
-              onClick={() => setMethodFilter(mf.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                methodFilter === mf.key
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                  : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
-              }`}
-            >
-              {mf.key !== 'all' && (() => {
-                const Icon = PAYMENT_METHOD_ICONS[mf.key as PaymentMethod];
-                return <Icon className="w-3.5 h-3.5" />;
-              })()}
-              {mf.label}
-            </button>
-          ))}
-        </div>
+        {/* Method filter (rides tab) */}
+        {activeTab === 'rides' && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {(['all', 'cash', 'wallet', 'card', 'sinpe'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMethodFilter(m)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  methodFilter === m
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                    : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
+                }`}
+              >
+                {m !== 'all' && (() => {
+                  const Icon = PAYMENT_METHOD_ICONS[m];
+                  return <Icon className="w-3.5 h-3.5" />;
+                })()}
+                {m === 'all' ? 'Todos' : PAYMENT_METHOD_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Table */}
+      {/* Tab Content */}
       <motion.div
         className="glass rounded-2xl overflow-hidden"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-            <p className="text-sm">Cargando pagos...</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
+        {/* Rides Tab */}
+        {activeTab === 'rides' && (
+          loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
+              <p className="text-sm">Cargando pagos...</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Fecha</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Pasajero</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Conductor</th>
+                      <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Tarifa</th>
+                      <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Comision</th>
+                      <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Ganancia</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Metodo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <AnimatePresence>
+                      {paginatedRides.map((r, i) => {
+                        const MethodIcon = PAYMENT_METHOD_ICONS[r.payment_method] || DollarSign;
+                        const commission = Math.round(r.price * r.commission_rate);
+                        return (
+                          <motion.tr
+                            key={r.id}
+                            className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: i * 0.02 }}
+                          >
+                            <td className="px-5 py-3 text-sm text-gray-400 whitespace-nowrap">{formatDate(r.created_at)}</td>
+                            <td className="px-5 py-3 text-sm text-white">{r.rider_name}</td>
+                            <td className="px-5 py-3 text-sm text-gray-400 hidden md:table-cell">{r.driver_name}</td>
+                            <td className="px-5 py-3 text-sm text-white text-right font-medium">{formatCurrency(r.price)}</td>
+                            <td className="px-5 py-3 text-sm text-purple-400 text-right hidden lg:table-cell">
+                              <div>{formatCurrency(commission)}</div>
+                              <div className="text-[10px] text-gray-500">{(r.commission_rate * 100).toFixed(1)}%</div>
+                            </td>
+                            <td className="px-5 py-3 text-sm text-emerald-400 text-right hidden lg:table-cell">
+                              {formatCurrency(r.driver_earnings)}
+                            </td>
+                            <td className="px-5 py-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${PAYMENT_METHOD_COLORS[r.payment_method] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+                                <MethodIcon className="w-3 h-3" />
+                                {PAYMENT_METHOD_LABELS[r.payment_method] || r.payment_method}
+                              </span>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+
+              {dateFilteredRides.length === 0 && (
+                <div className="text-center py-16 text-gray-500">
+                  <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No se encontraron pagos con los filtros seleccionados</p>
+                </div>
+              )}
+
+              {dateFilteredRides.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between px-5 py-4 border-t border-white/5">
+                  <p className="text-xs text-gray-400">
+                    Mostrando {showingFrom}-{showingTo} de {dateFilteredRides.length} pagos
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-all"
+                    >
+                      Anterior
+                    </button>
+                    <span className="px-3 py-1.5 text-xs text-cyan-400 font-medium">
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-all"
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )
+        )}
+
+        {/* Transactions Tab */}
+        {activeTab === 'transactions' && (
+          loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
+            </div>
+          ) : transactions.length > 0 ? (
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
               <table className="w-full">
-                <thead>
+                <thead className="sticky top-0 bg-[#0a0e1a] z-10">
                   <tr className="border-b border-white/5">
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Fecha</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Pasajero</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Conductor</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Tarifa</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Comision</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Ganancia</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Metodo</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Fecha</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Usuario</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase">Monto</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Tipo</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <AnimatePresence>
-                    {paginatedPayments.map((p, i) => {
-                      const MethodIcon = PAYMENT_METHOD_ICONS[p.paymentMethod];
-                      return (
-                        <motion.tr
-                          key={p.id}
-                          className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: 0.3 + i * 0.02 }}
-                        >
-                          <td className="px-5 py-3 text-sm text-gray-400 whitespace-nowrap">{p.date}</td>
-                          <td className="px-5 py-3 text-sm text-white">{p.passenger}</td>
-                          <td className="px-5 py-3 text-sm text-gray-400 hidden md:table-cell">{p.driver}</td>
-                          <td className="px-5 py-3 text-sm text-white text-right font-medium">₡{p.price.toLocaleString()}</td>
-                          <td className="px-5 py-3 text-sm text-purple-400 text-right hidden lg:table-cell">
-                            <div>₡{p.commission.toLocaleString()}</div>
-                            <div className="text-[10px] text-gray-500">{(p.commissionRate * 100).toFixed(1)}%</div>
-                          </td>
-                          <td className="px-5 py-3 text-sm text-emerald-400 text-right hidden lg:table-cell">₡{p.driverEarnings.toLocaleString()}</td>
-                          <td className="px-5 py-3">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${PAYMENT_METHOD_COLORS[p.paymentMethod]}`}>
-                              <MethodIcon className="w-3 h-3" />
-                              {PAYMENT_METHOD_LABELS[p.paymentMethod]}
-                            </span>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
+                  {transactions.map(tx => (
+                    <tr key={tx.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(tx.created_at)}</td>
+                      <td className="px-5 py-3 text-xs text-white">{tx.user_name}</td>
+                      <td className={`px-5 py-3 text-sm text-right font-medium ${tx.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="text-xs text-gray-400 capitalize">{tx.type}</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          tx.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' :
+                          tx.status === 'processing' ? 'bg-amber-500/15 text-amber-400' :
+                          tx.status === 'failed' ? 'bg-red-500/15 text-red-400' :
+                          'bg-gray-500/15 text-gray-400'
+                        }`}>
+                          {tx.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+          ) : (
+            <div className="text-center py-16 text-gray-500">
+              <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No hay transacciones</p>
+            </div>
+          )
+        )}
 
-            {filteredPayments.length === 0 && (
-              <div className="text-center py-16 text-gray-500">
-                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No se encontraron pagos con los filtros seleccionados</p>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {filteredPayments.length > PAGE_SIZE && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
-                <p className="text-xs text-gray-400">
-                  Mostrando {showingFrom}-{showingTo} de {filteredPayments.length} pagos
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage(1)}
-                    disabled={page === 1}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  {pageNumbers.map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`min-w-[2rem] h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
-                        page === pageNum
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                          : 'text-gray-400 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
+        {/* Withdrawals Tab */}
+        {activeTab === 'withdrawals' && (
+          loadingWithdrawals ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
+              <p className="text-sm">Cargando cola de retiros...</p>
+            </div>
+          ) : withdrawals.length > 0 ? (
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-[#0a0e1a] z-10">
+                  <tr className="border-b border-white/5">
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Fecha</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Usuario</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase hidden md:table-cell">Telefono</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase">Monto</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Estado</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {withdrawals.map(w => (
+                    <tr key={w.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(w.created_at)}</td>
+                      <td className="px-5 py-3 text-sm text-white font-medium">{w.user_name}</td>
+                      <td className="px-5 py-3 text-xs text-gray-400 hidden md:table-cell">{w.user_phone || '-'}</td>
+                      <td className="px-5 py-3 text-sm text-white text-right font-semibold">{formatCurrency(w.amount)}</td>
+                      <td className="px-5 py-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          w.status === 'queued' ? 'bg-amber-500/15 text-amber-400' :
+                          w.status === 'processing' ? 'bg-cyan-500/15 text-cyan-400' :
+                          'bg-gray-500/15 text-gray-400'
+                        }`}>
+                          {w.status === 'queued' ? 'En cola' : 'Procesando'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => approveWithdrawal(w.id)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium hover:bg-emerald-500/25 transition-all"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Aprobar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openRejectDialog(w.id)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-medium hover:bg-red-500/25 transition-all"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Rechazar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   ))}
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage(totalPages)}
-                    disabled={page === totalPages}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </button>
-                </div>
+                </tbody>
+              </table>
+              <div className="p-4 border-t border-white/5">
+                <p className="text-xs text-gray-500">
+                  Total pendiente: <span className="text-orange-400 font-semibold">{formatCurrency(withdrawals.reduce((s, w) => s + w.amount, 0))}</span>
+                </p>
               </div>
-            )}
-          </>
+            </div>
+          ) : (
+            <div className="text-center py-16 text-gray-500">
+              <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-50 text-emerald-500/60" />
+              <p>No hay retiros pendientes</p>
+              <p className="text-xs text-gray-600 mt-1">La cola de retiros esta vacia</p>
+            </div>
+          )
         )}
       </motion.div>
+
+      {/* Reject Dialog */}
+      <AnimatePresence>
+        {showRejectDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowRejectDialog(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="glass-strong rounded-2xl p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Rechazar Retiro</h2>
+                  <p className="text-xs text-gray-400">El monto sera devuelto a la billetera del usuario</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 block">
+                  Motivo del rechazo
+                </label>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-red-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all resize-none"
+                  placeholder="Ingrese el motivo del rechazo..."
+                />
+              </div>
+
+              <div className="flex items-center gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectDialog(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 text-gray-400 text-sm font-medium hover:text-white hover:bg-white/10 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={rejectWithdrawal}
+                  disabled={!rejectReason.trim()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/30 transition-all disabled:opacity-40"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Rechazar Retiro
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

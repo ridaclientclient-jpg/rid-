@@ -9,7 +9,7 @@ import {
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
   Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare,
   Receipt, Star, AlertTriangle, Trophy, Building2, MapPinned,
-  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map
+  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -29,7 +29,7 @@ const navItems = [
   { href: '/admin/marketplace/orders', label: 'Pedidos MKT', icon: ShoppingCart },
   { href: '/admin/payment-report', label: 'Reporte Pagos', icon: Receipt },
   { href: '/admin/reviews', label: 'Resenas', icon: Star },
-  { href: '/admin/driver-alerts', label: 'Alertas', icon: AlertTriangle },
+  { href: '/admin/driver-alerts', label: 'SOS Alertas', icon: Siren },
   { href: '/admin/couriers', label: 'Repartidores', icon: Truck },
   { href: '/admin/chat', label: 'Chat Soporte', icon: MessageSquare },
   { href: '/admin/rewards', label: 'Recompensas', icon: Trophy },
@@ -43,6 +43,7 @@ const navItems = [
   { href: '/admin/gods-view', label: "God's View", icon: Eye },
   { href: '/admin/heat-map', label: 'Heat Map', icon: Flame },
   { href: '/admin/settings', label: 'Configuración', icon: Settings },
+  { href: '/admin/admins', label: 'Admins', icon: UserCog, superAdminOnly: true },
 ];
 
 function useHydrated() {
@@ -138,8 +139,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Navigation */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {navItems.map((item: any) => {
+            // Hide super_admin-only items if user is not super_admin
+            if (item.superAdminOnly && user?.role !== 'super_admin') return null;
+
             const active = isActive(item.href);
+            const isSuperBadge = item.superAdminOnly;
             return (
               <Link
                 key={item.href}
@@ -162,7 +167,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {!collapsed && (
                   <span className="relative z-10 whitespace-nowrap">{item.label}</span>
                 )}
-                {active && !collapsed && (
+                {!collapsed && isSuperBadge && (
+                  <span className="relative z-10 ml-auto px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                    Super
+                  </span>
+                )}
+                {active && !collapsed && !isSuperBadge && (
                   <div className="relative z-10 ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />
                 )}
               </Link>

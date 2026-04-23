@@ -4,39 +4,34 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Eye, Car, MapPin, Users, Navigation, Loader2,
-  RefreshCw, ZoomIn, ZoomOut, Crosshair, Maximize2, Filter,
-  Activity, Clock, TrendingUp, X, UserCheck
+  RefreshCw, ZoomIn, ZoomOut, Crosshair, Maximize2,
+  Activity, Clock, TrendingUp, Search, User, Star,
+  Monitor, Wifi,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { loadGoogleMaps } from '@/lib/googleMaps';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /* ─── Types ────────────────────────────────────────────────── */
-interface DriverLocation {
-  id: string;
-  driver_id: string;
-  latitude: number;
-  longitude: number;
-  heading: number;
-  speed: number;
-  is_online: boolean;
-  updated_at: string;
-  driver_name?: string;
-  driver_plate?: string;
-  driver_status?: string;
-}
 
-interface ActiveTrip {
+interface OnlineDriver {
   id: string;
-  rider_id: string;
-  driver_id: string;
+  user_id?: string;
   status: string;
-  origin: string;
-  destination: string;
-  price: number;
-  created_at: string;
-  rider_name?: string;
+  current_latitude?: number;
+  current_longitude?: number;
+  rating?: number;
+  total_rides?: number;
+  updated_at?: string;
   driver_name?: string;
+  driver_phone?: string;
+  vehicle_plate?: string;
+  vehicle_model?: string;
+  vehicle_color?: string;
+  active_ride_id?: string;
+  active_ride_status?: string;
+  active_ride_origin?: string;
+  active_ride_destination?: string;
 }
 
 const CR_CENTER = { lat: 9.9281, lng: -84.0907 };
@@ -48,151 +43,118 @@ export default function GodsViewPage() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const driverMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
-  const tripMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
-  const [drivers, setDrivers] = useState<DriverLocation[]>([]);
-  const [activeTrips, setActiveTrips] = useState<ActiveTrip[]>([]);
+  const [drivers, setDrivers] = useState<OnlineDriver[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapLoading, setMapLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [refreshInterval, setRefreshInterval] = useState(15);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [showDrivers, setShowDrivers] = useState(true);
-  const [showTrips, setShowTrips] = useState(true);
-  const [selectedDriver, setSelectedDriver] = useState<DriverLocation | null>(null);
-  const [statsPanelOpen, setStatsPanelOpen] = useState(true);
-
-  const autoRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [search, setSearch] = useState('');
+  const [showDriversOnMap, setShowDriversOnMap] = useState(true);
+  const [selectedDriver, setSelectedDriver] = useState<OnlineDriver | null>(null);
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
 
   /* ─── Fetch Data ──────────────────────────────────────── */
   const fetchData = useCallback(async () => {
     try {
-      // Fetch driver locations (online drivers)
-      const { data: locations, error: locError } = await supabase
-        .from('driver_locations')
-        .select('*')
-        .eq('is_online', true)
+      // 1. Fetch online drivers
+      const { data: onlineDrivers, error: drvError } = await supabase
+        .from('drivers')
+        .select('id, user_id, status, current_latitude, current_longitude, rating, total_rides, updated_at')
+        .in('status', ['online', 'busy'])
         .order('updated_at', { ascending: false });
 
-      if (locError) {
-        console.warn('driver_locations query error:', locError.message);
-        // Fallback: fetch drivers with online/busy status
-        const { data: onlineDrivers, error: drvError } = await supabase
-          .from('drivers')
-          .select('id, user_id, status, current_latitude, current_longitude')
-          .in('status', ['online', 'busy']);
-
-        if (!drvError && onlineDrivers) {
-          const driverIds = onlineDrivers.map(d => d.user_id).filter(Boolean);
-          const profileMap: Record<string, string> = {};
-          if (driverIds.length > 0) {
-            const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', driverIds);
-            if (profiles) profiles.forEach(p => { profileMap[p.id] = p.name; });
-          }
-
-          const locs: DriverLocation[] = onlineDrivers
-            .filter(d => d.current_latitude && d.current_longitude)
-            .map(d => ({
-              id: d.id,
-              driver_id: d.id,
-              latitude: d.current_latitude,
-              longitude: d.current_longitude,
-              heading: 0,
-              speed: 0,
-              is_online: true,
-              updated_at: new Date().toISOString(),
-              driver_name: profileMap[d.user_id || ''] || 'Conductor',
-              driver_status: d.status,
-            }));
-          setDrivers(locs);
-        }
-      } else {
-        // Enrich with driver names
-        const driverIds = (locations || []).map(l => l.driver_id);
-        const driverMap: Record<string, { name: string; plate: string; status: string }> = {};
-        if (driverIds.length > 0) {
-          const { data: driverRecords } = await supabase
-            .from('drivers')
-            .select('id, user_id, status')
-            .in('id', driverIds);
-          if (driverRecords) {
-            const userIds = driverRecords.map(d => d.user_id).filter(Boolean);
-            const profileMap: Record<string, string> = {};
-            if (userIds.length > 0) {
-              const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', userIds);
-              if (profiles) profiles.forEach(p => { profileMap[p.id] = p.name; });
-            }
-            const drvUserMap: Record<string, string> = {};
-            driverRecords.forEach(d => { drvUserMap[d.id] = d.user_id; });
-            driverRecords.forEach(d => {
-              driverMap[d.id] = {
-                name: profileMap[drvUserMap[d.id] || ''] || 'Conductor',
-                plate: '',
-                status: d.status || 'online',
-              };
-            });
-          }
-        }
-
-        const enriched: DriverLocation[] = (locations || []).map(l => ({
-          ...l,
-          driver_name: driverMap[l.driver_id]?.name || 'Conductor',
-          driver_status: driverMap[l.driver_id]?.status || 'online',
-        }));
-
-        setDrivers(enriched);
+      if (drvError) {
+        console.warn('Drivers query error:', drvError.message);
+        setDrivers([]);
+        setLastRefresh(new Date());
+        return;
       }
 
-      // Fetch active trips
-      const { data: trips, error: tripError } = await supabase
+      if (!onlineDrivers || onlineDrivers.length === 0) {
+        setDrivers([]);
+        setLastRefresh(new Date());
+        return;
+      }
+
+      // 2. Enrich with profile names and vehicle info
+      const userIds = onlineDrivers.map(d => d.user_id).filter(Boolean) as string[];
+      const driverIds = onlineDrivers.map(d => d.id);
+
+      const profileMap: Record<string, { name: string; phone?: string }> = {};
+      const vehicleMap: Record<string, { plate: string; model: string; color: string }> = {};
+
+      // Fetch profiles
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, phone')
+          .in('id', userIds);
+        if (profiles) {
+          profiles.forEach(p => { profileMap[p.id] = { name: p.name, phone: p.phone }; });
+        }
+      }
+
+      // Fetch vehicles
+      if (driverIds.length > 0) {
+        const { data: vehicles } = await supabase
+          .from('vehicles')
+          .select('id, driver_id, plate, model, color')
+          .in('driver_id', driverIds);
+        if (vehicles) {
+          vehicles.forEach(v => { vehicleMap[v.driver_id] = { plate: v.plate, model: v.model, color: v.color }; });
+        }
+      }
+
+      // 3. Fetch active rides for these drivers
+      const { data: activeRides } = await supabase
         .from('rides')
-        .select('*')
-        .in('status', ['pending', 'searching', 'assigned', 'arriving', 'started', 'in_progress'])
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .select('id, driver_id, status, origin, destination')
+        .in('driver_id', driverIds)
+        .in('status', ['assigned', 'arriving', 'started', 'in_progress']);
 
-      if (!tripError && trips) {
-        // Enrich with names
-        const riderIds = [...new Set(trips.map(t => t.rider_id).filter(Boolean))];
-        const dIds = [...new Set(trips.map(t => t.driver_id).filter(Boolean))];
-        const profileMap: Record<string, string> = {};
-        const driverNameMap: Record<string, string> = {};
-
-        if (riderIds.length > 0) {
-          const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', riderIds);
-          if (profiles) profiles.forEach(p => { profileMap[p.id] = p.name; });
-        }
-        if (dIds.length > 0) {
-          const { data: dRecords } = await supabase.from('drivers').select('id, user_id').in('id', dIds);
-          if (dRecords) {
-            const dUserIds = dRecords.map(d => d.user_id).filter(Boolean);
-            if (dUserIds.length > 0) {
-              const { data: dProfiles } = await supabase.from('profiles').select('id, name').in('id', dUserIds);
-              if (dProfiles) {
-                const dMap: Record<string, string> = {};
-                dProfiles.forEach(p => { dMap[p.id] = p.name; });
-                dRecords.forEach(d => { driverNameMap[d.id] = dMap[d.user_id || ''] || 'Conductor'; });
-              }
-            }
-          }
-        }
-
-        const enrichedTrips: ActiveTrip[] = trips.map(t => ({
-          id: t.id,
-          rider_id: t.rider_id,
-          driver_id: t.driver_id,
-          status: t.status,
-          origin: t.origin || t.origin_address || '-',
-          destination: t.destination || t.dest_address || '-',
-          price: t.price || 0,
-          created_at: t.created_at,
-          rider_name: profileMap[t.rider_id] || 'Pasajero',
-          driver_name: driverNameMap[t.driver_id || ''] || 'Sin asignar',
-        }));
-        setActiveTrips(enrichedTrips);
+      const activeRideMap: Record<string, { id: string; status: string; origin?: string; destination?: string }> = {};
+      if (activeRides) {
+        activeRides.forEach(r => {
+          activeRideMap[r.driver_id] = {
+            id: r.id,
+            status: r.status,
+            origin: r.origin,
+            destination: r.destination,
+          };
+        });
       }
 
+      // Build enriched driver list
+      const enriched: OnlineDriver[] = onlineDrivers
+        .filter(d => d.current_latitude && d.current_longitude)
+        .map(d => {
+          const profile = profileMap[d.user_id || ''];
+          const vehicle = vehicleMap[d.id];
+          const activeRide = activeRideMap[d.id];
+
+          return {
+            id: d.id,
+            user_id: d.user_id,
+            status: d.status,
+            current_latitude: d.current_latitude,
+            current_longitude: d.current_longitude,
+            rating: d.rating,
+            total_rides: d.total_rides,
+            updated_at: d.updated_at,
+            driver_name: profile?.name || 'Conductor',
+            driver_phone: profile?.phone || '',
+            vehicle_plate: vehicle?.plate || '',
+            vehicle_model: vehicle?.model || '',
+            vehicle_color: vehicle?.color || '',
+            active_ride_id: activeRide?.id,
+            active_ride_status: activeRide?.status,
+            active_ride_origin: activeRide?.origin,
+            active_ride_destination: activeRide?.destination,
+          };
+        });
+
+      setDrivers(enriched);
       setLastRefresh(new Date());
     } catch (err) {
       console.error('Error fetching God View data:', err);
@@ -201,19 +163,13 @@ export default function GodsViewPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  /* ─── Auto Refresh ────────────────────────────────────── */
+  /* ─── Auto Refresh every 15 seconds ───────────────────── */
   useEffect(() => {
-    if (autoRefresh) {
-      autoRefreshTimerRef.current = setInterval(fetchData, refreshInterval * 1000);
-    }
-    return () => {
-      if (autoRefreshTimerRef.current) clearInterval(autoRefreshTimerRef.current);
-    };
-  }, [autoRefresh, refreshInterval, fetchData]);
+    const interval = setInterval(fetchData, 15000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   /* ─── Initialize Map ──────────────────────────────────── */
   useEffect(() => {
@@ -251,16 +207,11 @@ export default function GodsViewPage() {
         mapInstanceRef.current = map;
         setMapLoading(false);
       })
-      .catch((err) => {
-        console.error('Map load error:', err);
-        setMapLoading(false);
-      });
+      .catch(() => { setMapLoading(false); });
 
     return () => {
       driverMarkersRef.current.forEach(m => m.setMap(null));
-      tripMarkersRef.current.forEach(m => m.setMap(null));
       driverMarkersRef.current.clear();
-      tripMarkersRef.current.clear();
       if (infoWindowRef.current) infoWindowRef.current.close();
       if (mapInstanceRef.current) mapInstanceRef.current = null;
     };
@@ -270,20 +221,17 @@ export default function GodsViewPage() {
   useEffect(() => {
     if (!mapInstanceRef.current || mapLoading) return;
 
-    const google = window as any;
-    if (!google.google?.maps) return;
+    const g = window as any;
+    if (!g.google?.maps) return;
 
-    // Clear existing driver markers
     driverMarkersRef.current.forEach(m => m.setMap(null));
     driverMarkersRef.current.clear();
-
-    if (!showDrivers) return;
+    if (!showDriversOnMap) return;
 
     drivers.forEach(driver => {
-      if (!driver.latitude || !driver.longitude) return;
+      if (!driver.current_latitude || !driver.current_longitude) return;
 
-      // SVG icon for driver
-      const isBusy = driver.driver_status === 'busy';
+      const isBusy = driver.status === 'busy' || !!driver.active_ride_id;
       const color = isBusy ? '#f59e0b' : '#06b6d4';
 
       const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
@@ -297,32 +245,45 @@ export default function GodsViewPage() {
         <text x="16" y="19" text-anchor="middle" font-size="10" font-weight="bold" fill="#fff" font-family="system-ui">C</text>
       </svg>`;
 
-      const marker = new google.google.maps.Marker({
+      const marker = new g.google.maps.Marker({
         map: mapInstanceRef.current,
-        position: { lat: driver.latitude, lng: driver.longitude },
+        position: { lat: driver.current_latitude, lng: driver.current_longitude },
         title: driver.driver_name || 'Conductor',
         icon: {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
-          scaledSize: new google.google.maps.Size(32, 40),
-          anchor: new google.google.maps.Point(16, 40),
+          scaledSize: new g.google.maps.Size(32, 40),
+          anchor: new g.google.maps.Point(16, 40),
         },
         zIndex: isBusy ? 100 : 200,
       });
 
       marker.addListener('click', () => {
         if (infoWindowRef.current && mapInstanceRef.current) {
-          const lastSeen = new Date(driver.updated_at);
-          const minsAgo = Math.round((Date.now() - lastSeen.getTime()) / 60000);
+          const rideInfo = driver.active_ride_id
+            ? `<div style="margin-top:6px; padding-top:6px; border-top:1px solid #ddd;">
+                <strong style="font-size:11px; color:#10b981;">Viaje activo</strong><br/>
+                <span style="font-size:10px; color:#666;">${driver.active_ride_status || ''}</span><br/>
+                ${driver.active_ride_origin ? `<span style="font-size:10px;">De: ${driver.active_ride_origin}</span><br/>` : ''}
+                ${driver.active_ride_destination ? `<span style="font-size:10px;">A: ${driver.active_ride_destination}</span>` : ''}
+              </div>`
+            : '';
+
+          const vehicleInfo = driver.vehicle_plate
+            ? `<div style="margin-top:4px; font-size:10px; color:#888;">
+                🚗 ${driver.vehicle_color} ${driver.vehicle_model} (${driver.vehicle_plate})
+              </div>`
+            : '';
+
           infoWindowRef.current.setContent(`
-            <div style="padding: 8px; color: #1a1a1a; font-family: system-ui; min-width: 180px;">
-              <strong style="font-size: 13px;">${driver.driver_name || 'Conductor'}</strong><br/>
-              <span style="font-size: 11px; color: #666;">
-                ${driver.driver_status === 'busy' ? '🟡 Ocupado' : '🟢 Disponible'}
-              </span><br/>
-              <span style="font-size: 11px; color: #999;">
-                ${driver.speed ? `Velocidad: ${Math.round(driver.speed)} km/h` : ''}
-                ${minsAgo < 60 ? ` | Actualizado: ${minsAgo} min atras` : ` | Actualizado: ${Math.round(minsAgo / 60)}h atras`}
+            <div style="padding:8px; color:#1a1a1a; font-family:system-ui; min-width:200px;">
+              <strong style="font-size:13px;">${driver.driver_name}</strong>
+              ${driver.rating ? `<span style="font-size:11px; color:#f59e0b;"> ★ ${driver.rating.toFixed(1)}</span>` : ''}
+              <br/>
+              <span style="font-size:11px; color:#666;">
+                ${isBusy ? '🟡 En viaje' : '🟢 Disponible'}
               </span>
+              ${vehicleInfo}
+              ${rideInfo}
             </div>
           `);
           infoWindowRef.current.open(mapInstanceRef.current, marker);
@@ -333,107 +294,91 @@ export default function GodsViewPage() {
       driverMarkersRef.current.set(driver.id, marker);
     });
 
-    // Fit bounds to show all drivers
+    // Fit bounds
     if (drivers.length > 0 && mapInstanceRef.current) {
-      const bounds = new google.google.maps.LatLngBounds();
+      const bounds = new g.google.maps.LatLngBounds();
       drivers.forEach(d => {
-        if (d.latitude && d.longitude) {
-          bounds.extend(new google.google.maps.LatLng(d.latitude, d.longitude));
+        if (d.current_latitude && d.current_longitude) {
+          bounds.extend(new g.google.maps.LatLng(d.current_latitude, d.current_longitude));
         }
       });
       if (!bounds.isEmpty()) {
         mapInstanceRef.current.fitBounds(bounds, { padding: 60 });
       }
     }
-  }, [drivers, mapLoading, showDrivers]);
-
-  /* ─── Render Trip Markers ─────────────────────────────── */
-  useEffect(() => {
-    if (!mapInstanceRef.current || mapLoading) return;
-
-    const google = window as any;
-    if (!google.google?.maps) return;
-
-    tripMarkersRef.current.forEach(m => m.setMap(null));
-    tripMarkersRef.current.clear();
-
-    if (!showTrips) return;
-
-    activeTrips.forEach(trip => {
-      // Origin marker
-      const origIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="28" viewBox="0 0 20 28">
-        <circle cx="10" cy="10" r="8" fill="#10b981" stroke="#fff" stroke-width="2"/>
-        <path d="M10 18 L7 26 L10 24 L13 26 Z" fill="#10b981"/>
-      </svg>`;
-
-      const origMarker = new google.google.maps.Marker({
-        map: mapInstanceRef.current,
-        position: { lat: 9.93, lng: -84.08 }, // Will use trip data if available
-        title: `Origen: ${trip.origin}`,
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(origIcon),
-          scaledSize: new google.google.maps.Size(20, 28),
-          anchor: new google.google.maps.Point(10, 28),
-        },
-        zIndex: 50,
-        visible: false, // Only show if we have coordinates
-      });
-
-      origMarker.addListener('click', () => {
-        if (infoWindowRef.current && mapInstanceRef.current) {
-          infoWindowRef.current.setContent(`
-            <div style="padding: 8px; color: #1a1a1a; font-family: system-ui;">
-              <strong style="font-size: 12px;">Viaje #${trip.id.slice(0, 8).toUpperCase()}</strong><br/>
-              <span style="font-size: 11px; color: #10b981;">Origen:</span> ${trip.origin}<br/>
-              <span style="font-size: 11px; color: #ef4444;">Destino:</span> ${trip.destination}<br/>
-              <span style="font-size: 11px; color: #666;">Pasajero: ${trip.rider_name}</span><br/>
-              <span style="font-size: 11px; color: #666;">Conductor: ${trip.driver_name}</span>
-            </div>
-          `);
-          infoWindowRef.current.open(mapInstanceRef.current, origMarker);
-        }
-      });
-
-      tripMarkersRef.current.set(`orig-${trip.id}`, origMarker);
-    });
-  }, [activeTrips, mapLoading, showTrips]);
+  }, [drivers, mapLoading, showDriversOnMap]);
 
   /* ─── Map Controls ────────────────────────────────────── */
-  const zoomIn = () => { if (mapInstanceRef.current) mapInstanceRef.current.setZoom((mapInstanceRef.current.getZoom() || 10) + 1); };
-  const zoomOut = () => { if (mapInstanceRef.current) mapInstanceRef.current.setZoom((mapInstanceRef.current.getZoom() || 10) - 1); };
+  const zoomIn = () => {
+    if (mapInstanceRef.current) mapInstanceRef.current.setZoom((mapInstanceRef.current.getZoom() || 10) + 1);
+  };
+  const zoomOut = () => {
+    if (mapInstanceRef.current) mapInstanceRef.current.setZoom((mapInstanceRef.current.getZoom() || 10) - 1);
+  };
   const fitAll = () => {
-    if (!mapInstanceRef.current) return;
-    const bounds = new google.maps.LatLngBounds();
-    driverMarkersRef.current.forEach(m => {
-      const pos = m.getPosition();
-      if (pos) bounds.extend(pos);
-    });
+    const g = window as any;
+    if (!mapInstanceRef.current || !g.google?.maps) return;
+    const bounds = new g.google.maps.LatLngBounds();
+    driverMarkersRef.current.forEach(m => { const pos = m.getPosition(); if (pos) bounds.extend(pos); });
     if (!bounds.isEmpty()) mapInstanceRef.current.fitBounds(bounds, { padding: 60 });
   };
   const resetView = () => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.setCenter(CR_CENTER);
-      mapInstanceRef.current.setZoom(12);
-    }
+    if (mapInstanceRef.current) { mapInstanceRef.current.setCenter(CR_CENTER); mapInstanceRef.current.setZoom(12); }
   };
 
+  /* ─── Stats ───────────────────────────────────────────── */
   const onlineCount = drivers.length;
-  const busyCount = drivers.filter(d => d.driver_status === 'busy').length;
-  const activeTripsCount = activeTrips.length;
+  const busyCount = drivers.filter(d => d.status === 'busy' || !!d.active_ride_id).length;
+  const availableCount = onlineCount - busyCount;
+  const avgRating = drivers.length > 0
+    ? (drivers.reduce((s, d) => s + (d.rating || 0), 0) / drivers.filter(d => d.rating).length).toFixed(1)
+    : '0.0';
+
+  /* ─── Filtered drivers (for list view + search) ───────── */
+  const filteredDrivers = search.trim()
+    ? drivers.filter(d =>
+        d.driver_name?.toLowerCase().includes(search.toLowerCase()) ||
+        d.vehicle_plate?.toLowerCase().includes(search.toLowerCase())
+      )
+    : drivers;
 
   /* ─── Render ──────────────────────────────────────────── */
   return (
     <div className="space-y-4 h-[calc(100vh-140px)] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between flex-shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h1 className="text-3xl font-bold text-white flex items-center gap-2">
             <Eye className="w-7 h-7 text-cyan-400" />
             God&apos;s View
           </h1>
-          <p className="text-gray-400 mt-1">Vista en tiempo real de conductores y viajes activos</p>
+          <p className="text-gray-400 mt-1">Vista en tiempo real de conductores en linea</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* View Mode Toggle */}
+          <div className="flex gap-1 p-1 rounded-xl bg-white/5">
+            <button
+              type="button"
+              onClick={() => setViewMode('map')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                viewMode === 'map' ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              Mapa
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                viewMode === 'list' ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              Lista
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={fetchData}
@@ -445,27 +390,190 @@ export default function GodsViewPage() {
         </div>
       </div>
 
-      {/* Map Container */}
-      <div className="flex-1 relative rounded-2xl overflow-hidden glass" style={{ minHeight: '400px' }}>
-        <div ref={mapRef} className="absolute inset-0" />
+      {/* Main Content */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Map / List Area */}
+        <div className="flex-1 relative rounded-2xl overflow-hidden glass min-w-0">
+          {/* Map View */}
+          {viewMode === 'map' && (
+            <>
+              <div ref={mapRef} className="absolute inset-0" />
 
-        {mapLoading && (
-          <div className="absolute inset-0 bg-rida-dark/80 flex items-center justify-center z-10">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">Cargando mapa...</p>
+              {mapLoading && (
+                <div className="absolute inset-0 bg-rida-dark/80 flex items-center justify-center z-10">
+                  <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Cargando mapa...</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Map Controls */}
+              {viewMode === 'map' && !mapLoading && (
+                <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-1">
+                  <button type="button" onClick={zoomIn} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                  <button type="button" onClick={zoomOut} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <div className="h-px bg-white/10 my-1" />
+                  <button type="button" onClick={fitAll} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors" title="Ajustar a conductores">
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                  <button type="button" onClick={resetView} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors" title="Vista central">
+                    <Crosshair className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* No Data on Map */}
+              {!loading && drivers.length === 0 && !mapLoading && (
+                <div className="absolute inset-0 flex items-center justify-center z-5 pointer-events-none">
+                  <div className="glass-strong rounded-2xl p-8 text-center pointer-events-auto">
+                    <Eye className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                    <p className="text-sm text-gray-400">Sin conductores en linea</p>
+                    <p className="text-xs text-gray-600 mt-1">Los datos aparecen cuando los conductores se conectan.</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* List View */}
+          {viewMode === 'list' && (
+            <div className="absolute inset-0 overflow-hidden flex flex-col">
+              {/* Search */}
+              <div className="p-3 border-b border-white/5 flex-shrink-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre o placa..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Driver Table */}
+              <div className="flex-1 overflow-y-auto">
+                {loading ? (
+                  <div className="p-4 space-y-3">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5">
+                        <Skeleton className="w-10 h-10 rounded-full bg-white/10" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-4 w-32 bg-white/10" />
+                          <Skeleton className="h-3 w-48 bg-white/5" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredDrivers.length > 0 ? (
+                  <div className="divide-y divide-white/5">
+                    {filteredDrivers.map((driver, i) => {
+                      const isBusy = driver.status === 'busy' || !!driver.active_ride_id;
+                      return (
+                        <motion.div
+                          key={driver.id}
+                          className="px-4 py-3 hover:bg-white/[0.03] transition-colors"
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.02 }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="relative flex-shrink-0">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                isBusy ? 'bg-amber-500/20 ring-2 ring-amber-500/50' : 'bg-cyan-500/20 ring-2 ring-cyan-500/50'
+                              }`}>
+                                <Car className={`w-4 h-4 ${isBusy ? 'text-amber-400' : 'text-cyan-400'}`} />
+                              </div>
+                              {isBusy && (
+                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-amber-400 border-2 border-[#0a0e1a]" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-white">{driver.driver_name}</span>
+                                {driver.rating && (
+                                  <span className="flex items-center gap-0.5 text-xs text-amber-400">
+                                    <Star className="w-3 h-3 fill-amber-400" />
+                                    {driver.rating.toFixed(1)}
+                                  </span>
+                                )}
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                  isBusy ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
+                                }`}>
+                                  {isBusy ? 'En viaje' : 'Disponible'}
+                                </span>
+                              </div>
+                              {driver.vehicle_plate && (
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {driver.vehicle_color} {driver.vehicle_model} ({driver.vehicle_plate})
+                                </p>
+                              )}
+                              {driver.active_ride_id && (
+                                <div className="mt-1.5 bg-white/[0.03] rounded-lg px-2.5 py-1.5 text-xs space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <Navigation className="w-3 h-3 text-cyan-400" />
+                                    <span className="font-mono text-cyan-400">{driver.active_ride_id.slice(0, 8).toUpperCase()}</span>
+                                    <span className="text-gray-500">— {driver.active_ride_status}</span>
+                                  </div>
+                                  {driver.active_ride_origin && (
+                                    <p className="text-gray-500">
+                                      <span className="text-emerald-400">De:</span> {driver.active_ride_origin}
+                                    </p>
+                                  )}
+                                  {driver.active_ride_destination && (
+                                    <p className="text-gray-500">
+                                      <span className="text-red-400">A:</span> {driver.active_ride_destination}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                              <a
+                                href={`https://www.google.com/maps?q=${driver.current_latitude},${driver.current_longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 text-cyan-400 text-[10px] hover:bg-cyan-500/10 transition-colors"
+                              >
+                                <MapPin className="w-3 h-3" />
+                                GPS
+                              </a>
+                              <p className="text-[10px] text-gray-600 mt-1 font-mono">
+                                {driver.current_latitude?.toFixed(4)}, {driver.current_longitude?.toFixed(4)}
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                    <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm">{search ? 'No se encontraron conductores' : 'Sin conductores en linea'}</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Stats Panel */}
-        <motion.div
-          className="absolute top-4 left-4 z-10"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="glass-strong rounded-xl p-4 min-w-[200px] space-y-3">
-            <div className="flex items-center justify-between">
+        {/* Right Sidebar - Stats Panel */}
+        <div className="hidden xl:block w-[300px] flex-shrink-0 space-y-4">
+          {/* Live Stats */}
+          <motion.div
+            className="glass rounded-2xl p-4"
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-cyan-400" />
                 En Vivo
@@ -477,148 +585,100 @@ export default function GodsViewPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white/5 rounded-lg p-2.5">
-                <p className="text-[10px] text-gray-500">Conductores</p>
-                <p className="text-lg font-bold text-cyan-400">{onlineCount}</p>
-              </div>
-              <div className="bg-white/5 rounded-lg p-2.5">
-                <p className="text-[10px] text-gray-500">Ocupados</p>
-                <p className="text-lg font-bold text-amber-400">{busyCount}</p>
-              </div>
-              <div className="bg-white/5 rounded-lg p-2.5">
-                <p className="text-[10px] text-gray-500">Viajes Activos</p>
-                <p className="text-lg font-bold text-emerald-400">{activeTripsCount}</p>
-              </div>
-              <div className="bg-white/5 rounded-lg p-2.5">
-                <p className="text-[10px] text-gray-500">Disponibles</p>
-                <p className="text-lg font-bold text-white">{onlineCount - busyCount}</p>
-              </div>
-            </div>
-
-            {/* Auto Refresh Toggle */}
-            <div className="flex items-center justify-between pt-2 border-t border-white/10">
-              <span className="text-[10px] text-gray-500 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                Auto-refresh: {refreshInterval}s
-              </span>
-              <button
-                type="button"
-                onClick={() => setAutoRefresh(!autoRefresh)}
-                className={`text-[10px] px-2 py-0.5 rounded-full transition-all ${
-                  autoRefresh ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-500'
-                }`}
-              >
-                {autoRefresh ? 'ON' : 'OFF'}
-              </button>
-            </div>
-
-            {/* Show/Hide Toggles */}
-            <div className="space-y-1.5 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowDrivers(!showDrivers)}
-                className={`w-full flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg transition-all ${
-                  showDrivers ? 'bg-cyan-500/10 text-cyan-400' : 'bg-white/5 text-gray-500'
-                }`}
-              >
-                <Car className="w-3 h-3" />
-                Conductores ({onlineCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowTrips(!showTrips)}
-                className={`w-full flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg transition-all ${
-                  showTrips ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-gray-500'
-                }`}
-              >
-                <Navigation className="w-3 h-3" />
-                Viajes Activos ({activeTripsCount})
-              </button>
-            </div>
-
-            {/* Last Refresh */}
-            <div className="text-center">
-              <p className="text-[10px] text-gray-600">
-                Ultima actualizacion: {lastRefresh.toLocaleTimeString('es-CR')}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Active Trips List */}
-        {activeTrips.length > 0 && (
-          <motion.div
-            className="absolute top-4 right-4 z-10 glass-strong rounded-xl max-w-[280px] max-h-[60vh] overflow-hidden"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <div className="p-3 border-b border-white/10">
-              <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                Viajes en Curso ({activeTrips.length})
-              </h4>
-            </div>
-            <div className="overflow-y-auto max-h-[45vh] p-2 space-y-1.5">
-              {activeTrips.slice(0, 20).map(trip => (
-                <div key={trip.id} className="bg-white/5 rounded-lg p-2.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-cyan-400 font-mono">#{trip.id.slice(0, 8).toUpperCase()}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      ['started', 'in_progress'].includes(trip.status)
-                        ? 'bg-cyan-500/15 text-cyan-400'
-                        : 'bg-amber-500/15 text-amber-400'
-                    }`}>
-                      {trip.status === 'started' || trip.status === 'in_progress' ? 'En curso' : 'Pendiente'}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 truncate">
-                    <span className="text-emerald-400">De:</span> {trip.origin}
-                  </p>
-                  <p className="text-[10px] text-gray-400 truncate">
-                    <span className="text-red-400">A:</span> {trip.destination}
-                  </p>
-                  <div className="flex items-center justify-between mt-1.5 text-[10px] text-gray-500">
-                    <span>{trip.rider_name}</span>
-                    <span className="text-emerald-400 font-medium">₡{(trip.price || 0).toLocaleString()}</span>
-                  </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Wifi className="w-3 h-3 text-cyan-400" />
+                  <p className="text-[10px] text-gray-500">En Linea</p>
                 </div>
-              ))}
+                <p className="text-xl font-bold text-cyan-400">{onlineCount}</p>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Navigation className="w-3 h-3 text-amber-400" />
+                  <p className="text-[10px] text-gray-500">En Viaje</p>
+                </div>
+                <p className="text-xl font-bold text-amber-400">{busyCount}</p>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <User className="w-3 h-3 text-emerald-400" />
+                  <p className="text-[10px] text-gray-500">Disponibles</p>
+                </div>
+                <p className="text-xl font-bold text-emerald-400">{availableCount}</p>
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Star className="w-3 h-3 text-amber-400" />
+                  <p className="text-[10px] text-gray-500">Rating Prom.</p>
+                </div>
+                <p className="text-xl font-bold text-amber-400">{avgRating}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-white/10 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-600">
+                <Clock className="w-3 h-3" />
+                Actualizado: {lastRefresh.toLocaleTimeString('es-CR')}
+                <span className="text-gray-700">(cada 15s)</span>
+              </div>
             </div>
           </motion.div>
-        )}
 
-        {/* Map Controls */}
-        <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-1">
-          <button type="button" onClick={zoomIn} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button type="button" onClick={zoomOut} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <div className="h-px bg-white/10 my-1" />
-          <button type="button" onClick={fitAll} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors" title="Ajustar a conductores">
-            <Maximize2 className="w-4 h-4" />
-          </button>
-          <button type="button" onClick={resetView} className="w-9 h-9 rounded-lg glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors" title="Vista central">
-            <Crosshair className="w-4 h-4" />
-          </button>
+          {/* Selected Driver Detail */}
+          {selectedDriver && viewMode === 'map' && (
+            <motion.div
+              className="glass rounded-2xl p-4"
+              initial={{ opacity: 0, x: 15 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <h3 className="text-xs font-semibold text-white mb-3 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-purple-400" />
+                Conductor Seleccionado
+              </h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    selectedDriver.status === 'busy' ? 'bg-amber-500/20' : 'bg-cyan-500/20'
+                  }`}>
+                    <Car className={`w-4 h-4 ${selectedDriver.status === 'busy' ? 'text-amber-400' : 'text-cyan-400'}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{selectedDriver.driver_name}</p>
+                    {selectedDriver.rating && (
+                      <p className="text-xs text-amber-400">★ {selectedDriver.rating.toFixed(1)} · {selectedDriver.total_rides || 0} viajes</p>
+                    )}
+                  </div>
+                </div>
+                {selectedDriver.driver_phone && (
+                  <a
+                    href={`tel:${selectedDriver.driver_phone}`}
+                    className="flex items-center gap-1.5 text-xs text-cyan-400 hover:underline"
+                  >
+                    📞 {selectedDriver.driver_phone}
+                  </a>
+                )}
+                {selectedDriver.vehicle_plate && (
+                  <p className="text-xs text-gray-400">
+                    🚗 {selectedDriver.vehicle_color} {selectedDriver.vehicle_model} ({selectedDriver.vehicle_plate})
+                  </p>
+                )}
+                <div className="bg-white/5 rounded-lg p-2 text-xs text-gray-500 font-mono">
+                  {selectedDriver.current_latitude?.toFixed(6)}, {selectedDriver.current_longitude?.toFixed(6)}
+                </div>
+                <a
+                  href={`https://www.google.com/maps?q=${selectedDriver.current_latitude},${selectedDriver.current_longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-medium hover:bg-cyan-500/20 transition-all"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  Ver en Google Maps
+                </a>
+              </div>
+            </motion.div>
+          )}
         </div>
-
-        {/* No Data Message */}
-        {!loading && drivers.length === 0 && activeTrips.length === 0 && !mapLoading && (
-          <div className="absolute inset-0 flex items-center justify-center z-5 pointer-events-none">
-            <div className="glass-strong rounded-2xl p-8 text-center pointer-events-auto">
-              <Eye className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Sin datos en tiempo real</p>
-              <p className="text-xs text-gray-600 mt-1">
-                No hay conductores conectados ni viajes activos.
-                <br />
-                Los datos aparecen cuando los conductores estan en linea.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

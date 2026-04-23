@@ -1,427 +1,644 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertTriangle, Ban, ShieldAlert, Search, Loader2, Eye,
-  CheckCircle2, XCircle, Bell, Clock, ChevronLeft, ChevronRight,
-  ChevronsLeft, ChevronsRight, Send, Filter, User, Car,
-  TriangleAlert, MessageSquareWarning,
+  ShieldAlert, ShieldCheck, MapPin, Phone, Clock, User, Car,
+  Navigation, Loader2, Bell, Search, Filter, CheckCircle2,
+  AlertTriangle, Volume2, VolumeX, RefreshCw, ExternalLink,
+  ChevronDown,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
-type AlertType = 'cancel' | 'reject' | 'sos';
-type AlertStatus = 'new' | 'reviewed' | 'dismissed';
+/* ─── Types ──────────────────────────────────────────────────────────────── */
 
-interface AlertRow {
+interface SOSEvent {
   id: string;
-  date: string;
-  driverName: string;
-  driverUserId: string | null;
-  driverId: string | null;
-  type: AlertType;
-  rideId: string;
-  reason: string;
-  status: AlertStatus;
-  rideCreatedAt: string;
+  user_id: string;
+  ride_id?: string;
+  latitude: number;
+  longitude: number;
+  status: 'active' | 'resolved';
+  created_at: string;
+  resolved_by?: string;
+  resolved_at?: string;
+  profiles?: { name: string; phone?: string; email?: string };
+  rides?: {
+    id: string;
+    origin?: string;
+    destination?: string;
+    driver_id?: string;
+    status?: string;
+    drivers?: {
+      id: string;
+      user_id?: string;
+      profiles?: { name: string; phone?: string };
+      vehicles?: { plate: string; model: string; color: string };
+    };
+  };
 }
 
-const ALERT_TYPE_CONFIG: Record<AlertType, { label: string; color: string; icon: React.ElementType }> = {
-  cancel: { label: 'Cancelacion', color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: Ban },
-  reject: { label: 'Rechazo', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', icon: XCircle },
-  sos: { label: 'SOS', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: ShieldAlert },
-};
+type TabKey = 'active' | 'resolved';
 
-const STATUS_CONFIG: Record<AlertStatus, { label: string; color: string }> = {
-  new: { label: 'Nueva', color: 'bg-emerald-500/20 text-emerald-400' },
-  reviewed: { label: 'Revisada', color: 'bg-blue-500/20 text-blue-400' },
-  dismissed: { label: 'Descartada', color: 'bg-gray-500/20 text-gray-400' },
-};
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
 
-const TYPE_FILTERS: Array<{ key: string; label: string }> = [
-  { key: 'all', label: 'Todos' },
-  { key: 'cancel', label: 'Cancelaciones' },
-  { key: 'reject', label: 'Rechazos' },
-  { key: 'sos', label: 'SOS' },
-];
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 10) return 'Ahora mismo';
+  if (diffSec < 60) return `${diffSec}s`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `${diffHrs}h`;
+  const diffDays = Math.floor(diffHrs / 24);
+  return `${diffDays}d`;
+}
 
-const TIME_FILTERS = ['Hoy', 'Esta semana', 'Este mes'] as const;
-
-const PAGE_SIZE = 20;
-
-function formatCreatedAt(dateStr: string): string {
+function formatDateTime(dateStr: string): string {
   const d = new Date(dateStr);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toLocaleString('es-CR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
-function buildDateFilter(timeFilter: string): string | null {
-  if (timeFilter === 'Hoy') {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today.toISOString();
-  } else if (timeFilter === 'Esta semana') {
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return weekAgo.toISOString();
-  } else if (timeFilter === 'Este mes') {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    return monthStart.toISOString();
+function playAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Alarm-like SOS tone
+    const playBeep = (time: number, freq: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'square';
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + time);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + time + duration);
+      osc.start(ctx.currentTime + time);
+      osc.stop(ctx.currentTime + time + duration);
+    };
+    // Triple beep pattern
+    playBeep(0, 880, 0.15);
+    playBeep(0.2, 880, 0.15);
+    playBeep(0.4, 1100, 0.3);
+  } catch {
+    // AudioContext not available
   }
-  return null;
 }
+
+function getGoogleMapsLink(lat: number, lng: number): string {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
+/* ─── Skeleton Cards ─────────────────────────────────────────────────────── */
+
+function SOSSkeleton() {
+  return (
+    <div className="space-y-3 p-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <Skeleton className="w-10 h-10 rounded-full bg-white/10" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-32 bg-white/10" />
+              <Skeleton className="h-3 w-48 bg-white/5" />
+            </div>
+          </div>
+          <Skeleton className="h-3 w-full bg-white/5" />
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-24 bg-white/10" />
+            <Skeleton className="h-8 w-24 bg-white/10" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── SOS Card Component ─────────────────────────────────────────────────── */
+
+function SOSCard({
+  sos,
+  onResolve,
+  resolving,
+}: {
+  sos: SOSEvent;
+  onResolve: (id: string) => void;
+  resolving: string | null;
+}) {
+  const isActive = sos.status === 'active';
+  const userName = sos.profiles?.name || 'Desconocido';
+  const userPhone = sos.profiles?.phone || '';
+  const ride = sos.rides;
+  const driver = ride?.drivers;
+  const driverName = driver?.profiles?.name || '';
+  const driverPhone = driver?.profiles?.phone || '';
+  const vehicle = driver?.vehicles;
+  const vehicleInfo = vehicle
+    ? `${vehicle.color} ${vehicle.model} (${vehicle.plate})`
+    : '';
+  const mapsUrl = getGoogleMapsLink(sos.latitude, sos.longitude);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className={`rounded-xl border p-4 transition-all ${
+        isActive
+          ? 'border-red-500/50 bg-red-500/5 shadow-lg shadow-red-500/10'
+          : 'border-white/10 bg-white/[0.02]'
+      }`}
+    >
+      {/* Header */}
+      <div className="flex items-start gap-3 mb-3">
+        <div className={`relative flex-shrink-0`}>
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            isActive
+              ? 'bg-red-500/20 ring-2 ring-red-500/50 animate-pulse'
+              : 'bg-emerald-500/20 ring-2 ring-emerald-500/50'
+          }`}>
+            {isActive ? (
+              <ShieldAlert className="w-5 h-5 text-red-400" />
+            ) : (
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            )}
+          </div>
+          {isActive && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500 animate-ping" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-bold text-white">{userName}</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+              isActive
+                ? 'bg-red-500/20 text-red-400 animate-pulse'
+                : 'bg-emerald-500/20 text-emerald-400'
+            }`}>
+              {isActive ? 'ACTIVO' : 'RESUELTO'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {timeAgo(sos.created_at)}
+            </span>
+            <span>{formatDateTime(sos.created_at)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Contact info */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {userPhone && (
+          <a
+            href={`tel:${userPhone}`}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-300 text-xs hover:bg-white/10 transition-colors"
+          >
+            <Phone className="w-3 h-3 text-emerald-400" />
+            {userPhone}
+          </a>
+        )}
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-400 text-xs hover:bg-cyan-500/20 transition-colors"
+        >
+          <MapPin className="w-3 h-3" />
+          Ver en Google Maps
+          <ExternalLink className="w-2.5 h-2.5" />
+        </a>
+      </div>
+
+      {/* GPS Coordinates */}
+      <div className="bg-white/5 rounded-lg px-3 py-2 mb-3">
+        <div className="flex items-center gap-2 text-xs">
+          <Navigation className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+          <span className="text-gray-400 font-mono">
+            {sos.latitude.toFixed(6)}, {sos.longitude.toFixed(6)}
+          </span>
+        </div>
+      </div>
+
+      {/* Ride info */}
+      {ride && (
+        <div className="bg-white/[0.03] rounded-lg px-3 py-2 mb-3 text-xs space-y-1">
+          <div className="flex items-center gap-1.5 text-gray-500">
+            <span className="font-medium text-gray-400">Viaje:</span>
+            <span className="font-mono text-cyan-400">{ride.id.slice(0, 8).toUpperCase()}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+              ['started', 'in_progress'].includes(ride.status || '')
+                ? 'bg-cyan-500/15 text-cyan-400'
+                : 'bg-gray-500/15 text-gray-400'
+            }`}>
+              {ride.status}
+            </span>
+          </div>
+          {ride.origin && (
+            <div className="text-gray-400">
+              <span className="text-emerald-400">De:</span> {ride.origin}
+            </div>
+          )}
+          {ride.destination && (
+            <div className="text-gray-400">
+              <span className="text-red-400">A:</span> {ride.destination}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Driver info */}
+      {driver && (
+        <div className="bg-white/[0.03] rounded-lg px-3 py-2 mb-3 text-xs space-y-1">
+          <div className="flex items-center gap-1.5">
+            <Car className="w-3 h-3 text-purple-400" />
+            <span className="text-gray-300 font-medium">Conductor: {driverName}</span>
+          </div>
+          {driverPhone && (
+            <a href={`tel:${driverPhone}`} className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300">
+              <Phone className="w-3 h-3" />
+              {driverPhone}
+            </a>
+          )}
+          {vehicleInfo && (
+            <div className="text-gray-400">{vehicleInfo}</div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      {isActive && (
+        <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+          <button
+            type="button"
+            onClick={() => onResolve(sos.id)}
+            disabled={resolving === sos.id}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium hover:bg-emerald-500/25 transition-all disabled:opacity-50"
+          >
+            {resolving === sos.id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            )}
+            Resolver SOS
+          </button>
+        </div>
+      )}
+
+      {/* Resolved info */}
+      {!isActive && sos.resolved_at && (
+        <div className="text-[10px] text-gray-500 pt-2 border-t border-white/5">
+          Resuelto: {formatDateTime(sos.resolved_at)}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/* ─── Empty State ────────────────────────────────────────────────────────── */
+
+function EmptyState({ active }: { active: boolean }) {
+  return (
+    <motion.div
+      className="flex flex-col items-center justify-center py-16 text-gray-500"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${
+        active ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-white/5 border border-white/10'
+      }`}>
+        {active ? (
+          <ShieldCheck className="w-8 h-8 text-emerald-500/60" />
+        ) : (
+          <ShieldAlert className="w-8 h-8 text-gray-600" />
+        )}
+      </div>
+      <p className="text-sm font-medium text-gray-400">
+        {active ? 'No hay alertas SOS activas' : 'No hay alertas SOS resueltas'}
+      </p>
+      <p className="text-xs text-gray-600 mt-1">
+        {active
+          ? 'Las alertas activas apareceran aqui con animacion y sonido.'
+          : 'Los SOS resueltos por los administradores se mostraran aqui.'}
+      </p>
+    </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function DriverAlertsPage() {
-  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const { session } = useAuthStore();
+  const [activeAlerts, setActiveAlerts] = useState<SOSEvent[]>([]);
+  const [resolvedAlerts, setResolvedAlerts] = useState<SOSEvent[]>([]);
+  const [tab, setTab] = useState<TabKey>('active');
   const [loading, setLoading] = useState(true);
+  const [loadingResolved, setLoadingResolved] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [timeFilter, setTimeFilter] = useState<string>('Esta semana');
-  const [page, setPage] = useState(1);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [warningDialog, setWarningDialog] = useState<{
-    open: boolean;
-    alert: AlertRow | null;
-    message: string;
-  }>({ open: false, alert: null, message: '' });
-  const [sendingWarning, setSendingWarning] = useState(false);
+  const lastAlertCountRef = useRef<number>(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  const fetchAlerts = useCallback(async (currentTimeFilter: string) => {
-    setLoading(true);
+  /* ── Fetch Active SOS ─────────────────────────────────────────────── */
+  const fetchActiveAlerts = useCallback(async () => {
     try {
-      const dateThreshold = buildDateFilter(currentTimeFilter);
-
-      // --- 1. Fetch cancelled rides ---
-      let cancelQuery = supabase
-        .from('rides')
-        .select('id, driver_id, created_at, status')
-        .eq('status', 'cancelled');
-      if (dateThreshold) {
-        cancelQuery = cancelQuery.gte('created_at', dateThreshold);
-      }
-      const { data: cancelledRides, error: cancelError } = await cancelQuery;
-      if (cancelError) throw cancelError;
-
-      // --- 2. Fetch rides that may be "rejections" ---
-      // A rejection is a ride that was assigned to a driver but then cancelled within 2 minutes
-      let rejectQuery = supabase
-        .from('rides')
-        .select('id, driver_id, created_at, status, updated_at')
-        .eq('status', 'cancelled')
-        .not('driver_id', 'is', null);
-      if (dateThreshold) {
-        rejectQuery = rejectQuery.gte('created_at', dateThreshold);
-      }
-      const { data: allCancelledRides } = await rejectQuery;
-
-      const rejectionRides = (allCancelledRides || []).filter(r => {
-        const created = new Date(r.created_at).getTime();
-        const updated = new Date(r.updated_at || r.created_at).getTime();
-        const diff = updated - created;
-        return diff >= 0 && diff <= 2 * 60 * 1000; // Within 2 minutes
-      });
-
-      // Exclude rejections from cancellations to avoid duplicates
-      const rejectionIds = new Set(rejectionRides.map(r => r.id));
-      const pureCancellations = (cancelledRides || []).filter(r => !rejectionIds.has(r.id));
-
-      // --- 3. Fetch SOS alerts ---
-      let sosQuery = supabase
-        .from('sos')
-        .select('id, user_id, ride_id, created_at, status');
-      if (dateThreshold) {
-        sosQuery = sosQuery.gte('created_at', dateThreshold);
-      }
-      const { data: sosAlerts } = await sosQuery;
-
-      // --- Gather all driver IDs and user IDs ---
-      const allDriverIds = new Set([
-        ...pureCancellations.map(r => r.driver_id),
-        ...rejectionRides.map(r => r.driver_id),
-      ].filter(Boolean) as string[]);
-
-      const sosUserIds = new Set((sosAlerts || []).map(s => s.user_id).filter(Boolean));
-
-      // Map driver IDs to user IDs
-      const driverToUserMap: Record<string, string> = {};
-      const driverIdSet = [...allDriverIds];
-
-      if (driverIdSet.length > 0) {
-        const { data: driverRecords } = await supabase
-          .from('drivers')
-          .select('id, user_id')
-          .in('id', driverIdSet);
-        if (driverRecords) {
-          driverRecords.forEach(d => { driverToUserMap[d.id] = d.user_id; });
-        }
-      }
-
-      // Fetch all profile IDs (driver users + SOS users)
-      const allUserIdsToFetch = new Set([
-        ...Object.values(driverToUserMap),
-        ...sosUserIds,
-      ].filter(Boolean));
-
-      const profileMap: Record<string, string> = {};
-      if (allUserIdsToFetch.size > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, name')
-          .in('id', [...allUserIdsToFetch]);
-        if (profiles) {
-          profiles.forEach(p => { profileMap[p.id] = p.name; });
-        }
-      }
-
-      // Map SOS user IDs to driver IDs for notification purposes
-      const sosUserToDriverMap: Record<string, string | null> = {};
-      if (sosUserIds.size > 0) {
-        const { data: sosDriverRecords } = await supabase
-          .from('drivers')
-          .select('id, user_id')
-          .in('user_id', [...sosUserIds]);
-        if (sosDriverRecords) {
-          const map: Record<string, string> = {};
-          sosDriverRecords.forEach(d => { map[d.user_id] = d.id; });
-          (sosAlerts || []).forEach(s => {
-            sosUserToDriverMap[s.user_id] = map[s.user_id] || null;
-          });
-        }
-      }
-
-      // Build alert rows
-      const alertRows: AlertRow[] = [];
-
-      // Cancellations
-      pureCancellations.forEach(r => {
-        const userId = driverToUserMap[r.driver_id || ''];
-        alertRows.push({
-          id: `cancel-${r.id}`,
-          date: formatCreatedAt(r.created_at),
-          driverName: profileMap[userId || ''] || 'Desconocido',
-          driverUserId: userId || null,
-          driverId: r.driver_id || null,
-          type: 'cancel',
-          rideId: r.id,
-          reason: 'Viaje cancelado por el conductor',
-          status: 'new',
-          rideCreatedAt: r.created_at,
-        });
-      });
-
-      // Rejections
-      rejectionRides.forEach(r => {
-        const userId = driverToUserMap[r.driver_id || ''];
-        alertRows.push({
-          id: `reject-${r.id}`,
-          date: formatCreatedAt(r.created_at),
-          driverName: profileMap[userId || ''] || 'Desconocido',
-          driverUserId: userId || null,
-          driverId: r.driver_id || null,
-          type: 'reject',
-          rideId: r.id,
-          reason: 'Viaje rechazado rapidamente despues de asignacion',
-          status: 'new',
-          rideCreatedAt: r.created_at,
-        });
-      });
-
-      // SOS
-      (sosAlerts || []).forEach(s => {
-        const driverId = sosUserToDriverMap[s.user_id] || null;
-        alertRows.push({
-          id: `sos-${s.id}`,
-          date: formatCreatedAt(s.created_at),
-          driverName: profileMap[s.user_id] || 'Desconocido',
-          driverUserId: s.user_id,
-          driverId,
-          type: 'sos',
-          rideId: s.ride_id || '',
-          reason: 'Alerta de emergencia activada',
-          status: s.status === 'resolved' ? 'reviewed' : 'new',
-          rideCreatedAt: s.created_at,
-        });
-      });
-
-      // Sort by date descending
-      alertRows.sort((a, b) => new Date(b.rideCreatedAt).getTime() - new Date(a.rideCreatedAt).getTime());
-
-      setAlerts(alertRows);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      toast.error(`Error al cargar alertas: ${message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchAlerts(timeFilter);
-  }, [timeFilter, fetchAlerts]);
-
-  // Filtered data
-  const filteredAlerts = useMemo(() => {
-    return alerts.filter(a => {
-      const matchSearch = !search ||
-        a.driverName.toLowerCase().includes(search.toLowerCase()) ||
-        a.rideId.toLowerCase().includes(search.toLowerCase()) ||
-        a.reason.toLowerCase().includes(search.toLowerCase());
-
-      const matchType = typeFilter === 'all' || a.type === typeFilter;
-
-      return matchSearch && matchType;
-    });
-  }, [alerts, search, typeFilter]);
-
-  // Stats
-  const stats = useMemo(() => {
-    const cancellationsToday = alerts.filter(a => {
-      if (a.type !== 'cancel') return false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return new Date(a.rideCreatedAt) >= today;
-    }).length;
-
-    const rejectionsToday = alerts.filter(a => {
-      if (a.type !== 'reject') return false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return new Date(a.rideCreatedAt) >= today;
-    }).length;
-
-    const driversWithAlert = new Set(alerts.map(a => a.driverId).filter(Boolean)).size;
-
-    const typeFilteredAlerts = typeFilter === 'all'
-      ? alerts.filter(a => a.type === 'cancel' || a.type === 'reject')
-      : alerts.filter(a => a.type === typeFilter);
-
-    const driverAlertCounts: Record<string, number> = {};
-    typeFilteredAlerts.forEach(a => {
-      const driver = a.driverId || 'unknown';
-      driverAlertCounts[driver] = (driverAlertCounts[driver] || 0) + 1;
-    });
-
-    const totalRidesForDrivers = Object.values(driverAlertCounts).reduce((s, c) => s + c, 0);
-    const avgRate = Object.keys(driverAlertCounts).length > 0
-      ? ((typeFilteredAlerts.filter(a => a.type === 'cancel').length / Math.max(typeFilteredAlerts.length, 1)) * 100).toFixed(1)
-      : '0.0';
-
-    return {
-      cancellationsToday,
-      rejectionsToday,
-      driversWithAlert,
-      avgCancelRate: `${avgRate}%`,
-    };
-  }, [alerts, typeFilter]);
-
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / PAGE_SIZE));
-  const paginatedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const showingFrom = filteredAlerts.length > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const showingTo = Math.min(page * PAGE_SIZE, filteredAlerts.length);
-
-  const pageNumbers = useMemo(() => {
-    const pages: number[] = [];
-    const maxVisible = 5;
-    let start = Math.max(1, page - Math.floor(maxVisible / 2));
-    const end = Math.min(totalPages, start + maxVisible - 1);
-    start = Math.max(1, end - maxVisible + 1);
-    for (let i = start; i <= end; i++) pages.push(i);
-    return pages;
-  }, [page, totalPages]);
-
-  // Reset page when filters change
-  useEffect(() => { setPage(1); }, [search, typeFilter]);
-
-  // Actions
-  const markAsReviewed = async (alertId: string) => {
-    setUpdatingId(alertId);
-    setAlerts(prev => prev.map(a =>
-      a.id === alertId ? { ...a, status: 'reviewed' as AlertStatus } : a
-    ));
-    toast.success('Alerta marcada como revisada');
-    setUpdatingId(null);
-  };
-
-  const dismissAlert = async (alertId: string) => {
-    setUpdatingId(alertId);
-    setAlerts(prev => prev.map(a =>
-      a.id === alertId ? { ...a, status: 'dismissed' as AlertStatus } : a
-    ));
-    toast.success('Alerta descartada');
-    setUpdatingId(null);
-  };
-
-  const openWarningDialog = (alert: AlertRow) => {
-    const typeMessages: Record<AlertType, string> = {
-      cancel: 'Hemos notado multiples cancelaciones en tu cuenta. Por favor, ten en cuenta que las cancelaciones frecuentes pueden afectar tu calificacion y estatus en la plataforma.',
-      reject: 'Hemos detectado que has rechazado varios viajes recientemente. Te recordamos que aceptar viajes es importante para mantener un buen servicio.',
-      sos: 'Se ha registrado una alerta de emergencia. Nuestro equipo de soporte revisara la situacion. Si necesitas ayuda, comunicate con nosotros.',
-    };
-    setWarningDialog({
-      open: true,
-      alert,
-      message: typeMessages[alert.type],
-    });
-  };
-
-  const sendWarning = async () => {
-    if (!warningDialog.alert || !warningDialog.alert.driverUserId) {
-      toast.error('No se puede enviar la notificacion: usuario no encontrado');
-      return;
-    }
-
-    setSendingWarning(true);
-    try {
-      const { error } = await supabase.from('app_notifications').insert({
-        user_id: warningDialog.alert.driverUserId,
-        title: 'Alerta de Administracion',
-        message: warningDialog.message,
-        type: 'warning',
-        is_read: false,
-      });
+      const { data, error } = await supabase
+        .from('sos_events')
+        .select(`
+          *,
+          profiles:user_id(name, phone, email),
+          rides:ride_id(
+            id, origin, destination, driver_id, status,
+            drivers:driver_id(
+              id, user_id,
+              profiles:user_id(name, phone),
+              vehicles:driver_id(plate, model, color)
+            )
+          )
+        `)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(100);
 
       if (error) throw error;
 
-      // Mark alert as reviewed
-      setAlerts(prev => prev.map(a =>
-        a.id === warningDialog.alert!.id ? { ...a, status: 'reviewed' as AlertStatus } : a
-      ));
+      const events = (data || []) as unknown as SOSEvent[];
 
-      toast.success(`Advertencia enviada a ${warningDialog.alert.driverName}`);
-      setWarningDialog({ open: false, alert: null, message: '' });
+      // Sound notification for new alerts
+      if (events.length > lastAlertCountRef.current && lastAlertCountRef.current > 0 && soundEnabled) {
+        playAlertSound();
+        toast.error('🚨 Nueva alerta SOS recibida', {
+          description: `Hay ${events.length - lastAlertCountRef.current} alerta(s) nueva(s)`,
+          duration: 5000,
+        });
+      }
+      lastAlertCountRef.current = events.length;
+
+      setActiveAlerts(events);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error desconocido';
-      toast.error(`Error al enviar advertencia: ${message}`);
+      toast.error(`Error al cargar alertas activas: ${message}`);
     } finally {
-      setSendingWarning(false);
+      setLoading(false);
     }
-  };
+  }, [soundEnabled]);
 
-  const handleTimeFilterChange = (tf: string) => {
-    setTimeFilter(tf);
-    setPage(1);
-  };
+  /* ── Fetch Resolved SOS ───────────────────────────────────────────── */
+  const fetchResolvedAlerts = useCallback(async () => {
+    setLoadingResolved(true);
+    try {
+      const { data, error } = await supabase
+        .from('sos_events')
+        .select(`
+          *,
+          profiles:user_id(name, phone, email),
+          rides:ride_id(
+            id, origin, destination, driver_id, status,
+            drivers:driver_id(
+              id, user_id,
+              profiles:user_id(name, phone),
+              vehicles:driver_id(plate, model, color)
+            )
+          )
+        `)
+        .eq('status', 'resolved')
+        .order('created_at', { ascending: false })
+        .limit(100);
 
+      if (error) throw error;
+      setResolvedAlerts((data || []) as unknown as SOSEvent[]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al cargar alertas resueltas: ${message}`);
+    } finally {
+      setLoadingResolved(false);
+    }
+  }, []);
+
+  /* ── Resolve SOS ──────────────────────────────────────────────────── */
+  const resolveSOS = useCallback(async (sosId: string) => {
+    setResolvingId(sosId);
+    try {
+      const token = session?.access_token;
+      if (!token) {
+        toast.error('No se pudo resolver: sesion no valida');
+        return;
+      }
+      const res = await fetch('/api/sos/resolve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sos_id: sosId }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Error');
+
+      toast.success('SOS resuelto exitosamente');
+      await Promise.all([fetchActiveAlerts(), fetchResolvedAlerts()]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error';
+      toast.error(`Error al resolver SOS: ${message}`);
+    } finally {
+      setResolvingId(null);
+    }
+  }, [session, fetchActiveAlerts, fetchResolvedAlerts]);
+
+  /* ── Auto-refresh every 10 seconds ───────────────────────────────── */
+  useEffect(() => {
+    fetchActiveAlerts();
+    const interval = setInterval(fetchActiveAlerts, 10000);
+    return () => clearInterval(interval);
+  }, [fetchActiveAlerts]);
+
+  /* ── Fetch resolved when switching to resolved tab ────────────────── */
+  useEffect(() => {
+    if (tab === 'resolved' && resolvedAlerts.length === 0) {
+      fetchResolvedAlerts();
+    }
+  }, [tab, resolvedAlerts.length, fetchResolvedAlerts]);
+
+  /* ── Supabase Realtime subscription ───────────────────────────────── */
+  useEffect(() => {
+    const channel = supabase
+      .channel('sos-admin-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'sos_events',
+          filter: 'status=eq.active',
+        },
+        () => {
+          fetchActiveAlerts();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'sos_events',
+        },
+        () => {
+          fetchActiveAlerts();
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchActiveAlerts]);
+
+  /* ── Stats ────────────────────────────────────────────────────────── */
+  const stats = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const resolvedToday = resolvedAlerts.filter(a => a.created_at >= todayStart).length;
+    const resolvedThisWeek = resolvedAlerts.filter(a => a.created_at >= weekStart).length;
+
+    return {
+      active: activeAlerts.length,
+      resolvedToday,
+      resolvedThisWeek,
+      total: activeAlerts.length + resolvedAlerts.length,
+    };
+  }, [activeAlerts, resolvedAlerts]);
+
+  /* ── Filtered data ────────────────────────────────────────────────── */
+  const filteredActive = useMemo(() => {
+    if (!search.trim()) return activeAlerts;
+    const q = search.toLowerCase();
+    return activeAlerts.filter(a =>
+      a.profiles?.name?.toLowerCase().includes(q) ||
+      a.profiles?.phone?.includes(q) ||
+      a.id.toLowerCase().includes(q) ||
+      a.rides?.drivers?.profiles?.name?.toLowerCase().includes(q)
+    );
+  }, [activeAlerts, search]);
+
+  const filteredResolved = useMemo(() => {
+    if (!search.trim()) return resolvedAlerts;
+    const q = search.toLowerCase();
+    return resolvedAlerts.filter(a =>
+      a.profiles?.name?.toLowerCase().includes(q) ||
+      a.profiles?.phone?.includes(q) ||
+      a.id.toLowerCase().includes(q) ||
+      a.rides?.drivers?.profiles?.name?.toLowerCase().includes(q)
+    );
+  }, [resolvedAlerts, search]);
+
+  const currentList = tab === 'active' ? filteredActive : filteredResolved;
+  const currentLoading = tab === 'active' ? loading : loadingResolved;
+
+  /* ── Stat Cards ───────────────────────────────────────────────────── */
   const statCards = [
-    { label: 'Cancelaciones Hoy', value: stats.cancellationsToday, color: 'text-red-400', icon: Ban },
-    { label: 'Rechazos Hoy', value: stats.rejectionsToday, color: 'text-amber-400', icon: XCircle },
-    { label: 'Conductores con Alerta', value: stats.driversWithAlert, color: 'text-purple-400', icon: Car },
-    { label: 'Tasa de Cancelacion', value: stats.avgCancelRate, color: 'text-cyan-400', icon: TriangleAlert },
+    {
+      label: 'SOS Activos',
+      value: stats.active,
+      color: 'text-red-400',
+      bg: 'bg-red-500/10',
+      icon: ShieldAlert,
+      pulse: stats.active > 0,
+    },
+    {
+      label: 'Resueltos Hoy',
+      value: stats.resolvedToday,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10',
+      icon: ShieldCheck,
+      pulse: false,
+    },
+    {
+      label: 'Esta Semana',
+      value: stats.resolvedThisWeek,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10',
+      icon: Clock,
+      pulse: false,
+    },
+    {
+      label: 'Total Histórico',
+      value: stats.total,
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10',
+      icon: AlertTriangle,
+      pulse: false,
+    },
   ];
+
+  /* ─── Render ──────────────────────────────────────────────────────────── */
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white">Alertas de Conductores</h1>
-        <p className="text-gray-400 mt-1">Monitoreo de cancelaciones y rechazos de conductores</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+            stats.active > 0
+              ? 'bg-red-500/20 ring-2 ring-red-500/50'
+              : 'bg-cyan-500/20'
+          }`}>
+            <ShieldAlert className={`w-5 h-5 ${stats.active > 0 ? 'text-red-400' : 'text-cyan-400'}`} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Alertas SOS</h1>
+            <p className="text-sm text-gray-500">
+              Monitoreo de emergencias en tiempo real
+              {stats.active > 0 && (
+                <span className="text-red-400 font-medium ml-1">
+                  — {stats.active} {stats.active === 1 ? 'activa' : 'activas'}
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+              soundEnabled
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                : 'bg-white/5 text-gray-500 border border-white/10'
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            Sonido {soundEnabled ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { fetchActiveAlerts(); fetchResolvedAlerts(); }}
+            className="px-3 py-2 rounded-lg bg-white/5 text-gray-400 text-xs font-medium flex items-center gap-1.5 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refrescar
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {statCards.map((stat, i) => {
           const Icon = stat.icon;
           return (
@@ -433,316 +650,91 @@ export default function DriverAlertsPage() {
               transition={{ delay: i * 0.05 }}
             >
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">{stat.label}</p>
-                <Icon className={`w-4 h-4 ${stat.color} opacity-60`} />
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider">{stat.label}</p>
+                <div className={`${stat.bg} p-1.5 rounded-lg`}>
+                  <Icon className={`w-3.5 h-3.5 ${stat.color}`} />
+                </div>
               </div>
-              <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+              <p className={`text-2xl font-bold ${stat.color} ${stat.pulse ? 'animate-pulse' : ''}`}>
+                {stat.value}
+              </p>
             </motion.div>
           );
         })}
       </div>
 
-      {/* Filters */}
+      {/* Search + Tabs */}
       <div className="glass rounded-2xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-cyan-400" />
-          <span className="text-sm font-medium text-white">Filtros</span>
-        </div>
-
-        {/* Search + Time filters */}
-        <div className="flex flex-col md:flex-row gap-3 mb-3">
+        <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
             <input
               type="text"
-              placeholder="Buscar por conductor, ID de viaje o motivo..."
+              placeholder="Buscar por nombre, telefono, ID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all"
             />
           </div>
-          <div className="flex gap-2">
-            {TIME_FILTERS.map((tf) => (
-              <button
-                key={tf}
-                onClick={() => handleTimeFilterChange(tf)}
-                className={`px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-                  timeFilter === tf
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                    : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
-                }`}
-              >
-                {tf}
-              </button>
-            ))}
+          <div className="flex gap-1 p-1 rounded-xl bg-white/5">
+            <button
+              type="button"
+              onClick={() => setTab('active')}
+              className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                tab === 'active'
+                  ? 'bg-red-500/20 text-red-400 shadow-sm'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              Activos {stats.active > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                  {stats.active}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('resolved')}
+              className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                tab === 'resolved'
+                  ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Resueltos
+            </button>
           </div>
-        </div>
-
-        {/* Alert type filters */}
-        <div className="flex flex-wrap gap-2">
-          {TYPE_FILTERS.map((tf) => {
-            const cfg = tf.key !== 'all' ? ALERT_TYPE_CONFIG[tf.key as AlertType] : null;
-            const Icon = cfg?.icon || AlertTriangle;
-            return (
-              <button
-                key={tf.key}
-                onClick={() => setTypeFilter(tf.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  typeFilter === tf.key
-                    ? cfg
-                      ? `${cfg.color.split(' ')[0]} ${cfg.color.split(' ')[1]} border ${cfg.color.split(' ')[2]}`
-                      : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                    : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {tf.label}
-              </button>
-            );
-          })}
         </div>
       </div>
 
-      {/* Table */}
+      {/* Alert List */}
       <motion.div
         className="glass rounded-2xl overflow-hidden"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-            <p className="text-sm">Cargando alertas...</p>
+        {currentLoading ? (
+          <SOSSkeleton />
+        ) : currentList.length > 0 ? (
+          <div className="max-h-[calc(100vh-380px)] overflow-y-auto">
+            <AnimatePresence mode="popLayout">
+              {currentList.map((sos) => (
+                <SOSCard
+                  key={sos.id}
+                  sos={sos}
+                  onResolve={resolveSOS}
+                  resolving={resolvingId}
+                />
+              ))}
+            </AnimatePresence>
           </div>
         ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-white/5">
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Fecha</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Conductor</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Tipo</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Viaje ID</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Motivo</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Estado</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <AnimatePresence>
-                    {paginatedAlerts.map((alert, i) => {
-                      const typeCfg = ALERT_TYPE_CONFIG[alert.type];
-                      const statusCfg = STATUS_CONFIG[alert.status];
-                      const TypeIcon = typeCfg.icon;
-                      const isUpdating = updatingId === alert.id;
-
-                      return (
-                        <motion.tr
-                          key={alert.id}
-                          className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: 0.3 + i * 0.02 }}
-                        >
-                          <td className="px-5 py-3 text-sm text-gray-400 whitespace-nowrap">{alert.date}</td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                                <User className="w-3.5 h-3.5 text-gray-400" />
-                              </div>
-                              <span className="text-sm text-white">{alert.driverName}</span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${typeCfg.color}`}>
-                              <TypeIcon className="w-3 h-3" />
-                              {typeCfg.label}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-sm text-cyan-400 font-mono hidden md:table-cell">
-                            {alert.rideId ? alert.rideId.slice(0, 8).toUpperCase() : 'N/A'}
-                          </td>
-                          <td className="px-5 py-3 text-sm text-gray-400 hidden lg:table-cell max-w-[200px] truncate">{alert.reason}</td>
-                          <td className="px-5 py-3">
-                            <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${statusCfg.color}`}>
-                              {statusCfg.label}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center justify-end gap-1">
-                              {alert.status === 'new' && (
-                                <>
-                                  <button
-                                    onClick={() => markAsReviewed(alert.id)}
-                                    disabled={isUpdating}
-                                    className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 hover:bg-blue-500/20 transition-all disabled:opacity-50"
-                                    title="Marcar como revisada"
-                                  >
-                                    {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                  </button>
-                                  <button
-                                    onClick={() => dismissAlert(alert.id)}
-                                    disabled={isUpdating}
-                                    className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-300 hover:bg-white/10 transition-all disabled:opacity-50"
-                                    title="Descartar"
-                                  >
-                                    {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                                  </button>
-                                  <button
-                                    onClick={() => openWarningDialog(alert)}
-                                    disabled={isUpdating || !alert.driverUserId}
-                                    className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-50"
-                                    title="Enviar advertencia"
-                                  >
-                                    <Bell className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                              {alert.status === 'reviewed' && (
-                                <span className="text-xs text-blue-400 flex items-center gap-1">
-                                  <Eye className="w-3 h-3" />
-                                  Revisada
-                                </span>
-                              )}
-                              {alert.status === 'dismissed' && (
-                                <span className="text-xs text-gray-500">Descartada</span>
-                              )}
-                            </div>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
-                </tbody>
-              </table>
-            </div>
-
-            {filteredAlerts.length === 0 && (
-              <div className="text-center py-16 text-gray-500">
-                <AlertTriangle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No se encontraron alertas</p>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {filteredAlerts.length > PAGE_SIZE && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
-                <p className="text-xs text-gray-400">
-                  Mostrando {showingFrom}-{showingTo} de {filteredAlerts.length} alertas
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage(1)}
-                    disabled={page === 1}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  {pageNumbers.map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`min-w-[2rem] h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
-                        page === pageNum
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                          : 'text-gray-400 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage(totalPages)}
-                    disabled={page === totalPages}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+          <EmptyState active={tab === 'active'} />
         )}
       </motion.div>
-
-      {/* Warning Dialog */}
-      <AnimatePresence>
-        {warningDialog.open && warningDialog.alert && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setWarningDialog({ open: false, alert: null, message: '' })}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="glass-strong rounded-2xl p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-                  <MessageSquareWarning className="w-5 h-5 text-amber-400" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">Enviar Advertencia</h2>
-                  <p className="text-xs text-gray-400">Conductor: {warningDialog.alert.driverName}</p>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <label className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 block">Mensaje de advertencia</label>
-                <textarea
-                  value={warningDialog.message}
-                  onChange={(e) => setWarningDialog(prev => ({ ...prev, message: e.target.value }))}
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-amber-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all resize-none"
-                  placeholder="Escribe el mensaje de advertencia..."
-                />
-              </div>
-
-              <div className="flex items-center gap-3 justify-end">
-                <button
-                  onClick={() => setWarningDialog({ open: false, alert: null, message: '' })}
-                  className="px-4 py-2 rounded-xl bg-white/5 text-gray-400 text-sm font-medium hover:text-white hover:bg-white/10 transition-all"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={sendWarning}
-                  disabled={sendingWarning || !warningDialog.message.trim()}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 text-sm font-medium hover:bg-amber-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {sendingWarning ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                  Enviar Advertencia
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

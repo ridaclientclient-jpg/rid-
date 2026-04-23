@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Search, Send, ArrowLeft, CircleDot,
   CheckCircle2, XCircle, Loader2, Inbox, User,
-  ChevronDown, MoreVertical, Clock
+  ChevronDown, MoreVertical, Clock, Volume2, VolumeX,
+  Filter,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase, type SupportChat, type ChatMessage } from '@/lib/supabase';
@@ -15,9 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+/* ─── Constants ──────────────────────────────────────────────────────────── */
 
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 8000;
 
 const ROLE_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
   client:  { bg: 'bg-cyan-500/20', text: 'text-cyan-400', ring: 'ring-cyan-500/40' },
@@ -39,7 +40,9 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; 
   closed:   { bg: 'bg-gray-500/15',     text: 'text-gray-400',    border: 'border-gray-500/30',    dot: 'bg-gray-400',       label: 'Cerrado' },
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type StatusFilter = 'all' | 'open' | 'resolved' | 'closed';
+
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
 
 function timeAgo(dateStr: string): string {
   const now = new Date();
@@ -57,8 +60,7 @@ function timeAgo(dateStr: string): string {
 }
 
 function formatMessageTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(dateStr).toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function getInitials(name: string): string {
@@ -77,7 +79,25 @@ function getAvatarGradient(role: string): string {
   }
 }
 
-// ─── Status Badge ────────────────────────────────────────────────────────────
+function playMessageSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 660;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch {
+    // AudioContext not available
+  }
+}
+
+/* ─── Status Badge ───────────────────────────────────────────────────────── */
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.open;
@@ -89,7 +109,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Role Badge ──────────────────────────────────────────────────────────────
+/* ─── Role Badge ─────────────────────────────────────────────────────────── */
 
 function RoleBadge({ role }: { role: string }) {
   const cfg = ROLE_COLORS[role];
@@ -101,7 +121,7 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-// ─── Unread Badge ────────────────────────────────────────────────────────────
+/* ─── Unread Badge ───────────────────────────────────────────────────────── */
 
 function UnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -112,7 +132,7 @@ function UnreadBadge({ count }: { count: number }) {
   );
 }
 
-// ─── Chat List Item ──────────────────────────────────────────────────────────
+/* ─── Chat List Item ─────────────────────────────────────────────────────── */
 
 function ChatListItem({
   chat,
@@ -141,7 +161,6 @@ function ChatListItem({
       whileTap={{ scale: 0.99 }}
     >
       <div className="flex items-start gap-3">
-        {/* Avatar */}
         <div className="relative flex-shrink-0">
           <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarGradient(chat.user_role)} flex items-center justify-center ring-2 ${roleCfg.ring}`}>
             <span className="text-xs font-bold text-white">{initials}</span>
@@ -150,8 +169,6 @@ function ChatListItem({
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#0a0e1a]" />
           )}
         </div>
-
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-0.5">
             <div className="flex items-center gap-2 min-w-0">
@@ -165,14 +182,12 @@ function ChatListItem({
               <span className="text-[10px] text-gray-500">{timeAgo(chat.last_message_at)}</span>
             </div>
           </div>
-
           <div className="flex items-center gap-2">
             <p className={`text-xs truncate flex-1 ${chat.unread_by_admin > 0 ? 'text-gray-200 font-medium' : 'text-gray-500'}`}>
               {truncatedPreview}
             </p>
             <StatusBadge status={chat.status} />
           </div>
-
           {chat.subject && (
             <p className="text-[10px] text-gray-600 mt-1 truncate">{chat.subject}</p>
           )}
@@ -182,7 +197,7 @@ function ChatListItem({
   );
 }
 
-// ─── Chat List Skeleton ─────────────────────────────────────────────────────
+/* ─── Chat List Skeleton ─────────────────────────────────────────────────── */
 
 function ChatListSkeleton() {
   return (
@@ -204,7 +219,7 @@ function ChatListSkeleton() {
   );
 }
 
-// ─── Message Bubble ──────────────────────────────────────────────────────────
+/* ─── Message Bubble ─────────────────────────────────────────────────────── */
 
 function MessageBubble({ message, index }: { message: ChatMessage; index: number }) {
   const isAdmin = message.sender_type === 'admin';
@@ -232,7 +247,7 @@ function MessageBubble({ message, index }: { message: ChatMessage; index: number
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ delay: index * 0.03, duration: 0.2 }}
     >
-      <div className={`max-w-[75%] sm:max-w-[65%] ${isAdmin ? 'order-1' : 'order-1'}`}>
+      <div className={`max-w-[75%] sm:max-w-[65%]`}>
         <div
           className={`px-4 py-2.5 rounded-2xl ${
             isAdmin
@@ -255,7 +270,7 @@ function MessageBubble({ message, index }: { message: ChatMessage; index: number
   );
 }
 
-// ─── Empty State ─────────────────────────────────────────────────────────────
+/* ─── Empty State ────────────────────────────────────────────────────────── */
 
 function EmptyState() {
   return (
@@ -276,8 +291,6 @@ function EmptyState() {
   );
 }
 
-// ─── No Chats State ──────────────────────────────────────────────────────────
-
 function NoChatsState({ searchQuery }: { searchQuery: string }) {
   return (
     <motion.div
@@ -295,7 +308,7 @@ function NoChatsState({ searchQuery }: { searchQuery: string }) {
   );
 }
 
-// ─── Status Action Menu ──────────────────────────────────────────────────────
+/* ─── Status Action Menu ─────────────────────────────────────────────────── */
 
 function StatusActionMenu({
   currentStatus,
@@ -313,15 +326,11 @@ function StatusActionMenu({
         setOpen(false);
       }
     }
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    if (open) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [open]);
 
-  const availableStatuses = (['open', 'resolved', 'closed'] as const).filter(
-    (s) => s !== currentStatus
-  );
+  const availableStatuses = (['open', 'resolved', 'closed'] as const).filter(s => s !== currentStatus);
 
   return (
     <div className="relative" ref={menuRef}>
@@ -344,16 +353,13 @@ function StatusActionMenu({
             exit={{ opacity: 0, y: -5, scale: 0.95 }}
             transition={{ duration: 0.15 }}
           >
-            {availableStatuses.map((status) => {
+            {availableStatuses.map(status => {
               const cfg = STATUS_CONFIG[status];
               return (
                 <button
                   key={status}
                   type="button"
-                  onClick={() => {
-                    onStatusChange(status);
-                    setOpen(false);
-                  }}
+                  onClick={() => { onStatusChange(status); setOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors hover:bg-white/5"
                 >
                   <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
@@ -368,7 +374,9 @@ function StatusActionMenu({
   );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function AdminChatPage() {
   const { user } = useAuthStore();
@@ -379,20 +387,26 @@ export default function AdminChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const prevMessageCountRef = useRef<number>(0);
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // ── Derived State ──────────────────────────────────────────────────────
+  /* ── Derived State ────────────────────────────────────────────────── */
 
-  const selectedChat = chats.find((c) => c.id === selectedChatId) ?? null;
+  const selectedChat = chats.find(c => c.id === selectedChatId) ?? null;
 
-  const filteredChats = chats.filter((chat) => {
+  const filteredChats = chats.filter(chat => {
+    // Status filter
+    if (statusFilter !== 'all' && chat.status !== statusFilter) return false;
+    // Search filter
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -403,7 +417,7 @@ export default function AdminChatPage() {
     );
   });
 
-  // ── Fetch Chats ────────────────────────────────────────────────────────
+  /* ── Fetch Chats ──────────────────────────────────────────────────── */
 
   const fetchChats = useCallback(async () => {
     try {
@@ -425,7 +439,7 @@ export default function AdminChatPage() {
     }
   }, []);
 
-  // ── Fetch Messages ─────────────────────────────────────────────────────
+  /* ── Fetch Messages ───────────────────────────────────────────────── */
 
   const fetchMessages = useCallback(async (chatId: string) => {
     setLoadingMessages(true);
@@ -441,11 +455,18 @@ export default function AdminChatPage() {
         return;
       }
 
-      setMessages((data as ChatMessage[]) ?? []);
-      prevMessageCountRef.current = (data as ChatMessage[])?.length ?? 0;
+      const msgs = (data as ChatMessage[]) ?? [];
+      const prevCount = prevMessageCountRef.current;
+      setMessages(msgs);
+      prevMessageCountRef.current = msgs.length;
 
-      // Mark admin unread as 0 after fetching messages
-      const currentChat = chats.find((c) => c.id === chatId);
+      // New messages from user arrived while we had this chat open
+      if (msgs.length > prevCount && prevCount > 0 && soundEnabled) {
+        playMessageSound();
+      }
+
+      // Mark admin unread as 0
+      const currentChat = chats.find(c => c.id === chatId);
       if (currentChat && currentChat.unread_by_admin > 0) {
         await supabase
           .from('support_chats')
@@ -457,17 +478,18 @@ export default function AdminChatPage() {
     } finally {
       setLoadingMessages(false);
     }
-  }, [chats]);
+  }, [chats, soundEnabled]);
 
-  // ── Select Chat ────────────────────────────────────────────────────────
+  /* ── Select Chat ──────────────────────────────────────────────────── */
 
   const handleSelectChat = useCallback((chatId: string) => {
     setSelectedChatId(chatId);
     setMessageInput('');
+    prevMessageCountRef.current = 0;
     fetchMessages(chatId);
   }, [fetchMessages]);
 
-  // ── Send Message ───────────────────────────────────────────────────────
+  /* ── Send Message ─────────────────────────────────────────────────── */
 
   const handleSendMessage = useCallback(async () => {
     const trimmed = messageInput.trim();
@@ -475,7 +497,6 @@ export default function AdminChatPage() {
 
     setSendingMessage(true);
     try {
-      // Insert the message
       const { error: msgError } = await supabase
         .from('chat_messages')
         .insert({
@@ -491,9 +512,8 @@ export default function AdminChatPage() {
         return;
       }
 
-      // Update the chat's last message info
       const preview = trimmed.length > 80 ? trimmed.substring(0, 80) + '...' : trimmed;
-      const { error: chatError } = await supabase
+      await supabase
         .from('support_chats')
         .update({
           last_message_at: new Date().toISOString(),
@@ -502,13 +522,9 @@ export default function AdminChatPage() {
         })
         .eq('id', selectedChatId);
 
-      if (chatError) {
-        console.error('Error updating chat:', chatError.message);
-      }
-
       setMessageInput('');
 
-      // Optimistically add message and refresh
+      // Optimistic update
       const optimisticMsg: ChatMessage = {
         id: 'temp-' + Date.now(),
         chat_id: selectedChatId,
@@ -518,19 +534,17 @@ export default function AdminChatPage() {
         message_type: 'text',
         created_at: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, optimisticMsg]);
+      setMessages(prev => [...prev, optimisticMsg]);
 
-      // Refresh messages and chats from server
       await Promise.all([fetchMessages(selectedChatId), fetchChats()]);
-    } catch (error) {
+    } catch {
       toast.error('Error de conexion al enviar mensaje');
-      console.error('Send message error:', error);
     } finally {
       setSendingMessage(false);
     }
   }, [messageInput, selectedChatId, sendingMessage, user, selectedChat, fetchMessages, fetchChats]);
 
-  // ── Change Chat Status ─────────────────────────────────────────────────
+  /* ── Change Chat Status ───────────────────────────────────────────── */
 
   const handleStatusChange = useCallback(async (newStatus: 'open' | 'closed' | 'resolved') => {
     if (!selectedChatId || updatingStatus) return;
@@ -549,7 +563,6 @@ export default function AdminChatPage() {
 
       toast.success('Estado actualizado a ' + STATUS_CONFIG[newStatus].label);
 
-      // Insert system message
       const statusMessages: Record<string, string> = {
         closed: 'El administrador cerro esta conversacion.',
         resolved: 'El administrador marco esta conversacion como resuelta.',
@@ -565,30 +578,71 @@ export default function AdminChatPage() {
       });
 
       await Promise.all([fetchChats(), fetchMessages(selectedChatId)]);
-    } catch (error) {
+    } catch {
       toast.error('Error de conexion al actualizar estado');
-      console.error('Status change error:', error);
     } finally {
       setUpdatingStatus(false);
     }
   }, [selectedChatId, updatingStatus, user, fetchChats, fetchMessages]);
 
-  // ── Polling ────────────────────────────────────────────────────────────
+  /* ── Polling ──────────────────────────────────────────────────────── */
 
   useEffect(() => {
     fetchChats();
 
     const interval = setInterval(() => {
       fetchChats();
-      if (selectedChatId) {
-        fetchMessages(selectedChatId);
-      }
+      if (selectedChatId) fetchMessages(selectedChatId);
     }, POLL_INTERVAL);
 
     return () => clearInterval(interval);
   }, [fetchChats, fetchMessages, selectedChatId]);
 
-  // ── Auto-scroll on new messages ────────────────────────────────────────
+  /* ── Supabase Realtime ────────────────────────────────────────────── */
+
+  useEffect(() => {
+    // Subscribe to all support_chats changes
+    const chatChannel = supabase
+      .channel('admin-support-chats')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'support_chats' },
+        () => { fetchChats(); }
+      )
+      .subscribe();
+
+    // Subscribe to active chat messages
+    let msgChannel: ReturnType<typeof supabase.channel> | null = null;
+    if (selectedChatId) {
+      msgChannel = supabase
+        .channel(`admin-chat-messages-${selectedChatId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'chat_messages',
+            filter: `chat_id=eq.${selectedChatId}`,
+          },
+          (payload) => {
+            const newMsg = payload.new as ChatMessage;
+            if (newMsg.sender_type !== 'admin' && soundEnabled) {
+              playMessageSound();
+            }
+            fetchMessages(selectedChatId);
+          }
+        )
+        .subscribe();
+      realtimeChannelRef.current = msgChannel;
+    }
+
+    return () => {
+      supabase.removeChannel(chatChannel);
+      if (msgChannel) supabase.removeChannel(msgChannel);
+    };
+  }, [fetchChats, fetchMessages, selectedChatId, soundEnabled]);
+
+  /* ── Auto-scroll on new messages ──────────────────────────────────── */
 
   useEffect(() => {
     if (messages.length > prevMessageCountRef.current) {
@@ -596,7 +650,7 @@ export default function AdminChatPage() {
     }
   }, [messages.length]);
 
-  // ── Focus input on mobile when selecting chat ──────────────────────────
+  /* ── Focus input on mobile ────────────────────────────────────────── */
 
   useEffect(() => {
     if (isMobile && selectedChatId && messages.length > 0) {
@@ -604,7 +658,7 @@ export default function AdminChatPage() {
     }
   }, [isMobile, selectedChatId, messages.length]);
 
-  // ── Keyboard submit ────────────────────────────────────────────────────
+  /* ── Keyboard submit ──────────────────────────────────────────────── */
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -616,23 +670,24 @@ export default function AdminChatPage() {
     [handleSendMessage]
   );
 
-  // ── Mobile: go back to list ────────────────────────────────────────────
+  /* ── Mobile back ──────────────────────────────────────────────────── */
 
   const handleBack = useCallback(() => {
     setSelectedChatId(null);
     setMessages([]);
   }, []);
 
-  // ── Total unread count ─────────────────────────────────────────────────
+  /* ── Counts ───────────────────────────────────────────────────────── */
 
   const totalUnread = chats.reduce((sum, c) => sum + (c.unread_by_admin || 0), 0);
+  const openCount = chats.filter(c => c.status === 'open').length;
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  /* ─── Render ──────────────────────────────────────────────────────────── */
 
   return (
     <div className="space-y-4">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center glow-cyan">
             <MessageSquare className="w-5 h-5 text-white" />
@@ -646,18 +701,32 @@ export default function AdminChatPage() {
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+              soundEnabled
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                : 'bg-white/5 text-gray-500 border border-white/10'
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            {soundEnabled ? 'Sonido ON' : 'Sonido OFF'}
+          </button>
+        </div>
       </div>
 
       {/* Two-panel Layout */}
-      <div className="glass rounded-2xl overflow-hidden flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 220px)', minHeight: '500px' }}>
+      <div className="glass rounded-2xl overflow-hidden flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 240px)', minHeight: '500px' }}>
         {/* ── Left Panel: Chat List ────────────────────────────────── */}
         <div
           className={`w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 border-r border-white/5 flex flex-col ${
             isMobile && selectedChatId ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          {/* Search */}
-          <div className="p-3 border-b border-white/5">
+          {/* Search + Status Filter */}
+          <div className="p-3 border-b border-white/5 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <Input
@@ -667,6 +736,28 @@ export default function AdminChatPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 h-9 bg-white/5 border-white/10 text-sm text-white placeholder:text-gray-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
               />
+            </div>
+            {/* Status Filter */}
+            <div className="flex gap-1">
+              {([
+                { key: 'all', label: 'Todos' },
+                { key: 'open', label: `Abiertos${openCount > 0 ? ` (${openCount})` : ''}` },
+                { key: 'resolved', label: 'Resueltos' },
+                { key: 'closed', label: 'Cerrados' },
+              ] as const).map(sf => (
+                <button
+                  key={sf.key}
+                  type="button"
+                  onClick={() => setStatusFilter(sf.key)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex-1 text-center ${
+                    statusFilter === sf.key
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-white/5 text-gray-500 hover:text-white border border-transparent'
+                  }`}
+                >
+                  {sf.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -708,7 +799,6 @@ export default function AdminChatPage() {
               {/* Chat Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 flex-shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
-                  {/* Back button (mobile) */}
                   {isMobile && (
                     <button
                       type="button"
@@ -718,8 +808,6 @@ export default function AdminChatPage() {
                       <ArrowLeft className="w-4 h-4" />
                     </button>
                   )}
-
-                  {/* User info */}
                   <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${getAvatarGradient(selectedChat.user_role)} flex items-center justify-center ring-2 ${ROLE_COLORS[selectedChat.user_role]?.ring ?? 'ring-gray-500/40'}`}>
                     <span className="text-[11px] font-bold text-white">
                       {getInitials(selectedChat.user_name || 'User')}
@@ -740,8 +828,6 @@ export default function AdminChatPage() {
                     )}
                   </div>
                 </div>
-
-                {/* Status action */}
                 <StatusActionMenu
                   currentStatus={selectedChat.status}
                   onStatusChange={handleStatusChange}

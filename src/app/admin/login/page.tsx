@@ -9,8 +9,8 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 
 export default function AdminLoginPage() {
-  const [email, setEmail] = useState('admin@ridasupreme.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { login, isLoading, isLocked } = useAuthStore();
@@ -149,21 +149,7 @@ export default function AdminLoginPage() {
           </Link>
         </motion.div>
 
-        {/* Register & Demo hint */}
-        <motion.div
-          className="mt-4 pt-5 border-t border-white/5 space-y-3"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-        >
-          <p className="text-center">
-            <span className="text-xs text-gray-500">No tienes cuenta? </span>
-            <Link href="/admin/register" className="text-xs text-cyan-400 hover:underline">Registrarse</Link>
-          </p>
-          <p className="text-xs text-gray-500 text-center">
-            Demo: <span className="text-gray-400">admin@ridasupreme.com</span> / <span className="text-gray-400">admin123</span>
-          </p>
-        </motion.div>
+
       </motion.div>
     </div>
   );

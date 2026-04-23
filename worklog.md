@@ -189,3 +189,30 @@ Stage Summary:
 - 3 páginas modificadas: /driver/rides, /driver/earnings, /driver/layout
 - Todo funcional con Supabase — sin datos demo
 - Servidor corriendo en puerto 3001, HTTP 200
+---
+Task ID: 12
+Agent: Main Agent
+Task: Mejorar app de Admin estilo Uber/Didi - seguridad + funcionalidad real
+
+Work Log:
+- BLOQUEADO registro público de admin — /admin/register ahora muestra "Registro Restringido", solo super_admin puede crear admins
+- ELIMINADAS credenciales demo del login — campos vacíos, sin link de registro, sin texto "Demo:"
+- Dashboard mejorado: 8 stat cards (SOS activos, cola retiros, docs pendientes), auto-refresh 30s, nombres de conductor en viajes, porcentajes reales vs ayer
+- Conductores: búsqueda/filtro, suspender/reactivar, ver documentos, historial ganancias, Supabase Realtime
+- Usuarios: búsqueda/filtro por rol, bloquear/desbloquear, verificar, cambiar rol
+- Viajes: búsqueda/filtro por estado/fecha, cancelar, reasignar conductor (modal con conductores online)
+- SOS Alertas: RED urgente con pulsación, resolver SOS, Google Maps link, sonido, Realtime, auto-refresh 10s
+- Reporte de Pagos: 8 stat cards, gráfico ingresos 30 días, tabla transacciones, cola retiros con aprobar/rechazar, 2 APIs nuevas
+- Chat Soporte: filtro por estado, Realtime en mensajes, sonido notificación
+- God's View: mapa con marcadores de conductores, tabla/lista, detalle al seleccionar, auto-refresh 15s
+- Sidebar layout: enlace "Admins" solo visible para super_admin, "SOS Alertas" siempre visible
+- 2 APIs nuevas: /api/withdrawals/approve, /api/withdrawals/reject
+- Build exitoso, servidor reiniciado
+
+Stage Summary:
+- 11/11 tareas completadas
+- 8 páginas modificadas: register, login, dashboard, drivers, users, rides, layout, driver-alerts, payment-report, chat, gods-view
+- 2 APIs nuevas: withdrawals/approve, withdrawals/reject
+- Seguridad: registro bloqueado, credenciales demo eliminadas, super_admin gate
+- Todo funcional con Supabase — sin datos demo
+- Servidor corriendo en puerto 3001, HTTP 200

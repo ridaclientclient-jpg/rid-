@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, MapPin, DollarSign, CheckCircle2, XCircle, Clock,
-  Eye, RotateCcw, Ban, XCircle as XIcon, Loader2,
+  Eye, Ban, XCircle as XIcon, Loader2,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  RefreshCw, Car, ArrowLeftRight, Calendar, Filter,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type RideStatus = 'completed' | 'cancelled' | 'in_progress' | 'pending' | 'searching' | 'assigned' | 'arriving' | 'started';
 
@@ -17,43 +19,42 @@ interface RideRow {
   realId: string;
   passenger: string;
   driver: string;
+  driverId: string | null;
   origin: string;
   destination: string;
   price: number;
+  paymentMethod: string;
   status: RideStatus;
   date: string;
   duration: string;
   distance: string;
 }
 
+interface DriverOption {
+  id: string;
+  name: string;
+}
+
 const PAGE_SIZE = 20;
 
-function mapRideStatus(raw: string): RideStatus {
-  if (['started', 'assigned', 'arriving'].includes(raw)) return 'in_progress';
-  if (raw === 'searching') return 'pending';
-  if (['completed', 'cancelled', 'in_progress', 'pending'].includes(raw)) return raw as RideStatus;
-  return 'pending';
-}
-
-function statusToUI(status: RideStatus) {
-  const cfg: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-    completed: { label: 'Completado', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', icon: CheckCircle2 },
-    cancelled: { label: 'Cancelado', color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: XCircle },
-    in_progress: { label: 'En curso', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: Clock },
-    pending: { label: 'Pendiente', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', icon: Clock },
-  };
-  return cfg[status] || cfg.pending;
-}
-
-const statusConfig = {
+const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   completed: { label: 'Completado', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', icon: CheckCircle2 },
   cancelled: { label: 'Cancelado', color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: XCircle },
   in_progress: { label: 'En curso', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: Clock },
   pending: { label: 'Pendiente', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', icon: Clock },
 };
 
-const filterTabs = ['Todos', 'Activos', 'Completados', 'Cancelados'] as const;
-const dateFilters = ['Hoy', 'Esta semana', 'Este mes'] as const;
+const filterTabs = [
+  { label: 'Todos', value: 'all' },
+  { label: 'Buscando', value: 'searching' },
+  { label: 'Asignado', value: 'assigned' },
+  { label: 'Llegando', value: 'arriving' },
+  { label: 'En curso', value: 'started' },
+  { label: 'Completados', value: 'completed' },
+  { label: 'Cancelados', value: 'cancelled' },
+] as const;
+
+const dateFilters = ['Todos', 'Hoy', 'Esta semana', 'Este mes'] as const;
 
 function buildDateFilter(dateFilter: string): string | null {
   if (dateFilter === 'Hoy') {
@@ -72,22 +73,76 @@ function buildDateFilter(dateFilter: string): string | null {
   return null;
 }
 
+function formatCurrency(amount: number): string {
+  return `₡${amount.toLocaleString()}`;
+}
+
+/* ─── Loading Skeleton ────────────────────────────────────── */
+function RidesSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <Skeleton className="h-9 w-48 bg-white/10" />
+        <Skeleton className="h-5 w-64 mt-2 bg-white/5" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="glass rounded-xl p-4">
+            <Skeleton className="h-5 w-20 bg-white/10 mb-2" />
+            <Skeleton className="h-8 w-12 bg-white/5" />
+          </div>
+        ))}
+      </div>
+      <div className="glass rounded-2xl p-4">
+        <Skeleton className="h-10 w-full bg-white/5" />
+        <div className="flex gap-2 mt-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-20 bg-white/5" />
+          ))}
+        </div>
+        <div className="flex gap-2 mt-2">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-20 bg-white/5" />
+          ))}
+        </div>
+      </div>
+      <div className="glass rounded-2xl overflow-hidden">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="border-b border-white/5 px-5 py-4 flex items-center gap-4">
+            <Skeleton className="h-4 w-16 bg-white/5" />
+            <Skeleton className="h-4 w-24 bg-white/5" />
+            <Skeleton className="h-4 w-24 bg-white/5 hidden md:block" />
+            <Skeleton className="h-6 w-20 bg-white/5" />
+            <Skeleton className="h-4 w-12 bg-white/5 ml-auto" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function RidesPage() {
   const [rides, setRides] = useState<RideRow[]>([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('Todos');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('Hoy');
   const [selectedRide, setSelectedRide] = useState<RideRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
+  /* ─── Reassign driver state ──────────────────────────── */
+  const [reassignRide, setReassignRide] = useState<RideRow | null>(null);
+  const [availableDrivers, setAvailableDrivers] = useState<DriverOption[]>([]);
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [selectedDriverForReassign, setSelectedDriverForReassign] = useState('');
+  const [reassigning, setReassigning] = useState(false);
+
   const fetchRides = useCallback(async (currentDateFilter: string, currentPage: number) => {
     setLoading(true);
     try {
       const dateThreshold = buildDateFilter(currentDateFilter);
 
-      // Build the count query with the same date filter
       let countQuery = supabase
         .from('rides')
         .select('*', { count: 'exact', head: true });
@@ -101,7 +156,6 @@ export default function RidesPage() {
       }
       setTotalCount(count || 0);
 
-      // Build the data query
       const from = (currentPage - 1) * PAGE_SIZE;
       const to = currentPage * PAGE_SIZE - 1;
 
@@ -124,7 +178,6 @@ export default function RidesPage() {
         return;
       }
 
-      // Fetch rider profiles for names
       const riderIds = [...new Set((rideData || []).map(r => r.rider_id).filter(Boolean))];
       const driverIds = [...new Set((rideData || []).map(r => r.driver_id).filter(Boolean))];
 
@@ -141,7 +194,6 @@ export default function RidesPage() {
         }
       }
 
-      // For drivers, first get driver records to map driver_id to user_id, then get profiles
       if (driverIds.length > 0) {
         const { data: driverRecords } = await supabase
           .from('drivers')
@@ -169,17 +221,32 @@ export default function RidesPage() {
       }
 
       const mapped: RideRow[] = (rideData || []).map(r => {
-        const uiStatus = mapRideStatus(r.status);
+        let uiStatus: RideStatus;
+        if (r.status === 'started' || r.status === 'assigned' || r.status === 'arriving') uiStatus = 'in_progress';
+        else if (r.status === 'searching') uiStatus = 'pending';
+        else if (r.status === 'completed' || r.status === 'cancelled') uiStatus = r.status as RideStatus;
+        else uiStatus = 'pending';
+
         const dur = r.duration ? `${Math.round(r.duration)} min` : (uiStatus === 'in_progress' ? 'En curso' : '-');
         const dist = r.distance ? `${r.distance.toFixed(1)} km` : '-';
+
+        const paymentLabels: Record<string, string> = {
+          cash: 'Efectivo',
+          wallet: 'Billetera',
+          card: 'Tarjeta',
+          sinpe: 'SINPE',
+        };
+
         return {
           id: r.id.slice(0, 8).toUpperCase(),
           realId: r.id,
           passenger: profileMap[r.rider_id] || 'Desconocido',
           driver: driverMap[r.driver_id || ''] || 'Sin asignar',
+          driverId: r.driver_id || null,
           origin: r.origin || r.origin_address || '-',
           destination: r.destination || r.dest_address || '-',
           price: r.price || 0,
+          paymentMethod: paymentLabels[r.payment_method || ''] || r.payment_method || '-',
           status: uiStatus,
           date: r.created_at,
           duration: dur,
@@ -196,7 +263,6 @@ export default function RidesPage() {
     }
   }, []);
 
-  // Fetch on mount and when filters/page change
   useEffect(() => {
     fetchRides(dateFilter, page);
   }, [dateFilter, page, fetchRides]);
@@ -209,32 +275,41 @@ export default function RidesPage() {
       r.destination.toLowerCase().includes(search.toLowerCase());
 
     let matchStatus = true;
-    switch (statusFilter) {
-      case 'Activos': matchStatus = r.status === 'in_progress' || r.status === 'pending'; break;
-      case 'Completados': matchStatus = r.status === 'completed'; break;
-      case 'Cancelados': matchStatus = r.status === 'cancelled'; break;
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'started') {
+        matchStatus = ['started', 'assigned', 'arriving'].includes(r.status) || r.status === 'in_progress';
+      } else if (statusFilter === 'searching') {
+        matchStatus = r.status === 'pending' || r.status === 'searching';
+      } else if (statusFilter === 'assigned') {
+        matchStatus = r.status === 'in_progress';
+      } else if (statusFilter === 'arriving') {
+        matchStatus = r.status === 'in_progress';
+      } else {
+        matchStatus = r.status === statusFilter;
+      }
     }
     return matchSearch && matchStatus;
   });
 
   const totalRevenue = rides.filter(r => r.status === 'completed').reduce((sum, r) => sum + r.price, 0);
+  const completedToday = rides.filter(r => r.status === 'completed').length;
+  const cancelledCount = rides.filter(r => r.status === 'cancelled').length;
+  const activeNow = rides.filter(r => r.status === 'in_progress' || r.status === 'pending').length;
 
   const stats = [
     { label: 'Total Viajes', value: totalCount, color: 'text-white' },
-    { label: 'Completados', value: rides.filter(r => r.status === 'completed').length, color: 'text-emerald-400' },
-    { label: 'Cancelados', value: rides.filter(r => r.status === 'cancelled').length, color: 'text-red-400' },
-    { label: 'Ingresos', value: `₡${totalRevenue.toLocaleString()}`, color: 'text-cyan-400' },
+    { label: 'Activos', value: activeNow, color: 'text-cyan-400' },
+    { label: 'Completados', value: completedToday, color: 'text-emerald-400' },
+    { label: 'Cancelados', value: cancelledCount, color: 'text-red-400' },
+    { label: 'Ingresos', value: formatCurrency(totalRevenue), color: 'text-amber-400' },
   ];
 
-  const cancelRide = async (rideShortId: string) => {
-    const ride = rides.find(r => r.id === rideShortId);
-    if (!ride) return;
-
+  const cancelRide = async (rideRealId: string, rideShortId: string) => {
     try {
       const { error } = await supabase
         .from('rides')
         .update({ status: 'cancelled' })
-        .eq('id', ride.realId);
+        .eq('id', rideRealId);
 
       if (error) {
         toast.error('Error al cancelar viaje');
@@ -245,21 +320,87 @@ export default function RidesPage() {
         r.id === rideShortId ? { ...r, status: 'cancelled' as RideStatus } : r
       ));
       toast.success(`Viaje ${rideShortId} cancelado`);
+      if (selectedRide?.id === rideShortId) {
+        setSelectedRide(prev => prev ? { ...prev, status: 'cancelled' } : null);
+      }
     } catch (err) {
       console.error('Cancel error:', err);
       toast.error('Error al cancelar viaje');
     }
   };
 
-  const refundRide = (id: string) => {
-    toast.success(`Reembolso procesado para ${id}`);
+  /* ─── Reassign driver ─────────────────────────────────── */
+  const openReassign = async (ride: RideRow) => {
+    setReassignRide(ride);
+    setSelectedRide(null);
+    setReassignLoading(true);
+    setSelectedDriverForReassign('');
+
+    try {
+      const { data: driverRecords } = await supabase
+        .from('drivers')
+        .select('id, user_id, status')
+        .eq('status', 'online')
+        .limit(50);
+
+      if (driverRecords && driverRecords.length > 0) {
+        const userIds = driverRecords.map(d => d.user_id).filter(Boolean);
+        const driverIdToUserId: Record<string, string> = {};
+        driverRecords.forEach(d => { driverIdToUserId[d.id] = d.user_id; });
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name')
+          .in('id', userIds);
+
+        if (profiles) {
+          const profMap: Record<string, string> = {};
+          profiles.forEach(p => { profMap[p.id] = p.name; });
+          const options: DriverOption[] = driverRecords.map(d => ({
+            id: d.id,
+            name: profMap[d.user_id] || 'Conductor',
+          }));
+          setAvailableDrivers(options);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching drivers for reassign:', err);
+      toast.error('Error al cargar conductores disponibles');
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
+  const executeReassign = async () => {
+    if (!reassignRide || !selectedDriverForReassign) return;
+
+    setReassigning(true);
+    try {
+      const { error } = await supabase
+        .from('rides')
+        .update({ driver_id: selectedDriverForReassign, status: 'assigned' })
+        .eq('id', reassignRide.realId);
+
+      if (error) {
+        toast.error('Error al reasignar conductor');
+        return;
+      }
+
+      toast.success('Conductor reasignado exitosamente');
+      setReassignRide(null);
+      fetchRides(dateFilter, page);
+    } catch (err) {
+      console.error('Reassign error:', err);
+      toast.error('Error al reasignar conductor');
+    } finally {
+      setReassigning(false);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const showingFrom = totalCount > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
   const showingTo = Math.min(page * PAGE_SIZE, totalCount);
 
-  // Generate page numbers to display
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
     const maxVisible = 5;
@@ -274,19 +415,29 @@ export default function RidesPage() {
 
   const handleDateFilterChange = (df: string) => {
     setDateFilter(df);
-    setPage(1); // Reset to first page when date filter changes
+    setPage(1);
   };
+
+  if (loading) return <RidesSkeleton />;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white">Viajes</h1>
-        <p className="text-gray-400 mt-1">Gestion y seguimiento de todos los viajes</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Viajes</h1>
+          <p className="text-gray-400 mt-1">Gestion y seguimiento de todos los viajes</p>
+        </div>
+        <button
+          onClick={() => fetchRides(dateFilter, page)}
+          className="flex items-center gap-2 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Actualizar
+        </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((stat, i) => (
           <motion.div key={i} className="glass rounded-xl p-4" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <p className="text-xs text-gray-500 uppercase tracking-wider">{stat.label}</p>
@@ -314,7 +465,7 @@ export default function RidesPage() {
                 key={df}
                 onClick={() => handleDateFilterChange(df)}
                 className={`px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-                  dateFilter === df ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
+                  dateFilter === df ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-gray-400 hover:text-white border border-transparent'
                 }`}
               >
                 {df}
@@ -325,15 +476,15 @@ export default function RidesPage() {
         <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
           {filterTabs.map((tab) => (
             <button
-              key={tab}
-              onClick={() => setStatusFilter(tab)}
+              key={tab.value}
+              onClick={() => setStatusFilter(tab.value)}
               className={`px-4 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
-                statusFilter === tab
+                statusFilter === tab.value
                   ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
                   : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-transparent'
               }`}
             >
-              {tab}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -341,153 +492,150 @@ export default function RidesPage() {
 
       {/* Rides Table */}
       <motion.div className="glass rounded-2xl overflow-hidden" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/5">
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Pasajero</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Conductor</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden xl:table-cell">Origen</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden xl:table-cell">Destino</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Estado</th>
+                <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Precio</th>
+                <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRides.map((ride, i) => {
+                const cfg = statusConfig[ride.status] || statusConfig.pending;
+                const StatusIcon = cfg.icon;
+                const canCancel = ride.status === 'in_progress' || ride.status === 'pending';
+                const canReassign = ride.status === 'pending' || ride.status === 'in_progress';
+
+                return (
+                  <motion.tr
+                    key={ride.realId}
+                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 + i * 0.03 }}
+                  >
+                    <td className="px-5 py-3 text-sm text-cyan-400 font-mono">{ride.id}</td>
+                    <td className="px-5 py-3 text-sm text-white">{ride.passenger}</td>
+                    <td className="px-5 py-3 text-sm text-gray-400 hidden md:table-cell">{ride.driver}</td>
+                    <td className="px-5 py-3 text-sm text-gray-400 hidden xl:table-cell max-w-[180px] truncate">{ride.origin}</td>
+                    <td className="px-5 py-3 text-sm text-gray-400 hidden xl:table-cell max-w-[180px] truncate">{ride.destination}</td>
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
+                        <StatusIcon className="w-3 h-3" />
+                        {cfg.label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-sm text-white text-right font-medium">{formatCurrency(ride.price)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setSelectedRide(ride)}
+                          className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
+                          title="Ver detalles"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {canReassign && (
+                          <button
+                            onClick={() => openReassign(ride)}
+                            className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
+                            title="Reasignar conductor"
+                          >
+                            <Car className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canCancel && (
+                          <button
+                            onClick={() => cancelRide(ride.realId, ride.id)}
+                            className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                            title="Cancelar"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </motion.tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredRides.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            <MapPin className="w-10 h-10 mx-auto mb-2 opacity-50" />
+            <p>No se encontraron viajes</p>
           </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-white/5">
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Pasajero</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Conductor</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden xl:table-cell">Origen</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden xl:table-cell">Destino</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Estado</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Precio</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRides.map((ride, i) => {
-                    const cfg = statusConfig[ride.status] || statusConfig.pending;
-                    const StatusIcon = cfg.icon;
-                    return (
-                      <motion.tr
-                        key={ride.realId}
-                        className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.3 + i * 0.03 }}
-                      >
-                        <td className="px-5 py-3 text-sm text-cyan-400 font-mono">{ride.id}</td>
-                        <td className="px-5 py-3 text-sm text-white">{ride.passenger}</td>
-                        <td className="px-5 py-3 text-sm text-gray-400 hidden md:table-cell">{ride.driver}</td>
-                        <td className="px-5 py-3 text-sm text-gray-400 hidden xl:table-cell">{ride.origin}</td>
-                        <td className="px-5 py-3 text-sm text-gray-400 hidden xl:table-cell">{ride.destination}</td>
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
-                            <StatusIcon className="w-3 h-3" />
-                            {cfg.label}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-white text-right font-medium">₡{ride.price.toLocaleString()}</td>
-                        <td className="px-5 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setSelectedRide(ride)}
-                              className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
-                              title="Ver detalles"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {ride.status === 'completed' && (
-                              <button
-                                onClick={() => refundRide(ride.id)}
-                                className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
-                                title="Reembolsar"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            )}
-                            {(ride.status === 'in_progress' || ride.status === 'pending') && (
-                              <button
-                                onClick={() => cancelRide(ride.id)}
-                                className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                                title="Cancelar"
-                              >
-                                <Ban className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        )}
+
+        {/* Pagination */}
+        {totalCount > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
+            <p className="text-xs text-gray-400">
+              Mostrando {showingFrom}-{showingTo} de {totalCount} viajes
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(1)}
+                disabled={page === 1}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Primera pagina"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Pagina anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {pageNumbers.map((pageNum) => (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`min-w-[2rem] h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
+                    page === pageNum
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Pagina siguiente"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setPage(totalPages)}
+                disabled={page === totalPages}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Ultima pagina"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
             </div>
-
-            {filteredRides.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                <MapPin className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                <p>No se encontraron viajes</p>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {totalCount > 0 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
-                <p className="text-xs text-gray-400">
-                  Mostrando {showingFrom}-{showingTo} de {totalCount} viajes
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage(1)}
-                    disabled={page === 1}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    title="Primera pagina"
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    title="Pagina anterior"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  {pageNumbers.map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`min-w-[2rem] h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
-                        page === pageNum
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                          : 'text-gray-400 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    title="Pagina siguiente"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage(totalPages)}
-                    disabled={page === totalPages}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                    title="Ultima pagina"
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </motion.div>
 
-      {/* Ride Detail Modal */}
+      {/* ═══════════════════════════════════════════════════════
+          RIDE DETAIL MODAL
+          ═══════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {selectedRide && (
           <motion.div
@@ -538,7 +686,11 @@ export default function RidesPage() {
                   </div>
                   <div className="bg-white/5 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Precio</p>
-                    <p className="text-sm text-emerald-400 mt-0.5 font-bold">₡{selectedRide.price.toLocaleString()}</p>
+                    <p className="text-sm text-emerald-400 mt-0.5 font-bold">{formatCurrency(selectedRide.price)}</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Metodo de Pago</p>
+                    <p className="text-sm text-white mt-0.5">{selectedRide.paymentMethod}</p>
                   </div>
                   <div className="bg-white/5 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Fecha</p>
@@ -547,10 +699,6 @@ export default function RidesPage() {
                   <div className="bg-white/5 rounded-xl p-3">
                     <p className="text-xs text-gray-500">Duracion</p>
                     <p className="text-sm text-white mt-0.5">{selectedRide.duration}</p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <p className="text-xs text-gray-500">Distancia</p>
-                    <p className="text-sm text-white mt-0.5">{selectedRide.distance}</p>
                   </div>
                 </div>
 
@@ -574,7 +722,128 @@ export default function RidesPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Actions */}
+                {(selectedRide.status === 'in_progress' || selectedRide.status === 'pending') && (
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        cancelRide(selectedRide.realId, selectedRide.id);
+                        setSelectedRide(null);
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors"
+                    >
+                      Cancelar Viaje
+                    </button>
+                    <button
+                      onClick={() => {
+                        openReassign(selectedRide);
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm font-medium hover:bg-blue-500/20 transition-colors"
+                    >
+                      Reasignar Conductor
+                    </button>
+                  </div>
+                )}
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════
+          REASSIGN DRIVER MODAL
+          ═══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {reassignRide && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setReassignRide(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="glass-strong rounded-2xl p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <ArrowLeftRight className="w-5 h-5 text-blue-400" />
+                    Reasignar Conductor
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-1">Viaje {reassignRide.id}</p>
+                </div>
+                <button onClick={() => setReassignRide(null)} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white">
+                  <XIcon className="w-5 h-5" />
+                </button>
+              </div>
+
+              {reassignLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-2">Conductor actual: <span className="text-gray-300">{reassignRide.driver}</span></label>
+                  </div>
+
+                  {availableDrivers.length === 0 ? (
+                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 text-center">
+                      <p className="text-sm text-amber-400">No hay conductores disponibles en linea</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-2">Seleccionar nuevo conductor</label>
+                      <div className="max-h-48 overflow-y-auto space-y-2">
+                        {availableDrivers.map((driver) => (
+                          <button
+                            key={driver.id}
+                            onClick={() => setSelectedDriverForReassign(driver.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all ${
+                              selectedDriverForReassign === driver.id
+                                ? 'bg-blue-500/20 border border-blue-500/40 text-white'
+                                : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10'
+                            }`}
+                          >
+                            <Car className={`w-4 h-4 ${selectedDriverForReassign === driver.id ? 'text-blue-400' : 'text-gray-500'}`} />
+                            <span>{driver.name}</span>
+                            <span className="text-xs text-gray-500 ml-auto">{driver.id.slice(0, 6)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setReassignRide(null)}
+                      className="flex-1 py-2.5 rounded-xl border border-white/10 text-gray-300 text-sm hover:bg-white/5 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={executeReassign}
+                      disabled={!selectedDriverForReassign || reassigning}
+                      className="flex-1 py-2.5 rounded-xl btn-neon text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {reassigning ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Reasignando...
+                        </>
+                      ) : (
+                        'Reasignar'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
