@@ -57,6 +57,7 @@ export default function DriverEarnings() {
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [driverData, setDriverData] = useState<Driver | null>(null);
   const [hasWithdrawnToday, setHasWithdrawnToday] = useState(false);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [todayEarnings, setTodayEarnings] = useState(0);
@@ -93,7 +94,19 @@ export default function DriverEarnings() {
 
   const maxAmount = Math.max(...weeklyData.map(d => d.amount), 1);
   const maxHours = 12;
-  const dailyGoal = 75660;
+  const dailyGoal = driverData?.daily_goal || 50000;
+
+  // Real stats from driver data
+  const accepted = driverData?.accepted_rides || 0;
+  const rejected = driverData?.rejected_rides || 0;
+  const totalAR = accepted + rejected;
+  const acceptanceRate = totalAR > 0 ? Math.round((accepted / totalAR) * 100) : 0;
+  const cancels = driverData?.cancelled_rides || 0;
+  const totalRides = driverData?.total_rides || 0;
+  const cancellationRate = (cancels > 0 && totalRides > 0) ? Math.round((cancels / totalRides) * 100) : 0;
+  const driverRating = driverData?.rating || 0;
+  const todayDayName = ['Dom','Lun','Mar','Mie','Jue','Vie','Sab'][new Date().getDay()];
+  const totalTripsToday = weeklyData.find(d => d.day === todayDayName && d.amount > 0) ? 1 : 0;
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
@@ -109,6 +122,7 @@ export default function DriverEarnings() {
       if (driver) {
         setTotalEarnings(driver.total_earnings || 0);
         setWorkHours(driver.work_hours_today || 0);
+        setDriverData(driver);
       }
 
       // Fetch or auto-create wallet
@@ -850,7 +864,7 @@ export default function DriverEarnings() {
             <div className="space-y-2">
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
                 <span className="text-xs text-gray-300">Viajes completados hoy</span>
-                <span className="text-xs font-bold text-white">{weeklyData.reduce((a, d) => a + (d.amount > 0 ? 1 : 0), 0)}</span>
+                <span className="text-xs font-bold text-white">{totalTripsToday}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
                 <span className="text-xs text-gray-300">Viajes esta semana</span>
@@ -858,23 +872,23 @@ export default function DriverEarnings() {
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
                 <span className="text-xs text-gray-300">Aceptacion de viajes</span>
-                <span className="text-xs font-bold text-emerald-400">92%</span>
+                <span className={`text-xs font-bold ${acceptanceRate >= 80 ? 'text-emerald-400' : acceptanceRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>{acceptanceRate}%</span>
               </div>
             </div>
           )}
           {activeTab === 'demand' && (
             <div className="space-y-2">
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
-                <span className="text-xs text-gray-300">Solicitudes activas</span>
-                <span className="text-xs font-bold text-emerald-400">Alta</span>
+                <span className="text-xs text-gray-300">Viajes aceptados</span>
+                <span className="text-xs font-bold text-emerald-400">{driverData?.accepted_rides || 0}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
-                <span className="text-xs text-gray-300">Zona con mas demanda</span>
-                <span className="text-xs font-bold text-white">Centro</span>
+                <span className="text-xs text-gray-300">Viajes rechazados</span>
+                <span className="text-xs font-bold text-amber-400">{driverData?.rejected_rides || 0}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
-                <span className="text-xs text-gray-300">Mejor horario</span>
-                <span className="text-xs font-bold text-amber-400">7am - 9am</span>
+                <span className="text-xs text-gray-300">Viajes cancelados</span>
+                <span className="text-xs font-bold text-red-400">{driverData?.cancelled_rides || 0}</span>
               </div>
             </div>
           )}
@@ -883,17 +897,17 @@ export default function DriverEarnings() {
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
                 <span className="text-xs text-gray-300">Calificacion promedio</span>
                 <div className="flex items-center gap-1">
-                  <CreditCard className="w-3 h-3 text-amber-400" />
-                  <span className="text-xs font-bold text-white">5.00</span>
+                  <Star className="w-3 h-3 text-amber-400" />
+                  <span className="text-xs font-bold text-white">{driverRating > 0 ? driverRating.toFixed(2) : 'N/A'}</span>
                 </div>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
-                <span className="text-xs text-gray-300">Cancelaciones</span>
-                <span className="text-xs font-bold text-white">2%</span>
+                <span className="text-xs text-gray-300">Tasa de cancelacion</span>
+                <span className={`text-xs font-bold ${cancellationRate <= 5 ? 'text-emerald-400' : cancellationRate <= 15 ? 'text-amber-400' : 'text-red-400'}`}>{cancellationRate}%</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
-                <span className="text-xs text-gray-300">Tiempo de llegada prom.</span>
-                <span className="text-xs font-bold text-emerald-400">4 min</span>
+                <span className="text-xs text-gray-300">Total de viajes</span>
+                <span className="text-xs font-bold text-white">{driverData?.total_rides || 0}</span>
               </div>
             </div>
           )}
