@@ -10,7 +10,7 @@ import {
   Power, PowerOff, MapPin, Clock, Star, Car, Navigation, AlertTriangle,
   Phone, MessageSquare, CheckCircle2, X as XIcon, ArrowRight,
   ChevronRight, History, User, Loader2, Volume2, VolumeX, Timer,
-  DollarSign, Route as RouteIcon,
+  DollarSign, Route as RouteIcon, Zap, Calendar, Flame, TrendingUp,
 } from 'lucide-react';
 import GoogleMap from '@/components/GoogleMap';
 import RideChat, { ChatToggleButton } from '@/components/RideChat';
@@ -54,6 +54,7 @@ interface IncomingRide {
   ride_type?: string;
   payment_method?: string;
   distance_km?: number;
+  surge_multiplier?: number;
 }
 
 interface CompletedRide {
@@ -66,6 +67,25 @@ interface CompletedRide {
   driver_earnings?: number;
   completed_at: string;
   has_rated: boolean;
+}
+
+interface SurgeZone {
+  id: string;
+  name: string;
+  multiplier: number;
+  reason: string;
+  is_active: boolean;
+  expires_at: string;
+}
+
+interface ScheduledRide {
+  id: string;
+  origin: string;
+  destination: string;
+  price: number;
+  ride_type?: string;
+  scheduled_at: string;
+  distance?: number;
 }
 
 const ACCEPT_TIMEOUT = 15; // seconds
@@ -119,6 +139,14 @@ export default function DriverRides() {
   const searchChannelRef = useRef<RealtimeChannel | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
+  // Feature 4: Surge zones
+  const [surgeZones, setSurgeZones] = useState<SurgeZone[]>([]);
+
+  // Feature 5: Scheduled rides + Tab system
+  const [scheduledRides, setScheduledRides] = useState<ScheduledRide[]>([]);
+  const [loadingScheduled, setLoadingScheduled] = useState(false);
+  const [activeTab, setActiveTab] = useState<'current' | 'scheduled'>('current');
 
   // Fetch driver
   const fetchDriver = useCallback(async () => {
@@ -189,11 +217,47 @@ export default function DriverRides() {
     } catch {} finally { setLoadingCompleted(false); }
   }, [driver?.id, user?.id]);
 
+  // Feature 4: Fetch surge zones
+  const fetchSurgeZones = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('surge_zones')
+        .select('*')
+        .eq('is_active', true)
+        .gte('expires_at', new Date().toISOString());
+      setSurgeZones(data || []);
+    } catch { setSurgeZones([]); }
+  }, []);
+
+  // Feature 5: Fetch scheduled rides
+  const fetchScheduledRides = useCallback(async () => {
+    if (!driver?.id) return;
+    setLoadingScheduled(true);
+    try {
+      const { data } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('driver_id', driver.id)
+        .eq('status', 'scheduled')
+        .order('scheduled_at', { ascending: true });
+      setScheduledRides((data || []) as ScheduledRide[]);
+    } catch { setScheduledRides([]); }
+    finally { setLoadingScheduled(false); }
+  }, [driver?.id]);
+
   // Initial load
   useEffect(() => { fetchDriver(); }, [fetchDriver]);
   useEffect(() => {
-    if (driver?.id) { fetchActiveRide(); fetchCompletedRides(); }
-  }, [driver?.id, fetchActiveRide, fetchCompletedRides]);
+    if (driver?.id) { fetchActiveRide(); fetchCompletedRides(); fetchScheduledRides(); }
+  }, [driver?.id, fetchActiveRide, fetchCompletedRides, fetchScheduledRides]);
+
+  // Fetch surge zones when online
+  useEffect(() => {
+    if (!isOnline) { setSurgeZones([]); return; }
+    fetchSurgeZones();
+    const interval = setInterval(fetchSurgeZones, 30000);
+    return () => clearInterval(interval);
+  }, [isOnline, fetchSurgeZones]);
 
   // GPS tracking
   useEffect(() => {
@@ -206,7 +270,7 @@ export default function DriverRides() {
         if (session?.access_token) {
           fetch('/api/drivers/update-location', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
             body: JSON.stringify({ latitude, longitude }),
           }).catch(() => {});
         }
@@ -307,6 +371,7 @@ export default function DriverRides() {
             price: ride.price, distance: ride.distance, duration: ride.duration,
             ride_type: ride.ride_type, payment_method: ride.payment_method,
             distance_km: Math.round(distKm * 10) / 10,
+            surge_multiplier: ride.surge_multiplier,
           });
 
           if (soundEnabled) playIncomingSound();
@@ -319,7 +384,7 @@ export default function DriverRides() {
     // Also fetch any existing searching rides
     if (userCoords) {
       supabase.from('rides')
-        .select('id, rider_id, origin, destination, origin_lat, origin_lng, dest_lat, dest_lng, price, distance, duration, ride_type, payment_method, created_at')
+        .select('id, rider_id, origin, destination, origin_lat, origin_lng, dest_lat, dest_lng, price, distance, duration, ride_type, payment_method, created_at, surge_multiplier')
         .eq('status', 'searching')
         .gte('created_at', new Date(Date.now() - 60000).toISOString())
         .limit(3)
@@ -342,6 +407,7 @@ export default function DriverRides() {
               price: ride.price, distance: ride.distance, duration: ride.duration,
               ride_type: ride.ride_type, payment_method: ride.payment_method,
               distance_km: Math.round(dist * 10) / 10,
+              surge_multiplier: ride.surge_multiplier,
             });
             if (soundEnabled) playIncomingSound();
             break; // Show only one at a time
@@ -361,7 +427,7 @@ export default function DriverRides() {
     try {
       const res = await fetch('/api/drivers/toggle-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ status: isOnline ? 'offline' : 'online', latitude: userCoords?.lat, longitude: userCoords?.lng }),
       });
       const data = await res.json();
@@ -383,7 +449,7 @@ export default function DriverRides() {
     try {
       const res = await fetch('/api/rides/accept', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ ride_id: incomingRide.id }),
       });
       const data = await res.json();
@@ -421,7 +487,7 @@ export default function DriverRides() {
     try {
       const res = await fetch('/api/rides/update-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ ride_id: activeRide.id, new_status: newStatus }),
       });
       const data = await res.json();
@@ -449,7 +515,7 @@ export default function DriverRides() {
     try {
       const res = await fetch('/api/rides/update-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ ride_id: activeRide.id, new_status: 'cancelled' }),
       });
       const data = await res.json();
@@ -465,7 +531,7 @@ export default function DriverRides() {
     try {
       const res = await fetch('/api/sos/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ ride_id: activeRide.id, latitude: userCoords?.lat || 9.9281, longitude: userCoords?.lng || -84.0907 }),
       });
       const data = await res.json();
@@ -496,6 +562,9 @@ export default function DriverRides() {
     ? { origin: { lat: rideToShow.origin_lat, lng: rideToShow.origin_lng }, destination: { lat: rideToShow.dest_lat, lng: rideToShow.dest_lng } } : undefined;
   const currentAction = activeRide ? statusActions[activeRide.status] : null;
   const countdownProgress = (countdown / ACCEPT_TIMEOUT) * 100;
+
+  // Determine if incoming ride has surge
+  const incomingRideHasSurge = incomingRide && incomingRide.surge_multiplier && incomingRide.surge_multiplier > 1;
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)]">
@@ -530,7 +599,7 @@ export default function DriverRides() {
             </div>
             <div className="text-left flex-1">
               <p className="text-lg font-semibold text-white">{isOnline ? 'En Linea' : 'Fuera de Linea'}</p>
-              <p className="text-xs text-gray-400">{activeRide ? 'Viaje activo' : incomingRide ? 'Revisando solicitud...' : isOnline ? 'Recibiendo solicitudes' : 'No recibirás solicitudes'}</p>
+              <p className="text-xs text-gray-400">{activeRide ? 'Viaje activo' : incomingRide ? 'Revisando solicitud...' : isOnline ? 'Recibiendo solicitudes' : 'No recibiras solicitudes'}</p>
             </div>
             {isToggling ? <Loader2 className="w-5 h-5 text-gray-400 animate-spin" /> : (
               <div className={`w-12 h-7 rounded-full transition-colors flex items-center ${isOnline ? 'bg-emerald-500 justify-end' : 'bg-gray-600 justify-start'}`}>
@@ -540,6 +609,46 @@ export default function DriverRides() {
           </button>
         </motion.div>
 
+        {/* Feature 4: Surge Pricing Banner */}
+        <AnimatePresence>
+          {surgeZones.length > 0 && isOnline && !activeRide && !incomingRide && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-orange-500/15 via-red-500/15 to-orange-500/15 border border-orange-500/30 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center animate-pulse">
+                    <Flame className="w-4.5 h-4.5 text-orange-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-orange-300">Alta demanda en tu zona</p>
+                    <p className="text-[10px] text-orange-400/70">Tarifas multiplicadas por demanda</p>
+                  </div>
+                  <span className="text-xs font-bold text-orange-400 bg-orange-500/20 px-2 py-0.5 rounded-full">
+                    {surgeZones.length} {surgeZones.length === 1 ? 'zona' : 'zonas'}
+                  </span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {surgeZones.slice(0, 4).map((zone) => (
+                    <div key={zone.id} className="flex-shrink-0 glass rounded-xl px-3 py-2 min-w-[140px]">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <Zap className="w-3 h-3 text-orange-400" />
+                        <span className="text-xs font-bold text-orange-300">{zone.multiplier}x</span>
+                        <span className="text-[10px] text-gray-400 truncate">{zone.name}</span>
+                      </div>
+                      {zone.reason && <p className="text-[10px] text-gray-500 truncate">{zone.reason}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Active/Incoming rides always show regardless of tab */}
         {/* ==================== INCOMING RIDE (Uber-style) ==================== */}
         <AnimatePresence>
           {incomingRide && (
@@ -548,8 +657,17 @@ export default function DriverRides() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: -30 }}
               transition={{ type: 'spring', damping: 20 }}
-              className="glass-strong rounded-2xl overflow-hidden border-2 border-emerald-500/40"
+              className={`glass-strong rounded-2xl overflow-hidden ${incomingRideHasSurge ? 'border-2 border-orange-500/40' : 'border-2 border-emerald-500/40'}`}
             >
+              {/* Surge badge */}
+              {incomingRideHasSurge && (
+                <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 px-4 py-2 flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-orange-400 animate-pulse" />
+                  <span className="text-xs font-bold text-orange-300">Tarifa surge {incomingRide.surge_multiplier}x</span>
+                  <span className="text-[10px] text-gray-400 ml-auto">Ganancia multiplicada</span>
+                </div>
+              )}
+
               {/* Countdown bar */}
               <div className="h-1.5 bg-gray-800">
                 <motion.div
@@ -577,6 +695,12 @@ export default function DriverRides() {
                   <div className="text-right">
                     <p className="text-2xl font-bold text-white">₡{incomingRide.price.toLocaleString()}</p>
                     {incomingRide.distance && <p className="text-xs text-gray-400">{incomingRide.distance} km</p>}
+                    {incomingRideHasSurge && (
+                      <div className="flex items-center gap-1 justify-end mt-0.5">
+                        <Flame className="w-3 h-3 text-orange-400" />
+                        <span className="text-[10px] font-semibold text-orange-400">+{Math.round((incomingRide.surge_multiplier! - 1) * 100)}% bonus surge</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -627,8 +751,8 @@ export default function DriverRides() {
                   <button
                     onClick={handleAcceptRide}
                     disabled={isAccepting}
-                    className="flex-[2] bg-emerald-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors disabled:opacity-50 text-base"
-                    style={{ boxShadow: '0 0 30px rgba(16, 185, 129, 0.4)' }}
+                    className={`flex-[2] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 text-base transition-colors ${incomingRideHasSurge ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                    style={{ boxShadow: incomingRideHasSurge ? '0 0 30px rgba(249, 115, 22, 0.4)' : '0 0 30px rgba(16, 185, 129, 0.4)' }}
                   >
                     {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
                     Aceptar Viaje
@@ -688,55 +812,140 @@ export default function DriverRides() {
           )}
         </AnimatePresence>
 
-        {/* Waiting state */}
-        {!activeRide && !incomingRide && isOnline && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-8 text-center">
-            <div className="relative inline-block mb-4">
-              <Car className="w-14 h-14 text-cyan-500/30 mx-auto" />
-              <div className="absolute inset-0 flex items-center justify-center"><div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" /></div>
-            </div>
-            <p className="text-sm text-gray-400 font-medium">Esperando solicitudes de viaje</p>
-            <p className="text-xs text-gray-600 mt-1">Cuando un pasajero solicite un viaje cerca de tu ubicacion, aparecer aqui con un temporizador para que aceptes o rechaces</p>
-          </motion.div>
-        )}
-
-        {!activeRide && !incomingRide && !isOnline && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-8 text-center">
-            <PowerOff className="w-14 h-14 text-gray-600 mx-auto mb-4" />
-            <p className="text-sm text-gray-500 font-medium">Conectate para recibir solicitudes</p>
-          </motion.div>
-        )}
-
-        {/* Completed rides */}
+        {/* Feature 5: Tab System — only show when no active/incoming ride */}
         {!activeRide && !incomingRide && (
-          <div className="mt-4">
-            <h2 className="text-sm font-semibold text-gray-400 flex items-center gap-2 mb-3"><History className="w-4 h-4" />Viajes completados</h2>
-            {loadingCompleted && <div className="flex items-center justify-center py-4"><Loader2 className="w-6 h-6 text-emerald-500 animate-spin" /></div>}
-            {!loadingCompleted && completedRides.length === 0 && (
-              <div className="glass rounded-2xl p-6 text-center"><Car className="w-10 h-10 text-gray-600 mx-auto mb-2" /><p className="text-xs text-gray-500">No tienes viajes completados aun</p></div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }}>
+            <div className="flex gap-1 p-1 glass rounded-xl">
+              <button
+                onClick={() => setActiveTab('current')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  activeTab === 'current' ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                <Car className="w-3.5 h-3.5" />
+                En Curso
+              </button>
+              <button
+                onClick={() => setActiveTab('scheduled')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  activeTab === 'scheduled' ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Programados
+                {scheduledRides.length > 0 && (
+                  <span className="text-[10px] bg-cyan-500/30 text-cyan-300 px-1.5 rounded-full">{scheduledRides.length}</span>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ==================== SCHEDULED RIDES TAB ==================== */}
+        {activeTab === 'scheduled' && !activeRide && !incomingRide && (
+          <div className="space-y-3">
+            {loadingScheduled && <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>}
+            {!loadingScheduled && scheduledRides.length === 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-8 text-center">
+                <Calendar className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                <p className="text-sm text-gray-500 font-medium">No tienes viajes programados</p>
+                <p className="text-xs text-gray-600 mt-1">Los viajes agendados por pasajeros aparecen aqui</p>
+              </motion.div>
             )}
-            {completedRides.map((cr) => (
-              <motion.div key={cr.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-4 space-y-2 mb-3">
+            {scheduledRides.map((sr) => (
+              <motion.div key={sr.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-4 space-y-3 border border-cyan-500/10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center text-white text-xs font-bold">{cr.rider_name?.charAt(0) || <User className="w-3.5 h-3.5" />}</div>
-                    <div><p className="text-sm font-medium text-white">{cr.rider_name || 'Pasajero'}</p><p className="text-[10px] text-gray-500">{new Date(cr.completed_at).toLocaleDateString('es-CR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}</p></div>
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/15 flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-cyan-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-cyan-400 font-semibold">
+                        {new Date(sr.scheduled_at).toLocaleDateString('es-CR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </p>
+                      <p className="text-sm font-bold text-white">
+                        {new Date(sr.scheduled_at).toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-sm font-bold text-emerald-400">₡{cr.price.toLocaleString()}</span>
-                    {cr.driver_earnings && <p className="text-[10px] text-gray-500">Ganaste: ₡{cr.driver_earnings.toLocaleString()}</p>}
+                    <span className="text-base font-bold text-emerald-400">₡{sr.price.toLocaleString()}</span>
+                    {sr.ride_type && <p className="text-[10px] text-gray-500">{sr.ride_type}</p>}
                   </div>
                 </div>
-                <div className="flex items-start gap-2 text-xs text-gray-400"><MapPin className="w-3 h-3 mt-0.5 shrink-0 text-emerald-400" /><span className="truncate">{cr.origin} → {cr.destination}</span></div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${cr.has_rated ? 'bg-gray-500/20 text-gray-400' : 'bg-amber-500/20 text-amber-400'}`}>{cr.has_rated ? 'Calificado' : 'Sin calificar'}</span>
-                  {!cr.has_rated && (
-                    <button onClick={() => router.push(`/driver/ride-rating?rideId=${cr.id}`)} className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300"><Star className="w-3.5 h-3.5" />Calificar<ChevronRight className="w-3 h-3" /></button>
-                  )}
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-gray-300 truncate">{sr.origin}</p>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-2 h-2 rounded-full bg-red-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-gray-300 truncate">{sr.destination}</p>
+                  </div>
                 </div>
+                {sr.distance && (
+                  <div className="flex items-center gap-3 pt-1 border-t border-white/5">
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1"><RouteIcon className="w-3 h-3" />{sr.distance} km</span>
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1"><DollarSign className="w-3 h-3" />₡{Math.round(sr.price / (sr.distance || 1))}/km</span>
+                  </div>
+                )}
               </motion.div>
             ))}
           </div>
+        )}
+
+        {/* ==================== CURRENT TAB CONTENT ==================== */}
+        {activeTab === 'current' && !activeRide && !incomingRide && (
+          <>
+            {/* Waiting state */}
+            {isOnline && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-8 text-center">
+                <div className="relative inline-block mb-4">
+                  <Car className="w-14 h-14 text-cyan-500/30 mx-auto" />
+                  <div className="absolute inset-0 flex items-center justify-center"><div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" /></div>
+                </div>
+                <p className="text-sm text-gray-400 font-medium">Esperando solicitudes de viaje</p>
+                <p className="text-xs text-gray-600 mt-1">Cuando un pasajero solicite un viaje cerca de tu ubicacion, aparecer aqui con un temporizador para que aceptes o rechaces</p>
+              </motion.div>
+            )}
+
+            {!isOnline && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-2xl p-8 text-center">
+                <PowerOff className="w-14 h-14 text-gray-600 mx-auto mb-4" />
+                <p className="text-sm text-gray-500 font-medium">Conectate para recibir solicitudes</p>
+              </motion.div>
+            )}
+
+            {/* Completed rides */}
+            <div className="mt-4">
+              <h2 className="text-sm font-semibold text-gray-400 flex items-center gap-2 mb-3"><History className="w-4 h-4" />Viajes completados</h2>
+              {loadingCompleted && <div className="flex items-center justify-center py-4"><Loader2 className="w-6 h-6 text-emerald-500 animate-spin" /></div>}
+              {!loadingCompleted && completedRides.length === 0 && (
+                <div className="glass rounded-2xl p-6 text-center"><Car className="w-10 h-10 text-gray-600 mx-auto mb-2" /><p className="text-xs text-gray-500">No tienes viajes completados aun</p></div>
+              )}
+              {completedRides.map((cr) => (
+                <motion.div key={cr.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-4 space-y-2 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center text-white text-xs font-bold">{cr.rider_name?.charAt(0) || <User className="w-3.5 h-3.5" />}</div>
+                      <div><p className="text-sm font-medium text-white">{cr.rider_name || 'Pasajero'}</p><p className="text-[10px] text-gray-500">{new Date(cr.completed_at).toLocaleDateString('es-CR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}</p></div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-emerald-400">₡{cr.price.toLocaleString()}</span>
+                      {cr.driver_earnings && <p className="text-[10px] text-gray-500">Ganaste: ₡{cr.driver_earnings.toLocaleString()}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs text-gray-400"><MapPin className="w-3 h-3 mt-0.5 shrink-0 text-emerald-400" /><span className="truncate">{cr.origin} → {cr.destination}</span></div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${cr.has_rated ? 'bg-gray-500/20 text-gray-400' : 'bg-amber-500/20 text-amber-400'}`}>{cr.has_rated ? 'Calificado' : 'Sin calificar'}</span>
+                    {!cr.has_rated && (
+                      <button onClick={() => router.push(`/driver/ride-rating?rideId=${cr.id}`)} className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300"><Star className="w-3.5 h-3.5" />Calificar<ChevronRight className="w-3 h-3" /></button>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

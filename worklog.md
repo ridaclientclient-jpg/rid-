@@ -167,3 +167,25 @@ Stage Summary:
 - GPS tracking en tiempo real cuando conductor está online
 - Supabase Realtime para notificaciones instantáneas de nuevos rides
 - Todos los botones del sidebar funcionales
+---
+Task ID: 11
+Agent: Main Agent
+Task: Implementar 9 funcionalidades restantes Uber/Didi para app del conductor
+
+Work Log:
+- SQL ejecutado exitosamente: 5 tablas nuevas (surge_zones, ride_dispatch_log, driver_weekly_reports, driver_referral_stats, driver_referral_rewards), 14 columnas nuevas en drivers y rides, 8 funciones RPC, 4 triggers, 12 settings, 6 índices, RLS policies en todas las tablas, 3 zonas surge iniciales (San José, UCR, Escazú)
+- Fix SQL: eliminada referencia a tabla "admins" inexistente, eliminadas columnas "category" y "description" de settings
+- Feature 4: Zonas de surge en rides page — banner pulsante naranja, info de multiplicador en cards de rides entrantes
+- Feature 5: Viajes programados — tabs "En Curso" | "Programados" en rides page, cards con fecha/hora de pickup
+- Feature 6: Página de reportes semanales — /driver/reports con resumen semanal, gráfico de barras, indicadores de tendencia vs semana anterior
+- Feature 7: Sistema de referidos para conductores — /driver/referrals con código de referido, compartir, estadísticas, lista de referidos
+- Feature 8: Navegación actualizada — sidebar con Reportes y Referidos
+- Feature 9: Desglose por viaje en ganancias — sección expandible en /driver/earnings con tarifa, comisión, propina, bonus surge
+- Build exitoso, servidor reiniciado en puerto 3001
+
+Stage Summary:
+- 9/9 funcionalidades implementadas
+- 2 páginas nuevas: /driver/reports, /driver/referrals
+- 3 páginas modificadas: /driver/rides, /driver/earnings, /driver/layout
+- Todo funcional con Supabase — sin datos demo
+- Servidor corriendo en puerto 3001, HTTP 200

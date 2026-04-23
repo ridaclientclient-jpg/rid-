@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, Car, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X } from 'lucide-react';
+import { Home, Car, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X, BarChart3, Users } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -51,6 +51,8 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
 
   const sidebarMenuItems = [
     { icon: TrendingUp, label: 'Ganancias', desc: 'Tus ingresos', href: '/driver/earnings', badge: null },
+    { icon: BarChart3, label: 'Reportes', desc: 'Reportes semanales', href: '/driver/reports', badge: null },
+    { icon: Users, label: 'Referidos', desc: 'Invita y gana', href: '/driver/referrals', badge: null },
     { icon: Trophy, label: 'Premios', desc: 'Recompensas', href: '/driver/rewards', badge: { text: 'Nuevo', color: 'bg-emerald-500' } },
     { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', href: '/driver/support', badge: null },
     { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', href: '/driver/support', badge: null },

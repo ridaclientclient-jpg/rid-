@@ -9,7 +9,8 @@ import {
   Wallet as WalletIcon, TrendingUp, Clock, ChevronRight, ArrowDownCircle,
   Info, Calendar, CreditCard, Banknote, Loader2, Target,
   Gift, Flag, Zap, BarChart3, ArrowUpCircle, RefreshCw,
-  X, Send, Smartphone, Shield, Users,
+  X, Send, Smartphone, Shield, Users, ChevronDown, ChevronUp,
+  Route as RouteIcon, Star,
 } from 'lucide-react';
 
 interface WeeklyDay {
@@ -51,6 +52,124 @@ function formatRelativeTime(dateStr: string): string {
 
 function formatCurrency(amount: number): string {
   return `₡${Math.round(amount).toLocaleString()}`;
+}
+
+// ═══ Feature 9: Per-Ride Breakdown Component ═══
+function RideBreakdown({ driverId }: { driverId?: string }) {
+  const [rides, setRides] = useState<any[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!driverId) { setLoadingDetail(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('driver_id', driverId)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(20);
+        if (!cancelled) { setRides(data || []); }
+      } catch {} finally { if (!cancelled) setLoadingDetail(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [driverId]);
+
+  if (loadingDetail) {
+    return <div className="flex items-center justify-center py-4"><Loader2 className="w-5 h-5 text-cyan-400 animate-spin" /></div>;
+  }
+
+  if (!rides.length) {
+    return (
+      <div className="glass rounded-2xl p-5 text-center">
+        <RouteIcon className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+        <p className="text-xs text-gray-500">No hay viajes completados con detalle aun</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 max-h-96 overflow-y-auto">
+      {rides.map((ride) => {
+        const fare = ride.price || 0;
+        const commission = ride.commission_rate ? Math.round(fare * ride.commission_rate) : Math.round(fare * 0.15);
+        const tip = ride.tip_amount || 0;
+        const surgeBonus = ride.surge_multiplier && ride.surge_multiplier > 1
+          ? Math.round(fare * (ride.surge_multiplier - 1))
+          : 0;
+        const netEarnings = fare - commission + tip + surgeBonus;
+        const isExpanded = expandedId === ride.id;
+
+        return (
+          <div key={ride.id} className="glass rounded-xl overflow-hidden">
+            <button
+              onClick={() => setExpandedId(isExpanded ? null : ride.id)}
+              className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+            >
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
+                  <CreditCard className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="text-left min-w-0">
+                  <p className="text-xs text-white truncate">{ride.origin} → {ride.destination}</p>
+                  <p className="text-[10px] text-gray-500">
+                    {ride.completed_at
+                      ? new Date(ride.completed_at).toLocaleDateString('es-CR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+                      : new Date(ride.updated_at || ride.created_at).toLocaleDateString('es-CR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+                    }
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-sm font-bold text-emerald-400">{formatCurrency(netEarnings)}</span>
+                {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-500" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-500" />}
+              </div>
+            </button>
+
+            {isExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                className="px-3 pb-3"
+              >
+                <div className="h-px bg-white/5 mb-2" />
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500">Tarifa del viaje</span>
+                    <span className="text-white font-medium">+{formatCurrency(fare)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500">Comision ({Math.round((commission / Math.max(fare, 1)) * 100)}%)</span>
+                    <span className="text-red-400 font-medium">-{formatCurrency(commission)}</span>
+                  </div>
+                  {tip > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Propina</span>
+                      <span className="text-amber-400 font-medium">+{formatCurrency(tip)}</span>
+                    </div>
+                  )}
+                  {surgeBonus > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Bonus surge ({ride.surge_multiplier}x)</span>
+                      <span className="text-orange-400 font-medium">+{formatCurrency(surgeBonus)}</span>
+                    </div>
+                  )}
+                  <div className="h-px bg-white/5 my-1" />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-400 font-semibold">Ganancia neta</span>
+                    <span className="text-emerald-400 font-bold">{formatCurrency(netEarnings)}</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function DriverEarnings() {
@@ -912,6 +1031,19 @@ export default function DriverEarnings() {
             </div>
           )}
         </div>
+      </motion.div>
+
+      {/* ═══ Feature 9: Per-ride breakdown ═══ */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.22 }}
+      >
+        <h2 className="text-sm font-semibold text-gray-400 flex items-center gap-2 mb-3">
+          <RouteIcon className="w-4 h-4" />
+          Detalles por viaje
+        </h2>
+        <RideBreakdown driverId={driverData?.id} />
       </motion.div>
 
       {/* Recent Transactions */}
