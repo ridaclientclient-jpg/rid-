@@ -51,11 +51,11 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
 
   const sidebarMenuItems = [
     { icon: TrendingUp, label: 'Ganancias', desc: 'Tus ingresos', href: '/driver/earnings', badge: null },
-    { icon: Trophy, label: 'Premios', desc: 'Recompensas', action: () => toast.info('Premios proximamente'), badge: { text: 'Nuevo', color: 'bg-emerald-500' } },
-    { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', href: '/client/referral', badge: null },
+    { icon: Trophy, label: 'Premios', desc: 'Recompensas', href: '/driver/rewards', badge: { text: 'Nuevo', color: 'bg-emerald-500' } },
+    { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', href: '/driver/support', badge: null },
     { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', href: '/driver/support', badge: null },
     { icon: MessageSquare, label: 'Notificaciones', desc: notifCount > 0 ? `${notifCount} no leida(s)` : 'Sin novedad', href: '/driver/notifications', badge: notifCount > 0 ? { text: String(notifCount), color: 'bg-red-500' } : null },
-    { icon: InfoIcon, label: 'Centro de info', desc: 'Recursos', action: () => toast.info('Centro de informacion proximamente'), badge: null },
+    { icon: InfoIcon, label: 'Centro de info', desc: 'Recursos', href: '/driver/terms', badge: null },
     { icon: CarIcon, label: 'Vehiculo', desc: 'Tu vehiculo', href: '/driver/vehicle', badge: null },
   ];
 

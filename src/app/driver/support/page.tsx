@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import {
   HelpCircle, MessageSquare, Phone, Mail, Shield,
-  ChevronRight, ChevronDown, Search, Send,
+  ChevronRight, ChevronDown, Search, Send, Loader2,
   Headphones, AlertTriangle, CreditCard, Car, FileText, BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 
 const faqItems = [
   {
@@ -34,6 +37,14 @@ const faqItems = [
     question: 'Como contacto con soporte en una emergencia?',
     answer: 'Durante un viaje activo, puedes usar el boton SOS que aparece en la pantalla. Esto alerta a nuestro equipo de soporte con tu ubicacion en tiempo real. Para emergencias que no sean durante un viaje, llama al numero de emergencia local (911) y luego reporta el incidente a traves de la seccion de Soporte en la app.',
   },
+  {
+    question: 'Como mejoran mis ganancias?',
+    answer: 'Conduce en horarios de alta demanda (7am-9am, 12pm-2pm, 5pm-8pm). Mantén una calificacion alta para recibir mas viajes. Completa mas viajes para subir de nivel y obtener mejores comisiones. Evita cancelar viajes ya que esto afecta tu tasa de aceptacion y prioridad en la asignacion de viajes.',
+  },
+  {
+    question: 'Como funciona el sistema de niveles?',
+    answer: 'El sistema de niveles premia tu dedicacion. Con cada viaje completado acumulas puntos para subir de nivel: Basico (0 viajes), Bronce (20), Plata (50), Oro (100), Platino (200) y Diamante (500). Cada nivel superior te da mejor comision, bonos por viaje y prioridad en la asignacion de viajes. Ve a la seccion de Premios para ver tus beneficios actuales.',
+  },
 ];
 
 const contactOptions = [
@@ -43,22 +54,93 @@ const contactOptions = [
 ];
 
 const quickLinks = [
-  { icon: CreditCard, label: 'Problemas con pagos', color: 'text-emerald-400' },
-  { icon: Car, label: 'Problemas con vehiculo', color: 'text-cyan-400' },
-  { icon: FileText, label: 'Documentacion', color: 'text-blue-400' },
-  { icon: Shield, label: 'Seguridad y emergencias', color: 'text-red-400' },
-  { icon: BookOpen, label: 'Capacitacion y tutoriales', color: 'text-purple-400' },
-  { icon: AlertTriangle, label: 'Reportar incidente', color: 'text-amber-400' },
+  { icon: CreditCard, label: 'Problemas con pagos', color: 'text-emerald-400', href: '/driver/earnings' },
+  { icon: Car, label: 'Problemas con vehiculo', color: 'text-cyan-400', href: '/driver/vehicle' },
+  { icon: FileText, label: 'Documentacion', color: 'text-blue-400', href: '/driver/verification' },
+  { icon: Shield, label: 'Seguridad y emergencias', color: 'text-red-400', href: '/driver/security' },
+  { icon: BookOpen, label: 'Capacitacion y tutoriales', color: 'text-purple-400', href: '/driver/terms' },
+  { icon: AlertTriangle, label: 'Reportar incidente', color: 'text-amber-400', href: '/driver/support/chat' },
 ];
 
 export default function DriverSupport() {
+  const router = useRouter();
+  const { user } = useAuthStore();
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [formSubject, setFormSubject] = useState('');
+  const [formMessage, setFormMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   const filteredFaq = faqItems.filter(item =>
     item.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.answer.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleSendForm = async () => {
+    if (!user?.id) {
+      toast.error('Debes iniciar sesion para enviar un mensaje');
+      return;
+    }
+    if (!formSubject) {
+      toast.error('Selecciona un tema');
+      return;
+    }
+    if (!formMessage.trim() || formMessage.trim().length < 10) {
+      toast.error('Describe tu problema (minimo 10 caracteres)');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // Create a support chat with the message
+      const subjectLabels: Record<string, string> = {
+        technical: 'Problema tecnico',
+        payment: 'Problema con pago',
+        documents: 'Documentos',
+        safety: 'Seguridad',
+        other: 'Otro',
+      };
+
+      const { data: chat, error: chatError } = await supabase
+        .from('support_chats')
+        .insert({
+          user_id: user.id,
+          user_name: user.name || 'Conductor',
+          user_role: 'driver',
+          subject: subjectLabels[formSubject] || formSubject,
+          status: 'open',
+        })
+        .select()
+        .single();
+
+      if (chatError) throw chatError;
+
+      // Add the user's message
+      const { error: msgError } = await supabase
+        .from('chat_messages')
+        .insert({
+          chat_id: chat.id,
+          sender_type: 'user',
+          sender_id: user.id,
+          content: formMessage.trim(),
+          message_type: 'text',
+        });
+
+      if (msgError) throw msgError;
+
+      toast.success('Mensaje enviado! Te responderemos pronto.');
+      setFormSubject('');
+      setFormMessage('');
+
+      // Navigate to chat
+      router.push('/driver/support/chat');
+    } catch (err: any) {
+      console.error('Error sending support message:', err);
+      toast.error('Error al enviar mensaje. Intenta de nuevo.');
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -138,11 +220,12 @@ export default function DriverSupport() {
           {quickLinks.map((link, i) => (
             <button
               key={i}
-              onClick={() => toast.info(`Abriendo: ${link.label}`)}
+              onClick={() => router.push(link.href)}
               className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors"
             >
               <link.icon className={`w-4 h-4 ${link.color}`} />
               <span className="text-xs text-gray-300">{link.label}</span>
+              <ChevronRight className="w-3 h-3 text-gray-600 ml-auto" />
             </button>
           ))}
         </div>
@@ -202,7 +285,11 @@ export default function DriverSupport() {
       >
         <h3 className="text-sm font-semibold text-white">Envianos un mensaje</h3>
         <div>
-          <select className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500">
+          <select
+            value={formSubject}
+            onChange={(e) => setFormSubject(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500"
+          >
             <option value="" className="bg-rida-dark">Selecciona un tema</option>
             <option value="technical" className="bg-rida-dark">Problema tecnico</option>
             <option value="payment" className="bg-rida-dark">Problema con pago</option>
@@ -214,14 +301,17 @@ export default function DriverSupport() {
         <textarea
           placeholder="Describe tu problema o consulta..."
           rows={4}
+          value={formMessage}
+          onChange={(e) => setFormMessage(e.target.value)}
           className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 resize-none"
         />
         <button
-          onClick={() => toast.success('Mensaje enviado. Te responderemos pronto.')}
-          className="w-full btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2"
+          onClick={handleSendForm}
+          disabled={isSending}
+          className="w-full btn-neon text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Send className="w-4 h-4" />
-          Enviar mensaje
+          {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          {isSending ? 'Enviando...' : 'Enviar mensaje'}
         </button>
       </motion.div>
     </div>

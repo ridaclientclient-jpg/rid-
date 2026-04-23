@@ -11,6 +11,7 @@ export default function DriverNotifications() {
   const { user } = useAuthStore();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterTab, setFilterTab] = useState<'all' | 'unread'>('all');
 
   const fetchNotifications = useCallback(async () => {
     if (!user?.id) return;
@@ -166,18 +167,26 @@ export default function DriverNotifications() {
         transition={{ delay: 0.05 }}
         className="flex gap-2"
       >
-        {['Todas', 'Sin leer'].map((tab) => (
-          <div
-            key={tab}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-              tab === 'Todas'
-                ? 'bg-white/10 text-white'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            {tab}
-          </div>
-        ))}
+        <button
+          onClick={() => setFilterTab('all')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            filterTab === 'all'
+              ? 'bg-white/10 text-white'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Todas
+        </button>
+        <button
+          onClick={() => setFilterTab('unread')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            filterTab === 'unread'
+              ? 'bg-white/10 text-white'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Sin leer{unreadCount > 0 ? ` (${unreadCount})` : ''}
+        </button>
       </motion.div>
 
       {/* Notifications List */}
@@ -200,7 +209,7 @@ export default function DriverNotifications() {
       ) : (
         <div className="space-y-2">
           <AnimatePresence>
-            {notifications.map((notif, index) => (
+            {(filterTab === 'unread' ? notifications.filter(n => !n.is_read) : notifications).map((notif, index) => (
               <motion.div
                 key={notif.id}
                 initial={{ opacity: 0, y: 10 }}

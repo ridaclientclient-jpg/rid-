@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
@@ -10,7 +10,7 @@ import GoogleMap from '@/components/GoogleMap';
 import {
   Power, Star, Car, Clock, TrendingUp, ChevronRight,
   Shield, Trophy, Diamond, Target, Wallet,
-  Navigation, BarChart3, Zap, Award, Eye, Bell,
+  Navigation, BarChart3, Zap, Award, Eye, Bell, AlertTriangle,
 } from 'lucide-react';
 
 // Level system
@@ -40,13 +40,16 @@ function getNextLevel(totalRides: number) {
 
 export default function DriverHome() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const [isOnline, setIsOnline] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
   const [driver, setDriver] = useState<Driver | null>(null);
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayTrips, setTodayTrips] = useState(0);
-  const [weeklyData, setWeeklyData] = useState<{ day: string; amount: number }[]>([]);
   const [showFullMap, setShowFullMap] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   const level = getDriverLevel(driver?.total_rides || 0);
   const nextLevel = getNextLevel(driver?.total_rides || 0);
@@ -54,8 +57,9 @@ export default function DriverHome() {
     ? ((driver?.total_rides || 0) / nextLevel.minTrips) * 100
     : 100;
   const rating = driver?.rating || 0;
-  const dailyGoal = 75660;
+  const dailyGoal = driver?.daily_goal || 50000;
 
+  // Fetch driver data and today's earnings
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
     try {
@@ -65,7 +69,10 @@ export default function DriverHome() {
         .eq('user_id', user.id)
         .single();
 
-      if (driverData) setDriver(driverData);
+      if (driverData) {
+        setDriver(driverData);
+        setIsOnline(driverData.status === 'online' || driverData.status === 'busy');
+      }
 
       if (driverData?.id) {
         const today = new Date();
@@ -74,11 +81,11 @@ export default function DriverHome() {
           .from('rides')
           .select('driver_earnings, price')
           .eq('driver_id', driverData.id)
-          .in('status', ['completed'])
+          .eq('status', 'completed')
           .gte('created_at', today.toISOString());
 
         if (todayRides && todayRides.length > 0) {
-          const sum = todayRides.reduce((acc, r) => acc + (r.driver_earnings || r.price * 0.85), 0);
+          const sum = todayRides.reduce((acc, r) => acc + (r.driver_earnings || Math.round(r.price * 0.85)), 0);
           setTodayEarnings(sum);
           setTodayTrips(todayRides.length);
         }
@@ -90,7 +97,148 @@ export default function DriverHome() {
 
   useEffect(() => {
     fetchData();
+    const refreshInterval = setInterval(fetchData, 60000);
+    return () => clearInterval(refreshInterval);
   }, [fetchData]);
+
+  // Get user GPS coordinates
+  const getUserLocation = useCallback(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserCoords(coords);
+      },
+      () => {
+        // GPS not available or denied
+        setUserCoords({ lat: 9.9281, lng: -84.0907 });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
+
+  // Send location to API
+  const sendLocation = useCallback(async (lat: number, lng: number) => {
+    if (!session?.access_token) return;
+    try {
+      await fetch('/api/drivers/update-location', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ latitude: lat, longitude: lng }),
+      });
+    } catch {
+      // Silently fail - location updates are not critical
+    }
+  }, [session?.access_token]);
+
+  // Start GPS tracking when online
+  useEffect(() => {
+    if (isOnline) {
+      getUserLocation();
+
+      // Watch position for continuous tracking
+      if (navigator.geolocation) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            setUserCoords({ lat: latitude, lng: longitude });
+            sendLocation(latitude, longitude);
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+        );
+      }
+
+      // Also send location every 10 seconds as backup
+      locationIntervalRef.current = setInterval(() => {
+        if (userCoords) {
+          sendLocation(userCoords.lat, userCoords.lng);
+        }
+      }, 10000);
+    } else {
+      // Stop tracking when offline
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+    };
+  }, [isOnline, getUserLocation, sendLocation, userCoords]);
+
+  // Toggle online/offline via API
+  const handleToggleOnline = useCallback(async () => {
+    if (!session?.access_token) return;
+    setIsToggling(true);
+
+    const newStatus = isOnline ? 'offline' : 'online';
+    const lat = userCoords?.lat;
+    const lng = userCoords?.lng;
+
+    try {
+      const res = await fetch('/api/drivers/toggle-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          latitude: lat,
+          longitude: lng,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setIsOnline(!isOnline);
+        if (!isOnline) {
+          toast.success('Estas en linea! Recibiras solicitudes de viaje.');
+          // Immediately send current location
+          if (lat && lng) sendLocation(lat, lng);
+        } else {
+          toast.success('Has pasado a fuera de linea.');
+        }
+      } else {
+        toast.error(data.error || 'Error al cambiar estado. Intenta de nuevo.');
+      }
+    } catch {
+      toast.error('Error de conexion. Verifica tu internet.');
+    } finally {
+      setIsToggling(false);
+    }
+  }, [isOnline, session?.access_token, userCoords, sendLocation]);
+
+  // Open Google Maps navigation
+  const openNavigation = useCallback(() => {
+    if (userCoords) {
+      window.open(`https://www.google.com/maps/dir/?api=1&origin=${userCoords.lat},${userCoords.lng}`, '_blank');
+    } else {
+      window.open('https://www.google.com/maps', '_blank');
+    }
+  }, [userCoords]);
+
+  // Report incident
+  const reportIncident = useCallback(() => {
+    router.push('/driver/support');
+  }, [router]);
 
   return (
     <div className="space-y-4">
@@ -102,7 +250,7 @@ export default function DriverHome() {
       >
         <div className={`${showFullMap ? 'h-[85vh]' : 'h-52'} rounded-b-3xl overflow-hidden relative transition-all duration-500`}>
           <GoogleMap
-            center={{ lat: 9.9281, lng: -84.0907 }}
+            center={userCoords || { lat: 9.9281, lng: -84.0907 }}
             zoom={14}
             showUserLocation={true}
             className="w-full h-full"
@@ -125,7 +273,7 @@ export default function DriverHome() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-white">
-                Hola, {user?.name?.split(' ')[0] || 'Carlos'}
+                Hola, {user?.name?.split(' ')[0] || 'Conductor'}
               </h1>
               <p className="text-xs text-gray-400 mt-0.5">
                 {isOnline ? 'Estas en linea y recibiendo viajes' : 'Conectate para recibir viajes'}
@@ -141,7 +289,7 @@ export default function DriverHome() {
           {nextLevel && (
             <div className="mt-3 glass rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400">Tu nivel esta semana</span>
+                <span className="text-xs text-gray-400">Tu nivel</span>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-white font-medium">{driver?.total_rides || 0}</span>
                   <span className="text-xs text-gray-500">viajes a {nextLevel.name}</span>
@@ -195,7 +343,7 @@ export default function DriverHome() {
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs text-gray-500">Objetivo diario</span>
               <span className="text-xs text-gray-400">
-                ₡{Math.round(todayEarnings).toLocaleString()} / ₡{dailyGoal.toLocaleString()}
+                ₡{Math.round(todayEarnings).toLocaleString()} / ₡{Math.round(dailyGoal).toLocaleString()}
               </span>
             </div>
             <div className="w-full bg-white/10 rounded-full h-2">
@@ -206,45 +354,6 @@ export default function DriverHome() {
                 className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500"
               />
             </div>
-          </div>
-        </motion.div>
-
-        {/* Opportunities Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass rounded-2xl p-4"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-cyan-400" />
-                <span className="text-sm font-bold text-white">Oportunidades</span>
-              </div>
-              <p className="text-[10px] text-gray-400 mt-0.5">Ganancias de viajes en tu zona</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-gray-500" />
-          </div>
-          <p className="text-xs text-gray-300 mb-3">
-            Explora los mejores horarios y lugares para conducir hoy
-          </p>
-          {/* Mini earnings trend chart */}
-          <div className="flex items-end gap-1 h-12">
-            {[35, 55, 45, 70, 85, 60, 40].map((h, i) => (
-              <motion.div
-                key={i}
-                initial={{ height: 0 }}
-                animate={{ height: `${h}%` }}
-                transition={{ duration: 0.5, delay: 0.15 + i * 0.05 }}
-                className="flex-1 rounded-t-sm bg-gradient-to-t from-cyan-600 to-cyan-400 opacity-60"
-              />
-            ))}
-          </div>
-          <div className="flex justify-between mt-1">
-            {['6am', '9am', '12m', '3pm', '6pm', '9pm', '12a'].map((t) => (
-              <span key={t} className="text-[8px] text-gray-600">{t}</span>
-            ))}
           </div>
         </motion.div>
 
@@ -283,17 +392,17 @@ export default function DriverHome() {
           transition={{ delay: 0.2 }}
         >
           <button
-            onClick={() => {
-              setIsOnline(!isOnline);
-              toast.success(isOnline ? 'Has pasado a fuera de linea' : 'Estas en linea! Recibiras solicitudes.');
-            }}
-            className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${
+            onClick={handleToggleOnline}
+            disabled={isToggling}
+            className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
               isOnline
                 ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-500/20'
                 : 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/20'
             }`}
           >
-            {isOnline ? (
+            {isToggling ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : isOnline ? (
               <>
                 <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
                 Desconectarse
@@ -339,7 +448,7 @@ export default function DriverHome() {
             </div>
           </button>
           <button
-            onClick={() => toast.info('Navegando con GPS...')}
+            onClick={openNavigation}
             className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
           >
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
@@ -351,11 +460,11 @@ export default function DriverHome() {
             </div>
           </button>
           <button
-            onClick={() => toast.info('Reportando incidencia...')}
+            onClick={reportIncident}
             className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
           >
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
-              <Shield className="w-4 h-4 text-white" />
+              <AlertTriangle className="w-4 h-4 text-white" />
             </div>
             <div className="text-left">
               <p className="text-xs font-medium text-white">Reportar</p>
