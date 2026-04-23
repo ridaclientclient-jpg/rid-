@@ -26,13 +26,7 @@ interface RideState {
   markRideAsRated: (rideId: string) => void;
 }
 
-const DEMO_DRIVERS = [
-  { id: '1', name: 'Carlos M.', vehicle: 'Toyota Corolla 2023 - Rojo', rating: 4.8, distance: 0.4, eta: 2 },
-  { id: '2', name: 'Maria G.', vehicle: 'Honda Civic 2022 - Blanco', rating: 4.9, distance: 0.8, eta: 3 },
-  { id: '3', name: 'Jose R.', vehicle: 'Hyundai Accent 2024 - Gris', rating: 4.7, distance: 1.1, eta: 4 },
-  { id: '4', name: 'Ana L.', vehicle: 'Nissan Sentra 2023 - Azul', rating: 4.6, distance: 1.5, eta: 5 },
-  { id: '5', name: 'Roberto S.', vehicle: 'Kia Rio 2024 - Negro', rating: 4.8, distance: 2.0, eta: 6 },
-];
+const DEMO_DRIVERS = []; // Demo drivers removed — using REAL matching
 
 export const useRideStore = create<RideState>((set, get) => ({
   currentRide: null,
@@ -177,56 +171,29 @@ export const useRideStore = create<RideState>((set, get) => ({
       // Subscribe to real-time updates
       get().subscribeToRideUpdates(ride.id);
 
-      // Simulate driver assignment after 3s
-      setTimeout(async () => {
-        const state = get();
-        if (state.currentRide?.id === ride.id && state.currentRide.status === 'searching') {
-          // Pick a random nearby driver (sorted by closest first, pick from top 3)
-          const sortedDrivers = [...DEMO_DRIVERS].sort((a, b) => a.distance - b.distance);
-          const randomDriver = sortedDrivers[Math.floor(Math.random() * Math.min(3, sortedDrivers.length))];
-          // Randomize distance slightly for realism
-          const distJitter = (Math.random() - 0.5) * 0.4;
-          const finalDist = Math.max(0.2, Math.round((randomDriver.distance + distJitter) * 10) / 10);
-          const finalEta = Math.max(1, Math.round(finalDist * 3));
-
-          set({
-            currentRide: {
-              ...state.currentRide,
-              status: 'assigned',
-              driver_id: randomDriver.id,
-              driver_name: randomDriver.name,
-              driver_vehicle: randomDriver.vehicle,
-              driver_rating: randomDriver.rating,
-              driver_distance: finalDist,
-              driver_eta: finalEta,
+      // Auto-match with REAL driver via API (if not scheduled)
+      if (!isScheduled) {
+        setTimeout(async () => {
+          const state = get();
+          if (state.currentRide?.id === ride.id && state.currentRide.status === 'searching') {
+            try {
+              const matchRes = await fetch('/api/rides/match', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ride_id: ride.id }),
+              });
+              const matchData = await matchRes.json();
+              if (matchData.success && matchData.driver) {
+                // Real-time subscription will pick up the status change from Supabase
+              } else {
+                // No drivers available — notification already sent
+              }
+            } catch (err) {
+              console.error('Auto-match error:', err);
             }
-          });
-
-          // Update in Supabase
-          await supabase
-            .from('rides')
-            .update({ status: 'assigned', driver_id: randomDriver.id })
-            .eq('id', ride.id);
-        }
-      }, 3000);
-
-      // Simulate driver arriving
-      setTimeout(() => {
-        const state = get();
-        if (state.currentRide?.id === ride.id && state.currentRide.status === 'assigned') {
-          set({ currentRide: { ...state.currentRide, status: 'arriving' } });
-          supabase.from('rides').update({ status: 'arriving' }).eq('id', ride.id);
-        }
-      }, 8000);
-
-      // Simulate ride started
-      setTimeout(() => {
-        const state = get();
-        if (state.currentRide?.id === ride.id && state.currentRide.status === 'arriving') {
-          set({ currentRide: { ...state.currentRide, status: 'started' } });
-          supabase.from('rides').update({ status: 'started' }).eq('id', ride.id);
-        }
-      }, 13000);
+          }
+        }, 2000);
+      }
 
       return ride.id;
     } catch (error: any) {
@@ -236,9 +203,24 @@ export const useRideStore = create<RideState>((set, get) => ({
     }
   },
 
-  cancelRide: async (rideId: string) => {
+  cancelRide: async (rideId: string, reason?: string) => {
     try {
-      await supabase.from('rides').update({ status: 'cancelled' }).eq('id', rideId);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const res = await fetch('/api/rides/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ ride_id: rideId, reason: reason || null }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error al cancelar');
+        const fee = data.fee_applied || 0;
+        if (fee > 0) {
+          console.warn(`Cancellation fee applied: ₡${fee}`);
+        }
+      } else {
+        await supabase.from('rides').update({ status: 'cancelled' }).eq('id', rideId);
+      }
       const state = get();
       if (state.currentRide) {
         set({
@@ -248,6 +230,7 @@ export const useRideStore = create<RideState>((set, get) => ({
       }
     } catch (error) {
       console.error('Cancel ride error:', error);
+      throw error;
     }
   },
 
@@ -457,21 +440,31 @@ export const useRideStore = create<RideState>((set, get) => ({
     try {
       const { data } = await supabase
         .from('drivers')
-        .select('id, profiles(name, phone), vehicles(model, color, plate)')
+        .select('id, rating, current_lat, current_lng, profiles(name, phone), vehicles(model, color, plate)')
         .eq('status', 'online')
-        .eq('is_verified', true);
+        .eq('is_verified', true)
+        .not('current_lat', 'is', null)
+        .not('current_lng', 'is', null);
 
-      if (data) {
-        set({
-          availableDrivers: data.map((d: any) => ({
+      if (data && data.length > 0) {
+        const R = 6371;
+        const driversWithDist = data.map((d: any) => {
+          const dLat = ((d.current_lat - lat) * Math.PI) / 180;
+          const dLng = ((d.current_lng - lng) * Math.PI) / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((d.current_lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+          const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return {
             id: d.id,
             name: d.profiles?.name || 'Conductor',
             vehicle: d.vehicles ? `${d.vehicles.model} ${d.vehicles.color}` : 'Vehiculo',
-            rating: 4.5 + Math.random() * 0.5,
-            distance: Math.floor(Math.random() * 5) + 1,
-            eta: Math.floor(Math.random() * 10) + 3,
-          }))
-        });
+            rating: d.rating || 5.0,
+            distance: Math.round(dist * 10) / 10,
+            eta: Math.max(1, Math.round((dist / 30) * 60)),
+          };
+        }).sort((a: any, b: any) => a.distance - b.distance).slice(0, 10);
+        set({ availableDrivers: driversWithDist });
+      } else {
+        set({ availableDrivers: [] });
       }
     } catch (error) {
       console.error('Search drivers error:', error);

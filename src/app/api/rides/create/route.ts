@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
-    const { origin, destination, originLat, originLng, destLat, destLng } = await request.json();
+    const { origin, destination, originLat, originLng, destLat, destLng, ride_type } = await request.json();
 
     if (!origin || !destination) {
       return NextResponse.json({ error: 'Origen y destino son requeridos' }, { status: 400 });
@@ -30,14 +30,20 @@ export async function POST(request: Request) {
     const basePrice = Number(settings?.find(s => s.key === 'base_price')?.value || 1500);
     const pricePerKm = Number(settings?.find(s => s.key === 'price_per_km')?.value || 500);
     const pricePerMin = Number(settings?.find(s => s.key === 'price_per_minute')?.value || 50);
+    const multiplier = Number(settings?.find(s => s.key === `price_multiplier_${ride_type || 'standard'}`)?.value || 1.0);
 
     // Calculate distance
     const distance = originLat && originLng && destLat && destLng
       ? calculateHaversine(originLat, originLng, destLat, destLng)
       : Math.random() * 15 + 3;
 
-    const duration = Math.round(distance * 3); // rough estimate in minutes
-    const price = Math.round(basePrice + (distance * pricePerKm) + (duration * pricePerMin));
+    const duration = Math.round(distance * 3);
+    const rawPrice = basePrice + (distance * pricePerKm) + (duration * pricePerMin);
+    const price = Math.round(Math.max(Number(settings?.find(s => s.key === 'min_fare')?.value || 1000), Math.min(Number(settings?.find(s => s.key === 'max_fare')?.value || 50000), rawPrice * multiplier)));
+
+    // Calculate ETA
+    const etaSpeed = Number(settings?.find(s => s.key === 'eta_speed_kmh')?.value || 30);
+    const etaMinutes = Math.max(1, Math.round((distance / etaSpeed) * 60));
 
     // Create ride
     const { data: ride, error } = await supabase
@@ -52,8 +58,11 @@ export async function POST(request: Request) {
         dest_lat: destLat,
         dest_lng: destLng,
         price,
+        fare_estimate: price,
         distance: Math.round(distance * 10) / 10,
         duration,
+        eta_minutes: etaMinutes,
+        ride_type: ride_type || 'standard',
       })
       .select()
       .single();

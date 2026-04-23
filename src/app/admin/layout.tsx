@@ -42,6 +42,7 @@ const navItems = [
   { href: '/admin/geo-map', label: 'Mapa Zonas', icon: Map },
   { href: '/admin/gods-view', label: "God's View", icon: Eye },
   { href: '/admin/heat-map', label: 'Heat Map', icon: Flame },
+  { href: '/admin/leaderboard', label: 'Leaderboard', icon: Trophy },
   { href: '/admin/settings', label: 'Configuración', icon: Settings },
   { href: '/admin/admins', label: 'Admins', icon: UserCog, superAdminOnly: true },
 ];

@@ -47,6 +47,101 @@ export default function ClientRide() {
   const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
   const [showChat, setShowChat] = useState(false);
 
+  // ─── Fare Estimate ─────────────────────────────────
+  const [fareEstimate, setFareEstimate] = useState<{price: number; distance: number; duration: number; eta: number} | null>(null);
+  const [fareLoading, setFareLoading] = useState(false);
+
+  useEffect(() => {
+    if (originCoords && destCoords && !currentRide) {
+      let cancelled = false;
+      const timer = setTimeout(async () => {
+        setFareLoading(true);
+        try {
+          const res = await fetch('/api/rides/fare-estimate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              originLat: originCoords.lat, originLng: originCoords.lng,
+              destLat: destCoords.lat, destLng: destCoords.lng,
+              rideType,
+            }),
+          });
+          const data = await res.json();
+          if (!cancelled && data.success) {
+            setFareEstimate({
+              price: data.estimated_price,
+              distance: data.estimated_distance,
+              duration: data.estimated_duration,
+              eta: data.eta_to_pickup,
+            });
+          }
+        } catch { /* ignore */ }
+        if (!cancelled) setFareLoading(false);
+      }, 500);
+      return () => { cancelled = true; clearTimeout(timer); };
+    } else if (!originCoords || !destCoords) {
+      setFareEstimate(null);
+    }
+  }, [originCoords, destCoords, rideType, currentRide]);
+
+  // ─── Cancel with Fee ─────────────────────────────────
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelReasons] = useState([
+    'Conductor no llega', 'Tiempo de espera largo',
+    'Equivoque la direccion', 'Encontre otro transporte',
+    'Precio muy alto', 'Otro',
+  ]);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const handleCancelWithFee = async () => {
+    if (!currentRide) return;
+    setIsCancelling(true);
+    try {
+      await cancelRide(currentRide.id, cancelReason || undefined);
+      toast.success('Viaje cancelado');
+      setShowCancelDialog(false);
+      setCancelReason('');
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al cancelar');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // ─── Share Trip ─────────────────────────────────
+  const [shareLoading, setShareLoading] = useState(false);
+  const handleShareTrip = async () => {
+    if (!currentRide || !session?.access_token) {
+      toast.error('No se puede compartir en este momento');
+      return;
+    }
+    setShareLoading(true);
+    try {
+      const res = await fetch('/api/rides/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ ride_id: currentRide.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (navigator.share) {
+          await navigator.share({ title: 'Compartir viaje RIDA', url: data.share_url });
+        } else {
+          await navigator.clipboard.writeText(data.share_url);
+          toast.success('Enlace copiado al portapapeles');
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        await navigator.clipboard.writeText(`${window.location.origin}/client/ride/${currentRide.id}`);
+        toast.success('Enlace copiado');
+      }
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   // ─── Promo Code ─────────────────────────────────
   const [promoCode, setPromoCode] = useState('');
   const [promoDiscount, setPromoDiscount] = useState<number>(0);
@@ -182,7 +277,7 @@ export default function ClientRide() {
   const [scheduleTime, setScheduleTime] = useState('');
 
   // ─── Favorite Places ─────────────────────────────────
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const { places, fetchPlaces, prefill, prefillTarget, clearPrefill } = useFavoritePlacesStore();
   const [showFavorites, setShowFavorites] = useState(false);
   const [favTarget, setFavTarget] = useState<'origin' | 'destination'>('origin');
@@ -990,6 +1085,50 @@ export default function ClientRide() {
               )}
             </div>
 
+            {/* Fare Estimate Card — show when both coords available */}
+            {fareEstimate && !currentRide && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass rounded-xl p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">Precio estimado</span>
+                  {fareLoading && <Loader2 className="w-3 h-3 text-gray-500 animate-spin" />}
+                </div>
+                <div className="flex items-end gap-1">
+                  <span className="text-2xl font-bold text-white">
+                    ₡{(fareEstimate.price - promoDiscount).toLocaleString()}
+                  </span>
+                  {promoDiscount > 0 && (
+                    <span className="text-xs text-gray-500 line-through mb-1">
+                      ₡{fareEstimate.price.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[10px] text-gray-500">Distancia</p>
+                    <p className="text-xs font-medium text-white">{fareEstimate.distance} km</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500">Duracion</p>
+                    <p className="text-xs font-medium text-white">~{fareEstimate.duration} min</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500">ETA conductor</p>
+                    <p className="text-xs font-medium text-cyan-400">{fareEstimate.eta > 0 ? `~${fareEstimate.eta} min` : 'Calculando...'}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            {fareLoading && !fareEstimate && !currentRide && (
+              <div className="glass rounded-xl p-3 flex items-center justify-center">
+                <Loader2 className="w-4 h-4 text-gray-500 animate-spin mr-2" />
+                <span className="text-xs text-gray-500">Calculando tarifa...</span>
+              </div>
+            )}
+
             {/* Selected payment summary */}
             <div className="flex items-center justify-between glass rounded-lg px-3 py-2">
               <span className="text-xs text-gray-500">Pago seleccionado</span>
@@ -1070,7 +1209,7 @@ export default function ClientRide() {
               </div>
               {currentRide.status !== 'completed' && (
                 <button
-                  onClick={() => cancelRide(currentRide.id)}
+                  onClick={() => setShowCancelDialog(true)}
                   className="text-xs text-red-400 hover:underline"
                 >
                   {currentRide.status === 'scheduled' ? 'Cancelar programacion' : 'Cancelar'}
@@ -1253,10 +1392,84 @@ export default function ClientRide() {
                 <Shield className="w-5 h-5" /> SOS Emergencia
               </button>
             )}
+
+            {/* Share Trip Button */}
+            {['assigned', 'arriving', 'started'].includes(currentRide.status) && (
+              <button
+                onClick={handleShareTrip}
+                disabled={shareLoading}
+                className="w-full flex items-center justify-center gap-2 glass rounded-xl p-2.5 text-cyan-400 hover:text-white hover:bg-white/10 transition-all"
+              >
+                {shareLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+                <span className="text-xs font-medium">Compartir viaje en vivo</span>
+              </button>
+            )}
           </>
         )}
         </div>
       </DraggableBottomSheet>
+
+      {/* Cancel Ride Dialog */}
+      <AnimatePresence>
+        {showCancelDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/60 flex items-end justify-center z-50 p-4"
+            onClick={() => setShowCancelDialog(false)}
+          >
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              exit={{ y: 100 }}
+              className="w-full max-w-md glass-strong rounded-2xl p-5 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-base font-bold text-white">Cancelar viaje</h3>
+              <p className="text-xs text-gray-400">
+                Selecciona el motivo de cancelacion. Se puede aplicar una tarifa de cancelacion si el conductor ya fue asignado.
+              </p>
+              <div className="space-y-1.5">
+                {cancelReasons.map((reason) => (
+                  <button
+                    key={reason}
+                    onClick={() => setCancelReason(reason)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${
+                      cancelReason === reason
+                        ? 'bg-red-500/20 border border-red-500/40 text-red-400 font-medium'
+                        : 'glass text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowCancelDialog(false); setCancelReason(''); }}
+                  className="flex-1 py-2.5 rounded-xl glass text-gray-300 text-sm font-medium hover:bg-white/10"
+                >
+                  Volver
+                </button>
+                <button
+                  onClick={handleCancelWithFee}
+                  disabled={isCancelling || !cancelReason}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 text-sm font-medium hover:bg-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isCancelling ? (
+                    <span className="flex items-center justify-center gap-1">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Cancelando...
+                    </span>
+                  ) : (
+                    'Confirmar cancelacion'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Ride Chat — Floating Panel */}
       {currentRide && !['searching', 'scheduled', 'completed'].includes(currentRide.status) && (

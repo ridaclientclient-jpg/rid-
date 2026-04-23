@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
 import { supabase, type Driver } from '@/lib/supabase';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
+import PlacesAutocomplete from '@/components/PlacesAutocomplete';
 import {
   Power, Star, Car, Clock, TrendingUp, ChevronRight,
   Shield, Trophy, Diamond, Target, Wallet,
@@ -48,6 +49,11 @@ export default function DriverHome() {
   const [todayTrips, setTodayTrips] = useState(0);
   const [showFullMap, setShowFullMap] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [showDestMode, setShowDestMode] = useState(false);
+  const [destAddress, setDestAddress] = useState('');
+  const [destCoords, setDestCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [destSetting, setDestSetting] = useState(false);
+  const [metrics, setMetrics] = useState<any>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
@@ -98,8 +104,21 @@ export default function DriverHome() {
   useEffect(() => {
     fetchData();
     const refreshInterval = setInterval(fetchData, 60000);
-    return () => clearInterval(refreshInterval);
-  }, [fetchData]);
+    // Fetch driver metrics
+    const fetchMetrics = async () => {
+      if (!session?.access_token) return;
+      try {
+        const res = await fetch('/api/drivers/metrics', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const data = await res.json();
+        if (data.success) setMetrics(data);
+      } catch { /* ignore */ }
+    };
+    fetchMetrics();
+    const metricsInterval = setInterval(fetchMetrics, 120000);
+    return () => { clearInterval(refreshInterval); clearInterval(metricsInterval); };
+  }, [fetchData, session?.access_token]);
 
   // Get user GPS coordinates
   const getUserLocation = useCallback(() => {
@@ -239,6 +258,42 @@ export default function DriverHome() {
   const reportIncident = useCallback(() => {
     router.push('/driver/support');
   }, [router]);
+
+  // Set destination for destination mode
+  const handleSetDestination = useCallback(async () => {
+    if (!session?.access_token || !destCoords) return;
+    setDestSetting(true);
+    try {
+      const res = await fetch('/api/drivers/destination-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ enabled: true, destLat: destCoords.lat, destLng: destCoords.lng, destinationAddress: destAddress }),
+      });
+      const data = await res.json();
+      if (data.success) toast.success(data.message);
+      else toast.error(data.error || 'Error al activar destino');
+    } catch { toast.error('Error de conexion'); }
+    finally { setDestSetting(false); setShowDestMode(false); }
+  }, [session?.access_token, destCoords, destAddress]);
+
+  // Disable destination mode
+  const handleDisableDest = useCallback(async () => {
+    if (!session?.access_token) return;
+    try {
+      const res = await fetch('/api/drivers/destination-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ enabled: false }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Modo destino desactivado');
+        setDestAddress('');
+        setDestCoords(null);
+        if (driver) setDriver({ ...driver, destination_mode: false } as any);
+      }
+    } catch { /* ignore */ }
+  }, [session?.access_token, driver]);
 
   return (
     <div className="space-y-4">
@@ -416,17 +471,57 @@ export default function DriverHome() {
           </button>
         </motion.div>
 
+        {/* Destination Mode */}
+        {(driver as any)?.destination_mode && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-3 border border-cyan-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Target className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-cyan-300">Modo Destino Activo</p>
+                  <p className="text-[10px] text-gray-500 truncate max-w-[180px]">{(driver as any)?.destination_address || 'Destino configurado'}</p>
+                </div>
+              </div>
+              <button onClick={handleDisableDest} className="text-[10px] text-red-400 hover:underline shrink-0">
+                Desactivar
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Performance Metrics Card */}
+        {metrics && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="glass rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-semibold text-white">Rendimiento</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="text-center">
+                <p className="text-base font-bold text-white">{metrics.today.acceptance_rate}%</p>
+                <p className="text-[9px] text-gray-500">Aceptacion</p>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-amber-400">{metrics.today.rating}</p>
+                <p className="text-[9px] text-gray-500">Rating hoy</p>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-white">{metrics.today.avg_duration_min || 0}<span className="text-[10px] text-gray-500">m</span></p>
+                <p className="text-[9px] text-gray-500">Prom. viaje</p>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-cyan-400">{metrics.weekly.active_days}</p>
+                <p className="text-[9px] text-gray-500">Dias activos</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="grid grid-cols-2 gap-2"
-        >
-          <button
-            onClick={() => router.push('/driver/earnings')}
-            className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
-          >
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="grid grid-cols-2 gap-2">
+          <button onClick={() => router.push('/driver/earnings')} className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
               <BarChart3 className="w-4 h-4 text-white" />
             </div>
@@ -435,10 +530,7 @@ export default function DriverHome() {
               <p className="text-[10px] text-gray-500">Ver detalle</p>
             </div>
           </button>
-          <button
-            onClick={() => router.push('/driver/rides')}
-            className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
-          >
+          <button onClick={() => router.push('/driver/rides')} className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
               <Car className="w-4 h-4 text-white" />
             </div>
@@ -447,10 +539,7 @@ export default function DriverHome() {
               <p className="text-[10px] text-gray-500">Historial</p>
             </div>
           </button>
-          <button
-            onClick={openNavigation}
-            className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
-          >
+          <button onClick={openNavigation} className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
               <Navigation className="w-4 h-4 text-white" />
             </div>
@@ -460,18 +549,49 @@ export default function DriverHome() {
             </div>
           </button>
           <button
-            onClick={reportIncident}
-            className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
+            onClick={() => setShowDestMode(!showDestMode)}
+            className={`glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors ${showDestMode ? 'ring-1 ring-cyan-500/40' : ''}`}
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+              <Target className="w-4 h-4 text-white" />
             </div>
             <div className="text-left">
-              <p className="text-xs font-medium text-white">Reportar</p>
-              <p className="text-[10px] text-gray-500">Incidencia</p>
+              <p className="text-xs font-medium text-white">Destino</p>
+              <p className="text-[10px] text-gray-500">Modo destino</p>
             </div>
           </button>
         </motion.div>
+
+        {/* Destination Mode Panel */}
+        <AnimatePresence>
+          {showDestMode && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <div className="glass rounded-2xl p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-semibold text-white">Configurar destino</span>
+                </div>
+                <p className="text-[10px] text-gray-400">Solo recibiras viajes que vayan en la direccion de tu destino (radio 5km)</p>
+                <PlacesAutocomplete
+                  value={destAddress}
+                  onChange={(val, _pId, lat, lng) => { setDestAddress(val); if (lat && lng) setDestCoords({ lat, lng }); }}
+                  placeholder="Ingresa tu destino"
+                  dotColor="bg-cyan-400"
+                  userLocation={userCoords}
+                  searchRadius={30000}
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => setShowDestMode(false)} className="flex-1 py-2.5 rounded-xl glass text-gray-300 text-xs font-medium hover:bg-white/10">
+                    Cancelar
+                  </button>
+                  <button onClick={handleSetDestination} disabled={!destAddress || !destCoords || destSetting} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-medium disabled:opacity-40">
+                    {destSetting ? 'Activando...' : 'Activar destino'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Safety Banner */}
         <motion.div

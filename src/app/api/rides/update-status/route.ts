@@ -95,7 +95,15 @@ export async function POST(request: Request) {
     // Calculate driver earnings if completing
     let updateData: Record<string, unknown> = { status: new_status };
 
+    // Set timestamps based on status transitions
+    if (new_status === 'assigned' && !ride.matched_at) {
+      updateData.matched_at = new Date().toISOString();
+    }
+    if (new_status === 'started' && !ride.started_at) {
+      updateData.started_at = new Date().toISOString();
+    }
     if (new_status === 'completed') {
+      updateData.completed_at = new Date().toISOString();
       const commissionRate = ride.commission_rate || 15;
       const driverEarnings = Math.round(ride.price * (1 - commissionRate / 100));
       updateData.driver_earnings = driverEarnings;
@@ -125,6 +133,9 @@ export async function POST(request: Request) {
         .from('drivers')
         .update({ status: 'online' })
         .eq('id', ride.driver_id);
+      // Update cancellation tracking
+      updateData.cancelled_by = user.id;
+      updateData.cancelled_at = new Date().toISOString();
     }
 
     // Update ride status
