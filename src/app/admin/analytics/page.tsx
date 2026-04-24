@@ -308,11 +308,13 @@ export default function AnalyticsPage() {
         // Profiles for user growth (last 6 months)
         supabase.from('profiles').select('created_at')
           .gte('created_at', ugStartISO),
-        // Top routes (all completed rides, no date filter — always show overall)
+        // Top routes (completed rides, limited for performance)
         supabase.from('rides').select('origin, destination, price')
           .eq('status', 'completed')
           .not('origin', 'is', null)
-          .not('destination', 'is', null),
+          .not('destination', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1000),
         // Driver leaderboard
         supabase.from('drivers').select('total_rides, rating, total_earnings, profiles(name)')
           .order('total_rides', { ascending: false })
@@ -349,8 +351,6 @@ export default function AnalyticsPage() {
 
       // ── User Growth ──────────────────────────────────────────────────
       const profiles = profilesRes.data ?? [];
-      const growth = groupByMonth(profiles, 'created_at', 'value');
-      // Add count of 1 for each profile
       const profileWithCount = profiles.map((p: any) => ({ ...p, count: 1 }));
       const userGrowth = groupByMonth(profileWithCount, 'created_at', 'count');
       setUserGrowthData(userGrowth);
@@ -387,7 +387,7 @@ export default function AnalyticsPage() {
       }));
       setDriverLeaderboard(leaderboard);
 
-      // ── Key Metrics ──────────────────────────────────────────────────
+      // ── Key Metrics (real period-over-period comparison) ──────────
       const allInRange = allCompletedRidesRes.data ?? [];
       const completedInRange = allInRange.filter((r: any) => r.status === 'completed');
 
@@ -398,6 +398,39 @@ export default function AnalyticsPage() {
       const avgFare = completedInRange.length > 0
         ? completedInRange.reduce((sum: number, r: any) => sum + (r.price || 0), 0) / completedInRange.length
         : 0;
+
+      // Fetch previous period for real trend comparison
+      let prevStartISO = '';
+      const { start: prevStart } = (() => {
+        const prev = new Date();
+        switch (range) {
+          case 'week': prev.setDate(prev.getDate() - 14); break;
+          case 'month': prev.setDate(prev.getDate() - 60); break;
+          case 'year': prev.setFullYear(prev.getFullYear() - 2); break;
+        }
+        prev.setHours(0, 0, 0, 0);
+        const currStart = new Date(start);
+        prevStartISO = prev.toISOString();
+        return { start: prev, end: currStart };
+      })();
+
+      const { data: prevPeriodRides } = await supabase.from('rides').select('price, status')
+        .gte('created_at', prevStartISO)
+        .lt('created_at', startISO)
+        .eq('status', 'completed');
+
+      const prevCompleted = (prevPeriodRides ?? []).filter((r: any) => r.status === 'completed');
+      const prevAvgFare = prevCompleted.length > 0
+        ? prevCompleted.reduce((sum: number, r: any) => sum + (r.price || 0), 0) / prevCompleted.length
+        : 0;
+      const prevTotalRides = (prevPeriodRides ?? []).length;
+
+      const fareTrend = prevAvgFare > 0
+        ? `${(((avgFare - prevAvgFare) / prevAvgFare) * 100).toFixed(0)}%`
+        : '0%';
+      const ridesTrend = prevTotalRides > 0
+        ? `${(((completedInRange.length - prevTotalRides) / prevTotalRides) * 100).toFixed(0)}%`
+        : '0%';
 
       const totalDistance = completedInRange.reduce((sum: number, r: any) => sum + (r.distance || 0), 0);
 
@@ -420,28 +453,28 @@ export default function AnalyticsPage() {
           label: 'Tiempo promedio de viaje',
           value: avgDuration > 0 ? `${Math.round(avgDuration)} min` : '— min',
           icon: Clock,
-          trend: `${Math.round(avgDuration)} min`,
-          trendUp: false,
+          trend: completedInRange.length > 0 ? `${completedInRange.length} viajes` : 'Sin datos',
+          trendUp: avgDuration > 0 && avgDuration < 30,
         },
         {
           label: 'Tarifa promedio',
           value: avgFare > 0 ? formatCurrency(avgFare) : '₡0',
           icon: DollarSign,
-          trend: avgFare > 0 ? '+8%' : '0%',
-          trendUp: avgFare > 0,
+          trend: fareTrend.startsWith('-') ? fareTrend : `+${fareTrend}`,
+          trendUp: !fareTrend.startsWith('-'),
         },
         {
-          label: 'Utilización de conductores',
-          value: `${utilizationPct}%`,
+          label: 'Viajes vs periodo anterior',
+          value: `${completedInRange.length} viajes`,
           icon: TrendingUp,
-          trend: `${utilizationPct}%`,
-          trendUp: utilizationPct >= 50,
+          trend: ridesTrend.startsWith('-') ? ridesTrend : `+${ridesTrend}`,
+          trendUp: !ridesTrend.startsWith('-'),
         },
         {
           label: 'Retención de usuarios',
           value: `${retentionPct}%`,
           icon: Users,
-          trend: `${retentionPct}%`,
+          trend: uniqueRiders.size > 0 ? `${uniqueRiders.size} usuarios` : 'Sin datos',
           trendUp: retentionPct >= 40,
         },
       ]);

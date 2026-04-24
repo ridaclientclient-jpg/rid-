@@ -30,15 +30,16 @@ function TrendingUp(props: React.SVGProps<SVGSVGElement> & { className?: string 
 
 interface ApiKey {
   name: string;
+  key: string;
   value: string;
   masked: string;
 }
 
-const apiKeys: ApiKey[] = [
-  { name: 'Google Maps API', value: 'REMOVED', masked: '****qrstuvwx' },
-  { name: 'Supabase URL', value: 'REMOVED', masked: '****supabase.co' },
-  { name: 'Stripe Secret Key', value: 'sk_live_REDACTED', masked: '****rstuvwx' },
-  { name: 'WebSocket Server', value: 'wss://ws.rida-cr.com:3003', masked: '****rida-cr.com:3003' },
+const apiKeyConfig: { name: string; key: string; placeholder: string }[] = [
+  { name: 'Google Maps API', key: 'google_maps_api_key', placeholder: 'AIza...' },
+  { name: 'Supabase URL', key: 'supabase_url', placeholder: 'https://xxx.supabase.co' },
+  { name: 'Stripe Secret Key', key: 'stripe_secret_key', placeholder: 'sk_live_...' },
+  { name: 'WebSocket Server', key: 'websocket_server', placeholder: 'wss://...' },
 ];
 
 const settingDefaults: SystemSetting[] = [
@@ -51,6 +52,7 @@ const settingDefaults: SystemSetting[] = [
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SystemSetting[]>(settingDefaults);
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -59,10 +61,12 @@ export default function SettingsPage() {
   const loadSettings = useCallback(async () => {
     try {
       const keys = settingDefaults.map((s) => s.key);
+      const apiKeyKeys = apiKeyConfig.map((c) => c.key);
+      const allKeys = [...keys, ...apiKeyKeys];
       const { data, error } = await supabase
         .from('settings')
         .select('key, value, type')
-        .in('key', keys);
+        .in('key', allKeys);
 
       if (error) throw error;
 
@@ -81,6 +85,20 @@ export default function SettingsPage() {
           return s;
         })
       );
+
+      // Load API keys from settings table
+      const apiKeyRows = (data ?? []).filter(r => r.type === 'api_key');
+      const loadedKeys: ApiKey[] = apiKeyConfig.map(cfg => {
+        const found = apiKeyRows.find(r => r.key === cfg.key);
+        const val = found ? found.value : '';
+        return {
+          name: cfg.name,
+          key: cfg.key,
+          value: val,
+          masked: val ? `${val.slice(0, 4)}${'*'.repeat(Math.max(0, val.length - 4))}` : 'No configurado',
+        };
+      });
+      setApiKeys(loadedKeys);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error desconocido';
       toast.error(`Error al cargar configuración: ${message}`);
@@ -135,6 +153,10 @@ export default function SettingsPage() {
   };
 
   const copyKey = async (key: ApiKey) => {
+    if (!key.value) {
+      toast.error(`${key.name} no esta configurado`);
+      return;
+    }
     await navigator.clipboard.writeText(key.value);
     setCopiedKey(key.name);
     toast.success(`${key.name} copiado al portapapeles`);
@@ -254,9 +276,9 @@ export default function SettingsPage() {
                 API Keys
               </h3>
               <div className="space-y-3">
-                {apiKeys.map((key, i) => (
+                {apiKeys.length > 0 ? apiKeys.map((key, i) => (
                   <motion.div
-                    key={key.name}
+                    key={key.key}
                     className="bg-white/5 rounded-xl p-4"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -266,12 +288,14 @@ export default function SettingsPage() {
                       <p className="text-sm font-medium text-white">{key.name}</p>
                       <div className="flex items-center gap-1">
                         <button
+                          type="button"
                           onClick={() => toggleKeyVisibility(key.name)}
                           className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                         >
                           {revealedKeys[key.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                         <button
+                          type="button"
                           onClick={() => copyKey(key)}
                           className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
                         >
@@ -280,10 +304,12 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div className="px-3 py-2 bg-black/30 rounded-lg font-mono text-xs">
-                      <span className="text-gray-400">{revealedKeys[key.name] ? key.value : key.masked}</span>
+                      <span className={key.value ? 'text-gray-400' : 'text-gray-600 italic'}>{revealedKeys[key.name] ? (key.value || 'No configurado') : key.masked}</span>
                     </div>
                   </motion.div>
-                ))}
+                )) : (
+                  <p className="text-sm text-gray-500 text-center py-4">Cargando API keys...</p>
+                )}
               </div>
             </motion.div>
 
@@ -360,7 +386,7 @@ export default function SettingsPage() {
               <div className="space-y-3">
                 {[
                   { label: 'Reportes pendientes', value: settings.filter(s => s.warning).length.toString(), color: 'text-amber-400' },
-                  { label: 'APIs configuradas', value: apiKeys.length.toString(), color: 'text-cyan-400' },
+                  { label: 'APIs configuradas', value: apiKeys.filter(k => k.value).length.toString(), color: 'text-cyan-400' },
                   { label: 'Módulos activos', value: settings.filter(s => s.enabled).length.toString(), color: 'text-emerald-400' },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center justify-between bg-white/5 rounded-xl p-3">

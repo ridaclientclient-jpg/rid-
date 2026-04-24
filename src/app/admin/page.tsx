@@ -353,7 +353,7 @@ export default function AdminDashboardPage() {
         withdrawalQueueRes,
         pendingDocsRes,
       ] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('rides').select('id', { count: 'exact', head: true })
           .gte('created_at', todayStart)
           .neq('status', 'cancelled'),
@@ -387,7 +387,7 @@ export default function AdminDashboardPage() {
           .not('origin_lng', 'is', null)
           .order('created_at', { ascending: false })
           .limit(200),
-        supabase.from('sos').select('id', { count: 'exact', head: true })
+        supabase.from('sos_events').select('id', { count: 'exact', head: true })
           .eq('status', 'active'),
         supabase.from('withdrawal_queue').select('id', { count: 'exact', head: true })
           .in('status', ['queued', 'processing']),

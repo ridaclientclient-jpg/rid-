@@ -147,3 +147,28 @@ Stage Summary:
 - Login security audit trail via login_logs table
 - phone_verified tracking in profiles table
 - SQL executed successfully with all tables, policies, and triggers created
+---
+Task ID: 2
+Agent: Main
+Task: Fix red and yellow issues in admin app
+
+Work Log:
+- Fixed Dashboard SOS count: changed `supabase.from('sos')` to `supabase.from('sos_events')` (line 390)
+- Optimized profiles count query: `select('*')` to `select('id')` for head count
+- Fixed Settings API keys: replaced 4 hardcoded fake keys with dynamic loading from settings table
+- Added `api_key` type support in loadSettings - fetches both boolean settings and API keys
+- API keys now show "No configurado" when empty, real masked value when configured
+- copyKey now validates key.value exists before copying
+- Fixed Analytics trends: replaced hardcoded "+8%" with real period-over-period comparison
+- Added previous period rides query for actual trend calculation (fare trend + rides trend)
+- Changed "Utilizacion de conductores" to "Viajes vs periodo anterior" with real trend
+- Fixed Analytics top routes query: added `.limit(1000)` and `.order('created_at', { ascending: false })`
+- Removed dead code: unused `growth` variable in user growth section
+- Build successful with no errors
+
+Stage Summary:
+- Dashboard SOS count now shows real active SOS events from sos_events table
+- Settings API keys load from database, not hardcoded fake values
+- Analytics trends are real comparisons between current and previous period
+- Top routes query limited to 1000 for performance
+- All 4 issues resolved, build passes
