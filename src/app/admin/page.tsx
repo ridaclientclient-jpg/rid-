@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import {
   Users, MapPin, Car, DollarSign, TrendingUp, Activity,
   AlertTriangle, CheckCircle2, Clock, Eye, Star,
-  RefreshCw, ShieldAlert, Wallet, FileCheck
+  RefreshCw, ShieldAlert, Wallet, FileCheck, ZoomIn, ZoomOut, Crosshair
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { loadGoogleMaps } from '@/lib/googleMaps';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -59,56 +60,128 @@ function timeAgo(dateStr: string): string {
   return `Hace ${diffDays} d`;
 }
 
-// ─── Heatmap helpers ────────────────────────────────────────────────────────
+// ─── Real Demand Map Component ──────────────────────────────────────────────
 
-function getHeatColor(value: number) {
-  if (value === 0) return 'bg-white/5';
-  if (value <= 2) return 'bg-emerald-500/20';
-  if (value <= 4) return 'bg-emerald-500/40';
-  if (value <= 6) return 'bg-amber-500/50';
-  return 'bg-red-500/60';
-}
+const CR_CENTER = { lat: 9.9281, lng: -84.0907 };
 
-function generateHeatmap(rides: any[]): number[][] {
-  const rows = 8;
-  const cols = 10;
-  const grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+function DemandMap({ rides }: { rides: { origin_lat: number; origin_lng: number; dest_lat?: number; dest_lng?: number }[] }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const heatmapRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
-  const crBounds = { minLat: 8.0, maxLat: 11.2, minLng: -85.9, maxLng: -82.5 };
+  useEffect(() => {
+    if (!mapRef.current) return;
 
-  const ridesWithCoords = rides.filter(
-    (r: any) => r.origin_lat != null && r.origin_lng != null
-  );
+    loadGoogleMaps().then((google) => {
+      if (!mapRef.current) return;
 
-  if (ridesWithCoords.length === 0) {
-    return [
-      [1, 2, 3, 2, 1, 0, 1, 2, 3, 2],
-      [2, 4, 5, 4, 2, 1, 2, 3, 5, 4],
-      [3, 5, 7, 6, 3, 2, 3, 5, 7, 5],
-      [2, 4, 6, 8, 5, 3, 2, 4, 6, 4],
-      [1, 3, 5, 7, 6, 4, 3, 3, 5, 3],
-      [1, 2, 3, 4, 3, 2, 1, 2, 3, 2],
-      [0, 1, 2, 3, 2, 1, 1, 1, 2, 1],
-      [1, 2, 3, 3, 2, 1, 2, 2, 3, 2],
-    ];
-  }
+      const map = new google.maps.Map(mapRef.current, {
+        center: CR_CENTER,
+        zoom: 11,
+        disableDefaultUI: true,
+        zoomControl: false,
+        gestureHandling: 'greedy',
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#1d2c4d' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#1a3646' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#304a7d' }] },
+          { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#98a5be' }] },
+          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#26465e' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
+          { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4e6d70' }] },
+          { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#283d6a' }] },
+          { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+        ],
+      });
 
-  for (const ride of ridesWithCoords) {
-    const lat = ride.origin_lat;
-    const lng = ride.origin_lng;
-    const col = Math.min(cols - 1, Math.max(0, Math.floor(((lng - crBounds.minLng) / (crBounds.maxLng - crBounds.minLng)) * cols)));
-    const row = Math.min(rows - 1, Math.max(0, Math.floor(((crBounds.maxLat - lat) / (crBounds.maxLat - crBounds.minLat)) * rows)));
-    grid[row][col]++;
-  }
+      mapInstanceRef.current = map;
 
-  const maxVal = Math.max(...grid.flat(), 1);
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      grid[r][c] = Math.round((grid[r][c] / maxVal) * 8);
+      const heatmap = new google.maps.visualization.HeatmapLayer({
+        data: [],
+        map: map,
+        options: {
+          radius: 25,
+          opacity: 0.7,
+          gradient: [
+            'rgba(0, 0, 0, 0)',
+            'rgba(16, 185, 129, 0.3)',
+            'rgba(16, 185, 129, 0.5)',
+            'rgba(245, 158, 11, 0.5)',
+            'rgba(245, 158, 11, 0.7)',
+            'rgba(239, 68, 68, 0.7)',
+            'rgba(239, 68, 68, 0.9)',
+          ],
+        },
+      });
+
+      heatmapRef.current = heatmap;
+      setMapReady(true);
+    }).catch(() => setMapReady(false));
+
+    return () => {
+      if (heatmapRef.current) { heatmapRef.current.setMap(null); heatmapRef.current = null; }
+      if (mapInstanceRef.current) mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // Update heatmap data when rides change
+  useEffect(() => {
+    if (!heatmapRef.current || !mapReady) return;
+
+    const google = window as any;
+    if (!google.google?.maps) return;
+
+    const points: { location: google.maps.LatLng; weight: number }[] = [];
+
+    rides.forEach(r => {
+      if (r.origin_lat && r.origin_lng) {
+        points.push({ location: new google.google.maps.LatLng(r.origin_lat, r.origin_lng), weight: 3 });
+      }
+      if (r.dest_lat && r.dest_lng) {
+        points.push({ location: new google.google.maps.LatLng(r.dest_lat, r.dest_lng), weight: 2 });
+      }
+    });
+
+    heatmapRef.current.setData(points);
+
+    // Fit bounds if we have data
+    if (points.length > 0 && mapInstanceRef.current) {
+      const bounds = new google.google.maps.LatLngBounds();
+      points.forEach(p => bounds.extend(p.location));
+      mapInstanceRef.current.fitBounds(bounds, { padding: 40 });
     }
-  }
+  }, [rides, mapReady]);
 
-  return grid;
+  const zoomIn = () => { if (mapInstanceRef.current) mapInstanceRef.current.setZoom((mapInstanceRef.current.getZoom() || 10) + 1); };
+  const zoomOut = () => { if (mapInstanceRef.current) mapInstanceRef.current.setZoom((mapInstanceRef.current.getZoom() || 10) - 1); };
+  const resetView = () => { if (mapInstanceRef.current) { mapInstanceRef.current.setCenter(CR_CENTER); mapInstanceRef.current.setZoom(11); } };
+
+  return (
+    <div className="relative rounded-xl overflow-hidden" style={{ height: '320px' }}>
+      <div ref={mapRef} className="absolute inset-0" />
+      {!mapReady && (
+        <div className="absolute inset-0 bg-rida-dark/60 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+        </div>
+      )}
+      {/* Zoom controls */}
+      <div className="absolute top-2 right-2 z-10 flex flex-col gap-0.5">
+        <button type="button" onClick={zoomIn} className="w-7 h-7 rounded glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={zoomOut} className="w-7 h-7 rounded glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={resetView} className="w-7 h-7 rounded glass-strong flex items-center justify-center text-gray-400 hover:text-white transition-colors mt-0.5"><Crosshair className="w-3.5 h-3.5" /></button>
+      </div>
+      {/* Info overlay */}
+      <div className="absolute bottom-2 left-2 z-10 glass-strong rounded-lg px-2.5 py-1.5">
+        <div className="flex items-center gap-3 text-[10px]">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Recogidas</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Destinos</span>
+          <span className="text-gray-500">{rides.length} puntos</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Status / Activity UI helpers ────────────────────────────────────────────
@@ -254,8 +327,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<StatCard[]>([]);
   const [recentRides, setRecentRides] = useState<RecentRideRow[]>([]);
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
-  const [heatmapData, setHeatmapData] = useState<number[][]>([]);
-  const [hasRideCoords, setHasRideCoords] = useState(false);
+  const [mapRides, setMapRides] = useState<{ origin_lat: number; origin_lng: number; dest_lat?: number; dest_lng?: number }[]>([]);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -525,11 +597,14 @@ export default function AdminDashboardPage() {
         setActivityFeed(derivedFeed);
       }
 
-      // ── Process Heatmap ──────────────────────────────────────
+      // ── Process Map Data (real ride coordinates) ────────────
       const heatmapRides = allRidesRes.data ?? [];
-      const hasCoords = heatmapRides.some((r: any) => r.origin_lat != null && r.origin_lng != null);
-      setHasRideCoords(hasCoords);
-      setHeatmapData(generateHeatmap(heatmapRides));
+      setMapRides(heatmapRides.map((r: any) => ({
+        origin_lat: r.origin_lat,
+        origin_lng: r.origin_lng,
+        dest_lat: r.dest_lat || null,
+        dest_lng: r.dest_lng || null,
+      })));
 
       setLoading(false);
     } catch (error) {
@@ -537,16 +612,7 @@ export default function AdminDashboardPage() {
       setStats([]);
       setRecentRides([]);
       setActivityFeed([]);
-      setHeatmapData([
-        [1, 2, 3, 2, 1, 0, 1, 2, 3, 2],
-        [2, 4, 5, 4, 2, 1, 2, 3, 5, 4],
-        [3, 5, 7, 6, 3, 2, 3, 5, 7, 5],
-        [2, 4, 6, 8, 5, 3, 2, 4, 6, 4],
-        [1, 3, 5, 7, 6, 4, 3, 3, 5, 3],
-        [1, 2, 3, 4, 3, 2, 1, 2, 3, 2],
-        [0, 1, 2, 3, 2, 1, 1, 1, 2, 1],
-        [1, 2, 3, 3, 2, 1, 2, 2, 3, 2],
-      ]);
+      setMapRides([]);
       setLoading(false);
     }
   }, []);
@@ -752,7 +818,7 @@ export default function AdminDashboardPage() {
         </motion.div>
       </div>
 
-      {/* Heatmap */}
+      {/* Real Demand Map */}
       <motion.div
         className="glass rounded-2xl p-5"
         initial={{ opacity: 0, y: 20 }}
@@ -765,35 +831,24 @@ export default function AdminDashboardPage() {
             Mapa de Demanda
           </h2>
           <div className="flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500/20" /> Baja</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500/40" /> Media</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-500/50" /> Alta</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-500/60" /> Muy Alta</span>
+            <span className="text-gray-500">{mapRides.filter(r => r.origin_lat && r.origin_lng).length} viajes con ubicacion</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-full bg-emerald-500/70" /> Baja</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-full bg-amber-500/70" /> Alta</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-full bg-red-500/70" /> Muy Alta</span>
           </div>
         </div>
-        {heatmapData.length > 0 && heatmapData[0].length > 0 ? (
+        {mapRides.filter(r => r.origin_lat && r.origin_lng).length > 0 ? (
           <>
-            <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${heatmapData[0].length}, 1fr)` }}>
-              {heatmapData.map((row, ri) =>
-                row.map((val, ci) => (
-                  <motion.div
-                    key={`${ri}-${ci}`}
-                    className={`aspect-square rounded-md ${getHeatColor(val)} transition-colors`}
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.6 + (ri * heatmapData[0].length + ci) * 0.01 }}
-                    whileHover={{ scale: 1.2, zIndex: 10 }}
-                  />
-                ))
-              )}
-            </div>
+            <DemandMap rides={mapRides} />
             <p className="text-xs text-gray-500 mt-3 text-center">
-              {hasRideCoords ? 'Basado en datos de viajes reales' : 'Visualización de demanda estimada'}
+              Mapa de calor basado en recogidas y destinos de viajes reales
             </p>
           </>
         ) : (
-          <div className="py-12 text-center">
-            <p className="text-gray-500 text-sm">Sin datos de demanda</p>
+          <div className="rounded-xl bg-white/[0.02] border border-white/5 py-16 text-center">
+            <MapPin className="w-10 h-10 text-gray-700 mx-auto mb-2" />
+            <p className="text-gray-500 text-sm">Sin datos de ubicacion de viajes</p>
+            <p className="text-xs text-gray-600 mt-1">El mapa se llenara cuando se completen viajes con coordenadas GPS</p>
           </div>
         )}
       </motion.div>
