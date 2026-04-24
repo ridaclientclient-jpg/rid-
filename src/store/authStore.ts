@@ -255,9 +255,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
             isLoading: false,
           });
+          // Log blocked attempt
+          supabase.from('login_logs').insert({
+            email,
+            method: 'email',
+            status: 'blocked',
+          }).then(() => {}).catch(() => {});
           return { success: false, error: 'Cuenta bloqueada por 15 minutos. Demasiados intentos.' };
         }
         set({ loginAttempts: newAttempts, isLoading: false });
+        // Log failed attempt
+        supabase.from('login_logs').insert({
+          email,
+          method: 'email',
+          status: 'failed',
+        }).then(() => {}).catch(() => {});
         return { success: false, error: error.message === 'Invalid login credentials'
           ? `Credenciales incorrectas. Intentos restantes: ${5 - newAttempts}`
           : error.message
@@ -311,6 +323,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isLoading: false,
             loginAttempts: 0,
           });
+          // Update last_login_at and login_count
+          supabase.from('profiles').update({
+            last_login_at: new Date().toISOString(),
+            login_count: (profile.login_count || 0) + 1,
+          }).eq('id', sessionUser.id).then(() => {}).catch(() => {});
+          // Log successful login
+          supabase.from('login_logs').insert({
+            user_id: sessionUser.id,
+            email,
+            method: 'email',
+            status: 'success',
+          }).then(() => {}).catch(() => {});
           return { success: true };
         }
       }

@@ -54,12 +54,22 @@ export default function CourierLogin() {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin + '/courier' },
+        options: {
+          redirectTo: `${window.location.origin}/courier`,
+          data: { role: 'courier' },
+        },
       });
-      if (error) throw error;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error al conectar con Google';
-      toast.error(message);
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('not configured') || msg.includes('not enabled') || msg.includes('provider')) {
+          toast.error('Google no esta configurado. Usa correo y contrasena.', { duration: 5000 });
+        } else {
+          toast.error('Error al conectar con Google: ' + error.message);
+        }
+        setGoogleLoading(false);
+      }
+    } catch {
+      toast.error('No se pudo conectar con Google en este momento.');
       setGoogleLoading(false);
     }
   };
@@ -75,11 +85,23 @@ export default function CourierLogin() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         phone: `+506${cleanPhone}`,
+        options: {
+          data: { role: 'courier' },
+        },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('not configured') || msg.includes('sms') || msg.includes('provider')) {
+          toast.error('SMS no disponible. Usa correo y contrasena.', { duration: 5000 });
+        } else {
+          toast.error(error.message);
+        }
+        setOtpLoading(false);
+        return;
+      }
       setAuthView('otp');
       setResendCooldown(60);
-      toast.success('Codigo enviado a tu telefono');
+      toast.success('Codigo enviado a +506 ' + cleanPhone);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al enviar codigo';
       toast.error(message);
@@ -98,17 +120,71 @@ export default function CourierLogin() {
     const cleanPhone = phone.replace(/\D/g, '');
     setVerifyLoading(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         phone: `+506${cleanPhone}`,
         token,
         type: 'sms',
       });
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('expired')) {
+          toast.error('Codigo expirado. Reenvia uno nuevo.');
+        } else if (error.message.includes('invalid')) {
+          toast.error('Codigo incorrecto. Verifica e intenta de nuevo.');
+        } else {
+          toast.error(error.message);
+        }
+        setVerifyLoading(false);
+        return;
+      }
+
+      // Auto-create profile if this is a new user
+      if (data.user) {
+        try {
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', data.user.id)
+            .single();
+
+          if (!existingProfile) {
+            const meta = data.user.user_metadata || {};
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              name: meta.name || meta.phone || `Repartidor ${cleanPhone.slice(-4)}`,
+              email: data.user.email || '',
+              phone: cleanPhone,
+              role: meta.role || 'courier',
+              is_verified: true,
+              phone_verified: true,
+            }, { onConflict: 'id' });
+          } else {
+            await supabase.from('profiles').update({
+              phone_verified: true,
+            }).eq('id', data.user.id);
+          }
+        } catch (profileErr) {
+          console.warn('Profile auto-create failed:', profileErr);
+        }
+
+        useAuthStore.getState().initAuth();
+      }
+
+      // Log successful phone login
+      try {
+        await supabase.from('login_logs').insert({
+          user_id: data.user?.id,
+          phone: `+506${cleanPhone}`,
+          method: 'phone_otp',
+          status: 'success',
+        });
+      } catch (logErr) {
+        console.warn('Login log failed:', logErr);
+      }
+
       toast.success('Bienvenido repartidor!');
       router.replace('/courier');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Codigo invalido';
-      toast.error(message);
+    } catch {
+      toast.error('Error al verificar. Intenta de nuevo.');
     } finally {
       setVerifyLoading(false);
     }

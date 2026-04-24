@@ -161,6 +161,7 @@ export default function ClientLogin() {
               phone: cleanPhone,
               role: meta.role || 'client',
               is_verified: true,
+              phone_verified: true,
             }, { onConflict: 'id' });
           }
         } catch (profileErr) {
@@ -169,6 +170,18 @@ export default function ClientLogin() {
 
         /* Refresh auth state */
         useAuthStore.getState().initAuth();
+      }
+
+      // Log successful phone login
+      try {
+        await supabase.from('login_logs').insert({
+          user_id: data.user?.id,
+          phone: `+506${cleanPhone}`,
+          method: 'phone_otp',
+          status: 'success',
+        });
+      } catch (logErr) {
+        console.warn('Login log failed:', logErr);
       }
 
       toast.success('Bienvenido a RIDA!');

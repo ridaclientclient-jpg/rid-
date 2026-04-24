@@ -121,3 +121,29 @@ Stage Summary:
 - Auto heat map data generation from completed rides (trigger + backfill)
 - Point-in-polygon functions for surge pricing and restriction checking
 - API endpoint ready for client app zone integration
+---
+Task ID: 1
+Agent: Main
+Task: Improve login screens across all apps + SQL for backend support
+
+Work Log:
+- Analyzed all 5 login pages (client, driver, courier, admin, marketplace)
+- Identified red text error = Sonner toast.error() from unconfigured Google/SMS providers
+- Provided SQL: phone_verified, last_login_at, login_count columns; login_logs & login_sessions tables; RLS policies; auto-create trigger
+- Fixed duplicate phone index error by cleaning duplicates first
+- Removed hardcoded demo credentials from marketplace login (vendedor@rida.com / 123456)
+- Added Google OAuth + Phone OTP to marketplace login (was email-only before)
+- Updated courier login: added role passing, graceful error handling, profile auto-create on OTP, phone_verified tracking
+- Updated all login pages to set phone_verified on successful OTP verification
+- Added login_logs recording to authStore login function (success, failed, blocked)
+- Added last_login_at and login_count update on successful login
+- Added login_logs recording to all 4 OTP login handlers (client, driver, courier, marketplace)
+- Build succeeded with no errors
+
+Stage Summary:
+- All login screens are now REAL (no demo/hardcoded credentials)
+- Google OAuth and Phone OTP available on all 4 user-facing apps
+- Graceful error handling when Google/SMS not configured (shows friendly message, not red error)
+- Login security audit trail via login_logs table
+- phone_verified tracking in profiles table
+- SQL executed successfully with all tables, policies, and triggers created
