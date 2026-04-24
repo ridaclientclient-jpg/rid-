@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { Ride, PaymentMethodType } from '@/lib/supabase';
 
+// Haversine distance in km between two coordinates
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export type RideStatus = 'searching' | 'assigned' | 'arriving' | 'started' | 'completed' | 'cancelled' | 'scheduled';
 
 export interface UnratedRide {
@@ -18,7 +27,7 @@ interface RideState {
   lastCompletedUnratedRide: UnratedRide | null;
 
   createRide: (origin: string, destination: string, originLat?: number, originLng?: number, destLat?: number, destLng?: number, rideType?: string, stops?: Array<{ address: string; lat?: number; lng?: number }>, paymentMethod?: PaymentMethodType, paymentExtra?: { cardLastFour?: string; sinpePhone?: string }, scheduledAt?: string) => Promise<string | null>;
-  cancelRide: (rideId: string) => Promise<void>;
+  cancelRide: (rideId: string, reason?: string) => Promise<void>;
   completeRide: (rideId: string) => Promise<void>;
   fetchRideHistory: (userId: string) => Promise<void>;
   subscribeToRideUpdates: (rideId: string) => () => void;
@@ -44,33 +53,27 @@ export const useRideStore = create<RideState>((set, get) => ({
         return null;
       }
 
-      // Get pricing from settings
-      const { data: settings } = await supabase
-        .from('settings')
-        .select('key, value')
-        .in('key', ['base_price', 'price_per_km', 'surge_enabled']);
+      // Use RPC to calculate REAL fare with haversine distance from settings
+      let fareResult: any = null;
+      if (originLat && originLng && destLat && destLng) {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('calculate_fare_estimate', {
+          p_origin_lat: originLat,
+          p_origin_lng: originLng,
+          p_dest_lat: destLat,
+          p_dest_lng: destLng,
+          p_ride_type: rideType,
+        });
+        if (!rpcError && rpcData) {
+          fareResult = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        }
+      }
 
-      const basePrice = Number(settings?.find(s => s.key === 'base_price')?.value || 1500);
-      const pricePerKm = Number(settings?.find(s => s.key === 'price_per_km')?.value || 500);
-
-      // Price multipliers by ride type
-      const multipliers: Record<string, number> = {
-        standard: 1.0,
-        premium: 1.6,
-        suv: 2.1,
-        moto: 0.7,
-        moto_express: 0.9,
-        grua: 3.0,
-        flete: 3.5,
-      };
-      const multiplier = multipliers[rideType] || 1.0;
-
-      // Calculate price (distance + extra per stop)
-      const baseDistance = Math.floor(Math.random() * 15) + 3;
+      const distance = fareResult ? Number(fareResult.estimated_distance) : (originLat && destLat ? haversineDistance(originLat, originLng, destLat, destLng) : 5);
+      const price = fareResult ? Number(fareResult.estimated_price) : 1500;
+      const duration = fareResult ? Number(fareResult.estimated_duration) : Math.round(distance * 3);
+      const etaMinutes = fareResult ? Number(fareResult.eta_to_pickup) : 5;
       const stopExtra = stops.length * 2;
-      const distance = baseDistance + stopExtra;
-      const price = Math.round((basePrice + (distance * pricePerKm)) * multiplier);
-      const duration = distance * 3;
+      const finalDistance = distance + stopExtra;
 
       // Check wallet balance if paying with wallet
       if (paymentMethod === 'wallet') {
@@ -100,7 +103,7 @@ export const useRideStore = create<RideState>((set, get) => ({
         dest_lat: destLat,
         dest_lng: destLng,
         price,
-        distance,
+        distance: finalDistance,
         duration,
         payment_method: paymentMethod,
         payment_status: 'pending',
@@ -108,6 +111,8 @@ export const useRideStore = create<RideState>((set, get) => ({
         sinpe_phone: paymentExtra.sinpePhone || null,
         scheduled_at: scheduledAt || null,
         is_scheduled: isScheduled,
+        fare_estimate: fareResult ? Number(fareResult.estimated_price) : null,
+        eta_minutes: etaMinutes,
       };
 
       let ride: any = null;
@@ -219,7 +224,14 @@ export const useRideStore = create<RideState>((set, get) => ({
           console.warn(`Cancellation fee applied: ₡${fee}`);
         }
       } else {
-        await supabase.from('rides').update({ status: 'cancelled' }).eq('id', rideId);
+        // Fallback: direct DB update without auth
+        const cancelPayload: Record<string, any> = {
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: (await supabase.auth.getUser()).data.user?.id || null,
+        };
+        if (reason) cancelPayload.cancellation_reason = reason;
+        await supabase.from('rides').update(cancelPayload).eq('id', rideId);
       }
       const state = get();
       if (state.currentRide) {

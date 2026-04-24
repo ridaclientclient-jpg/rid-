@@ -195,15 +195,14 @@ export default function ClientRide() {
         return;
       }
 
-      // Check min ride amount against ride type price
-      const ridePriceStr = rideTypes.find(t => t.id === rideType)?.price || '0';
-      const ridePrice = parseInt(ridePriceStr.replace(/[^0-9]/g, '')) || 0;
+      // Check min ride amount against REAL fare estimate
+      const ridePrice = fareEstimate?.price || 0;
       if (promo.min_ride_amount && ridePrice < promo.min_ride_amount) {
         setPromoError(`El monto minimo del viaje es ₡${promo.min_ride_amount.toLocaleString()}`);
         return;
       }
 
-      // Calculate discount
+      // Calculate discount based on real fare estimate price
       let discount = 0;
       if (promo.discount_type === 'percentage') {
         discount = Math.round(ridePrice * promo.discount_value / 100);
@@ -216,6 +215,11 @@ export default function ClientRide() {
         if (promo.max_discount) {
           discount = Math.min(discount, promo.max_discount);
         }
+      }
+
+      // Ensure discount doesn't exceed the ride price
+      if (discount > ridePrice && ridePrice > 0) {
+        discount = ridePrice;
       }
 
       setPromoDiscount(discount);

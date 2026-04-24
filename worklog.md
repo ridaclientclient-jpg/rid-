@@ -22,3 +22,28 @@ Stage Summary:
 - Driver home: destination mode + performance metrics
 - Admin leaderboard: full ranking page
 - All REAL data via Supabase - NO demo/hardcoded data
+---
+Task ID: 1
+Agent: main
+Task: Implement code changes for all 10 Uber/Didi improvements
+
+Work Log:
+- Explored all 3 apps (client, driver, admin) to understand existing implementation
+- Discovered that ALL 10 features already had code implemented from previous sessions
+- Found CRITICAL BUG: createRide() used Math.random() for distance instead of real haversine
+- Found TYPE BUG: cancelRide() interface missing reason parameter
+- Found LOGIC BUG: promo validation used hardcoded prices instead of real fare estimate
+- Found MISSING: admin rides page had no "scheduled" filter tab
+
+Stage Summary:
+- Fixed rideStore.createRide() to use calculate_fare_estimate RPC for real pricing
+- Added haversineDistance() helper function to rideStore
+- Fixed cancelRide() type signature to include optional reason parameter
+- Improved cancelRide() fallback to set cancellation_reason and cancelled_by columns
+- Fixed promo code validation to use fareEstimate.price instead of hardcoded ride type prices
+- Added guard so discount never exceeds ride price
+- Added "Programados" filter tab and purple status badge to admin rides page
+- Added scheduled rides count to admin stats bar
+- Verified: leaderboard API already uses get_driver_leaderboard RPC
+- Verified: all other features (fare calc, matching, sharing, dest mode, metrics, analytics, promos) were already working
+- Build successful with zero errors

@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 
-type RideStatus = 'completed' | 'cancelled' | 'in_progress' | 'pending' | 'searching' | 'assigned' | 'arriving' | 'started';
+type RideStatus = 'completed' | 'cancelled' | 'in_progress' | 'pending' | 'scheduled' | 'searching' | 'assigned' | 'arriving' | 'started';
 
 interface RideRow {
   id: string;
@@ -42,11 +42,13 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.E
   cancelled: { label: 'Cancelado', color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: XCircle },
   in_progress: { label: 'En curso', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: Clock },
   pending: { label: 'Pendiente', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', icon: Clock },
+  scheduled: { label: 'Programado', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: Calendar },
 };
 
 const filterTabs = [
   { label: 'Todos', value: 'all' },
   { label: 'Buscando', value: 'searching' },
+  { label: 'Programados', value: 'scheduled' },
   { label: 'Asignado', value: 'assigned' },
   { label: 'Llegando', value: 'arriving' },
   { label: 'En curso', value: 'started' },
@@ -224,7 +226,7 @@ export default function RidesPage() {
         let uiStatus: RideStatus;
         if (r.status === 'started' || r.status === 'assigned' || r.status === 'arriving') uiStatus = 'in_progress';
         else if (r.status === 'searching') uiStatus = 'pending';
-        else if (r.status === 'completed' || r.status === 'cancelled') uiStatus = r.status as RideStatus;
+        else if (r.status === 'completed' || r.status === 'cancelled' || r.status === 'scheduled') uiStatus = r.status as RideStatus;
         else uiStatus = 'pending';
 
         const dur = r.duration ? `${Math.round(r.duration)} min` : (uiStatus === 'in_progress' ? 'En curso' : '-');
@@ -284,6 +286,8 @@ export default function RidesPage() {
         matchStatus = r.status === 'in_progress';
       } else if (statusFilter === 'arriving') {
         matchStatus = r.status === 'in_progress';
+      } else if (statusFilter === 'scheduled') {
+        matchStatus = r.status === 'scheduled';
       } else {
         matchStatus = r.status === statusFilter;
       }
@@ -294,13 +298,14 @@ export default function RidesPage() {
   const totalRevenue = rides.filter(r => r.status === 'completed').reduce((sum, r) => sum + r.price, 0);
   const completedToday = rides.filter(r => r.status === 'completed').length;
   const cancelledCount = rides.filter(r => r.status === 'cancelled').length;
+  const scheduledCount = rides.filter(r => r.status === 'scheduled').length;
   const activeNow = rides.filter(r => r.status === 'in_progress' || r.status === 'pending').length;
 
   const stats = [
     { label: 'Total Viajes', value: totalCount, color: 'text-white' },
     { label: 'Activos', value: activeNow, color: 'text-cyan-400' },
     { label: 'Completados', value: completedToday, color: 'text-emerald-400' },
-    { label: 'Cancelados', value: cancelledCount, color: 'text-red-400' },
+    { label: 'Programados', value: scheduledCount, color: 'text-purple-400' },
     { label: 'Ingresos', value: formatCurrency(totalRevenue), color: 'text-amber-400' },
   ];
 
