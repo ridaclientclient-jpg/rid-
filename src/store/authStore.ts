@@ -371,12 +371,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     (get() as any)._isLoggingOut = true;
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Error signing out from Supabase:', err);
+    }
+    // Always clear state, even if signOut fails
     set({
       user: null,
       supaUser: null,
       session: null,
       isAuthenticated: false,
+      isLoading: false,
       loginAttempts: 0,
     });
     // Clear flag after a short delay so onAuthStateChange doesn't fire a second redirect

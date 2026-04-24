@@ -74,10 +74,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const handleLogout = async () => {
-    toast.success('Sesión cerrada');
-    await logout();
-    // AuthGuard will handle the redirect automatically
-    router.replace('/admin/login');
+    try {
+      await logout();
+      toast.success('Sesión cerrada');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+    // Force full page navigation to ensure clean state
+    window.location.href = '/admin/login';
   };
 
   const isActive = (href: string) => {
