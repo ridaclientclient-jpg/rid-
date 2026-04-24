@@ -184,7 +184,7 @@ export default function ClientVerification() {
     setIsUploading(true);
     try {
       const blob = dataURLtoBlob(imageData);
-      const filePath = `client_${user.id}/${docType}_${Date.now()}.jpg`;
+      const filePath = `${user.id}/client_${docType}_${Date.now()}.jpg`;
 
       /* Upload to Supabase Storage */
       const { error: uploadError } = await supabase.storage
