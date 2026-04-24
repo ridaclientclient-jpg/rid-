@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { supabase, type Wallet, type Transaction, type SavedCard as DBSavedCard } from '@/lib/supabase';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { WalletRecharge } from '@/components/WalletRecharge';
 
 // ─── Helpers ────────────────────────────────────────
 function formatRelativeTime(dateStr: string): string {
@@ -72,7 +73,7 @@ function formatExpiry(val: string): string {
 
 // ─── Component ──────────────────────────────────────
 export default function ClientWallet() {
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [walletId, setWalletId] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
@@ -83,6 +84,7 @@ export default function ClientWallet() {
 
   // ─── Modal States ─────────────────────────────────
   const [showRecargar, setShowRecargar] = useState(false);
+  const [showRecargarNew, setShowRecargarNew] = useState(false);
   const [showRetirar, setShowRetirar] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [showTransferir, setShowTransferir] = useState(false);
@@ -860,7 +862,7 @@ export default function ClientWallet() {
           {/* Recargar */}
           <button
             type="button"
-            onClick={() => setShowRecargar(true)}
+            onClick={() => setShowRecargarNew(true)}
             className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
           >
             <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -1722,6 +1724,18 @@ export default function ClientWallet() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* New Wallet Recharge Component */}
+      <WalletRecharge
+        open={showRecargarNew}
+        onClose={() => setShowRecargarNew(false)}
+        currentBalance={walletBalance}
+        session={session ? { access_token: session.access_token } : null}
+        onRecharged={(newBalance) => {
+          setWalletBalance(newBalance);
+          fetchWallet(); // Refresh transactions
+        }}
+      />
     </div>
   );
 }

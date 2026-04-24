@@ -178,26 +178,46 @@ export const useRideStore = create<RideState>((set, get) => ({
 
       // Auto-match with REAL driver via API (if not scheduled)
       if (!isScheduled) {
-        setTimeout(async () => {
+        let retryCount = 0;
+        const maxRetries = 3;
+        const retryInterval = 15000; // 15 seconds between retries
+
+        const attemptMatch = async () => {
           const state = get();
-          if (state.currentRide?.id === ride.id && state.currentRide.status === 'searching') {
-            try {
-              const matchRes = await fetch('/api/rides/match', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ride_id: ride.id }),
-              });
-              const matchData = await matchRes.json();
-              if (matchData.success && matchData.driver) {
-                // Real-time subscription will pick up the status change from Supabase
-              } else {
-                // No drivers available — notification already sent
-              }
-            } catch (err) {
-              console.error('Auto-match error:', err);
+          if (state.currentRide?.id !== ride.id || state.currentRide.status !== 'searching') return;
+
+          retryCount++;
+          try {
+            const matchRes = await fetch('/api/rides/match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                ride_id: ride.id, 
+                expand_radius: retryCount > 1, // Expand radius on retries
+                radius_km: 15 + (retryCount - 1) * 5, // 15km, 20km, 25km
+              }),
+            });
+            const matchData = await matchRes.json();
+            if (matchData.success && matchData.driver) {
+              return; // Matched — real-time will update the ride
+            }
+          } catch (err) {
+            console.error(`Auto-match attempt ${retryCount} error:`, err);
+          }
+
+          // Retry if under max
+          if (retryCount < maxRetries) {
+            setTimeout(attemptMatch, retryInterval);
+          } else {
+            // No driver found after all retries
+            const currentState = get();
+            if (currentState.currentRide?.id === ride.id && currentState.currentRide.status === 'searching') {
+              console.warn('No driver found after', maxRetries, 'attempts with expanded radius');
             }
           }
-        }, 2000);
+        };
+
+        setTimeout(attemptMatch, 2000);
       }
 
       return ride.id;

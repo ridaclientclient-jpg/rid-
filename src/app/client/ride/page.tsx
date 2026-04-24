@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import RideChat, { ChatToggleButton } from '@/components/RideChat';
 import SmartDestinations from '@/components/SmartDestinations';
 import { RiderPreferences } from '@/components/RiderPreferences';
+import FareCompare from '@/components/FareCompare';
 
 interface CoordData {
   lat: number;
@@ -1158,6 +1159,18 @@ export default function ClientRide() {
                 <Loader2 className="w-4 h-4 text-gray-500 animate-spin mr-2" />
                 <span className="text-xs text-gray-500">Calculando tarifa...</span>
               </div>
+            )}
+
+            {/* Fare Compare — all ride types side by side */}
+            {!currentRide && originCoords && destCoords && (
+              <FareCompare
+                originLat={originCoords.lat}
+                originLng={originCoords.lng}
+                destLat={destCoords.lat}
+                destLng={destCoords.lng}
+                selectedType={rideType}
+                onSelect={setRideType}
+              />
             )}
 
             {/* Selected payment summary */}
