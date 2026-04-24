@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       .eq('id', user.id)
       .single();
 
-    if (!admin || admin.role !== 'admin') {
+    if (!admin || (admin.role !== 'admin' && admin.role !== 'super_admin')) {
       return NextResponse.json({ error: 'Solo administradores' }, { status: 403 });
     }
 

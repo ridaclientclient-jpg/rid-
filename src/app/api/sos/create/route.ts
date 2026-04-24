@@ -23,11 +23,11 @@ export async function POST(request: Request) {
 
     if (error) throw error;
 
-    // Notify all admins
+    // Notify all admins (admin + super_admin)
     const { data: admins } = await supabase
       .from('profiles')
       .select('id')
-      .eq('role', 'admin');
+      .in('role', ['admin', 'super_admin']);
 
     if (admins && admins.length > 0) {
       const notifications = admins.map(admin => ({
