@@ -67,7 +67,7 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
     );
   }
 
-  if (requiredRole && user && user.role !== requiredRole && user.role !== 'admin') {
+  if (requiredRole && user && user.role !== requiredRole && user.role !== 'admin' && user.role !== 'super_admin') {
     const handleForceLogout = async () => {
       await useAuthStore.getState().logout();
       if (authPage) {
