@@ -15,6 +15,8 @@ import DraggableBottomSheet from '@/components/DraggableBottomSheet';
 import { reverseGeocode } from '@/lib/googleMaps';
 import { supabase } from '@/lib/supabase';
 import RideChat, { ChatToggleButton } from '@/components/RideChat';
+import SmartDestinations from '@/components/SmartDestinations';
+import { RiderPreferences } from '@/components/RiderPreferences';
 
 interface CoordData {
   lat: number;
@@ -753,6 +755,31 @@ export default function ClientRide() {
                 )}
               </AnimatePresence>
 
+              {/* Smart Destinations — recent + favorite routes */}
+              {!currentRide && (
+                <SmartDestinations
+                  session={session ? { access_token: session.access_token } : null}
+                  currentLat={userGPS?.lat}
+                  currentLng={userGPS?.lng}
+                  targetField={favTarget || 'destination'}
+                  onSelect={(address, lat, lng, type) => {
+                    if (favTarget === 'origin') {
+                      setOrigin(address);
+                      setOriginCoords({ lat, lng });
+                    } else {
+                      setDestination(address);
+                      setDestCoords({ lat, lng });
+                    }
+                    toast.success(`${favTarget === 'origin' ? 'Origen' : 'Destino'} establecido`);
+                  }}
+                />
+              )}
+
+              {/* Rider Preferences — collapsible */}
+              {!currentRide && (
+                <RiderPreferences session={session ? { access_token: session.access_token } : null} collapsed={true} />
+              )}
+
               {/* Origin */}
               <div className="relative">
                 <PlacesAutocomplete
@@ -1407,6 +1434,36 @@ export default function ClientRide() {
                 {shareLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
                 <span className="text-xs font-medium">Compartir viaje en vivo</span>
               </button>
+            )}
+
+            {/* Split Fare Button */}
+            {['assigned', 'arriving', 'started'].includes(currentRide.status) && !(currentRide as any)?.is_split_fare && (
+              <button
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: 'Dividir viaje RIDA',
+                      text: `Te invito a dividir el viaje. Costo: ₡${currentRide.price?.toLocaleString()}`,
+                      url: `${window.location.origin}/client/ride/${currentRide.id}?split=true`,
+                    }).catch(() => {});
+                  } else {
+                    navigator.clipboard.writeText(`${window.location.origin}/client/ride/${currentRide.id}?split=true`);
+                    toast.success('Enlace para dividir viaje copiado');
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 glass rounded-xl p-2.5 text-purple-400 hover:text-white hover:bg-white/10 transition-all"
+              >
+                <Tag className="w-4 h-4" />
+                <span className="text-xs font-medium">Dividir costo del viaje</span>
+              </button>
+            )}
+
+            {/* Split fare indicator */}
+            {(currentRide as any)?.is_split_fare && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                <Tag className="w-3.5 h-3.5 text-purple-400" />
+                <span className="text-[11px] text-purple-300">Viaje dividido entre {(currentRide as any)?.split_total_users || 1} pasajeros</span>
+              </div>
             )}
           </>
         )}

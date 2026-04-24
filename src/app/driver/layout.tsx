@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   TrendingUp, Trophy, Gift, HelpCircle, ChevronRight,
-  MessageSquare, Info as InfoIcon, Car as CarIcon,
+  MessageSquare, Info as InfoIcon, Car as CarIcon, CalendarDays,
 } from 'lucide-react';
 
 const navItems = [
@@ -52,6 +52,7 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
   const sidebarMenuItems = [
     { icon: TrendingUp, label: 'Ganancias', desc: 'Tus ingresos', href: '/driver/earnings', badge: null },
     { icon: BarChart3, label: 'Reportes', desc: 'Reportes semanales', href: '/driver/reports', badge: null },
+    { icon: CalendarDays, label: 'Resumen semanal', desc: 'Tu rendimiento semanal', href: '/driver/weekly-summary', badge: { text: 'Nuevo', color: 'bg-cyan-500' } },
     { icon: Users, label: 'Referidos', desc: 'Invita y gana', href: '/driver/referrals', badge: null },
     { icon: Trophy, label: 'Premios', desc: 'Recompensas', href: '/driver/rewards', badge: { text: 'Nuevo', color: 'bg-emerald-500' } },
     { icon: Gift, label: 'Invita amigos', desc: 'Gana bonos', href: '/driver/support', badge: null },

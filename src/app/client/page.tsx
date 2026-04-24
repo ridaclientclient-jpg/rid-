@@ -128,6 +128,7 @@ export default function ClientHome() {
           driverName={lastCompletedUnratedRide.driverName}
           driverId={lastCompletedUnratedRide.driverId}
           userId={user.id}
+          session={session}
           onClose={() => markRideAsRated(lastCompletedUnratedRide.rideId)}
         />
       )}
