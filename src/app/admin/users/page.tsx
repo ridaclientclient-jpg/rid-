@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Shield, ShieldOff, Eye, Users, Mail, Phone,
   ChevronDown, MoreHorizontal, Ban, CheckCircle2, XCircle,
-  UserCheck, Loader2, X, RefreshCw, UserCog,
+  UserCheck, Loader2, X, RefreshCw, UserCog, FileText, ImageIcon,
 } from 'lucide-react';
 import { supabase, type Profile } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -126,6 +126,9 @@ export default function UsersPage() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [userDocuments, setUserDocuments] = useState<Array<{id: string; type: string; url: string; status: string}>>([]);
+  const [docImages, setDocImages] = useState<Record<string, string>>({});
+  const [loadingDocs, setLoadingDocs] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -264,6 +267,43 @@ export default function UsersPage() {
     }
   };
 
+  /* Fetch user documents for detail modal */
+  const fetchUserDocuments = useCallback(async (userId: string) => {
+    setLoadingDocs(true);
+    setUserDocuments([]);
+    setDocImages({});
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, type, url, status')
+        .eq('user_id', userId);
+
+      if (data && data.length > 0) {
+        setUserDocuments(data);
+        /* Get public URLs for each document */
+        const urls: Record<string, string> = {};
+        for (const doc of data) {
+          const { data: urlData } = supabase.storage
+            .from('documents')
+            .getPublicUrl(doc.url);
+          urls[doc.type] = urlData.publicUrl;
+        }
+        setDocImages(urls);
+      }
+    } catch (err) {
+      console.error('Error fetching documents:', err);
+    } finally {
+      setLoadingDocs(false);
+    }
+  }, []);
+
+  /* Open user detail and load documents */
+  const openUserDetail = useCallback((user: UserData) => {
+    setSelectedUser(user);
+    setOpenMenu(null);
+    fetchUserDocuments(user.id);
+  }, [fetchUserDocuments]);
+
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
 
   if (loading) return <UsersSkeleton />;
@@ -399,7 +439,7 @@ export default function UsersPage() {
                         className="absolute right-0 top-10 w-52 glass-strong rounded-xl py-1.5 z-20 shadow-xl"
                       >
                         <button
-                          onClick={() => { setSelectedUser(user); setOpenMenu(null); }}
+                          onClick={() => openUserDetail(user)}
                           className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                         >
                           <Eye className="w-4 h-4 text-cyan-400" /> Ver detalles
@@ -543,6 +583,79 @@ export default function UsersPage() {
                       {selectedUser.joined ? new Date(selectedUser.joined).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                     </p>
                   </div>
+                </div>
+
+                {/* Documents Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-cyan-400" />
+                    <h4 className="text-sm font-semibold text-white">Documentos de Verificacion</h4>
+                  </div>
+                  {loadingDocs ? (
+                    <div className="flex items-center gap-2 py-4 justify-center">
+                      <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+                      <span className="text-xs text-gray-400">Cargando documentos...</span>
+                    </div>
+                  ) : userDocuments.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {userDocuments.map((doc) => {
+                        const docLabels: Record<string, string> = {
+                          selfie: 'Selfie',
+                          id_front: 'Cedula Frente',
+                          id_back: 'Cedula Atras',
+                          license_front: 'Licencia Frente',
+                          license_back: 'Licencia Atras',
+                          vehicle_front: 'Vehiculo Frente',
+                          vehicle_side: 'Vehiculo Lateral',
+                          vehicle_back: 'Vehiculo Atras',
+                          vehicle_interior: 'Vehiculo Interior',
+                          circulacion: 'Circulacion',
+                          marchamo: 'Marchamo',
+                        };
+                        const imageUrl = docImages[doc.type];
+                        return (
+                          <div key={doc.id} className="bg-white/5 rounded-xl overflow-hidden">
+                            {imageUrl ? (
+                              <div
+                                className="w-full aspect-square cursor-pointer relative group"
+                                onClick={() => window.open(imageUrl, '_blank')}
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt={docLabels[doc.type] || doc.type}
+                                  className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                                  <Eye className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-full aspect-square flex items-center justify-center bg-white/5">
+                                <ImageIcon className="w-6 h-6 text-gray-600" />
+                              </div>
+                            )}
+                            <div className="p-2">
+                              <p className="text-[10px] text-gray-400 truncate">{docLabels[doc.type] || doc.type}</p>
+                              <p className={`text-[9px] mt-0.5 font-medium ${
+                                doc.status === 'approved' ? 'text-emerald-400' :
+                                doc.status === 'rejected' ? 'text-red-400' :
+                                'text-amber-400'
+                              }`}>
+                                {doc.status === 'approved' ? 'Aprobado' :
+                                 doc.status === 'rejected' ? 'Rechazado' :
+                                 'Pendiente'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <FileText className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                      <p className="text-xs text-gray-500">No hay documentos subidos</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

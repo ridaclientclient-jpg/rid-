@@ -239,9 +239,28 @@ export default function ClientVerification() {
     if (step < steps.length) {
       setTimeout(() => setCurrentStep(step + 1), 500);
     } else {
-      /* All done */
+      /* All done — auto-approve immediately */
+      try {
+        /* Mark all documents as approved */
+        await supabase
+          .from('documents')
+          .update({ status: 'approved' })
+          .eq('user_id', user!.id)
+          .in('type', allDocTypes.map((d) => d.type));
+
+        /* Update profile is_verified */
+        await supabase
+          .from('profiles')
+          .update({ is_verified: true })
+          .eq('id', user!.id);
+
+        /* Refresh auth store to reflect verified status */
+        useAuthStore.getState().initAuth();
+      } catch (err) {
+        console.warn('Auto-approve error:', err);
+      }
       setIsSubmitted(true);
-      setVerificationStatus('pending');
+      setVerificationStatus('approved');
     }
   };
 
