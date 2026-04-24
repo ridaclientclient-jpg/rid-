@@ -10,7 +10,7 @@ import {
   Info, Calendar, CreditCard, Banknote, Loader2, Target,
   Gift, Flag, Zap, BarChart3, ArrowUpCircle, RefreshCw,
   X, Send, Smartphone, Shield, Users, ChevronDown, ChevronUp,
-  Route as RouteIcon, Star,
+  Route as RouteIcon, Star, AlertTriangle,
 } from 'lucide-react';
 
 interface WeeklyDay {
@@ -172,8 +172,48 @@ function RideBreakdown({ driverId }: { driverId?: string }) {
   );
 }
 
+// ═══ Period Detail Types ═══
+interface PeriodSummary {
+  total_rides: number;
+  total_earnings: number;
+  total_earnings_formatted: string;
+  total_tips: number;
+  total_tips_formatted: string;
+  total_distance_km: number;
+  avg_daily_earnings: number;
+  avg_daily_earnings_formatted: string;
+  avg_fare: number;
+  avg_fare_formatted: string;
+}
+
+interface DailyRPC {
+  date: string;
+  rides: number;
+  earnings: number;
+  tips: number;
+  distance: number;
+  avg_fare: number;
+}
+
+interface PeriodDetailData {
+  summary: PeriodSummary;
+  daily: DailyRPC[];
+}
+
+type PeriodKey = 'today' | 'week' | 'month' | 'year';
+
+const PERIOD_OPTIONS: { id: PeriodKey; label: string }[] = [
+  { id: 'today', label: 'Hoy' },
+  { id: 'week', label: 'Semana' },
+  { id: 'month', label: 'Mes' },
+  { id: 'year', label: 'Ano' },
+];
+
+const RPC_DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+const RPC_MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
 export default function DriverEarnings() {
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [driverData, setDriverData] = useState<Driver | null>(null);
@@ -210,6 +250,38 @@ export default function DriverEarnings() {
     queueId: string;
   } | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+
+  // ─── Period Detail State (RPC) ─────────────────────
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('week');
+  const [periodData, setPeriodData] = useState<PeriodDetailData | null>(null);
+  const [periodLoading, setPeriodLoading] = useState(false);
+  const [periodError, setPeriodError] = useState<string | null>(null);
+
+  // ─── Fetch Period Detail from RPC ──────────────────
+  useEffect(() => {
+    if (!session?.access_token) return;
+    let cancelled = false;
+    (async () => {
+      setPeriodLoading(true);
+      setPeriodError(null);
+      try {
+        const res = await fetch(`/api/drivers/earnings-detail?period=${selectedPeriod}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.error || `Error ${res.status}`);
+        }
+        const json = await res.json();
+        if (!cancelled) setPeriodData(json);
+      } catch (err: any) {
+        if (!cancelled) setPeriodError(err?.message || 'Error al cargar detalles del periodo');
+      } finally {
+        if (!cancelled) setPeriodLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [session?.access_token, selectedPeriod]);
 
   const maxAmount = Math.max(...weeklyData.map(d => d.amount), 1);
   const maxHours = 12;
@@ -724,6 +796,127 @@ export default function DriverEarnings() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-xl font-bold text-white">Ganancias</h1>
         <p className="text-sm text-gray-400 mt-0.5">Resumen de tus ingresos</p>
+      </motion.div>
+
+      {/* ═══ Detalles del Periodo (RPC) ═══ */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.03 }}
+        className="glass-strong rounded-2xl p-4 space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-semibold text-white">Detalles del Periodo</span>
+          </div>
+          {periodLoading && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
+        </div>
+
+        {/* Period Selector Buttons */}
+        <div className="flex gap-1.5">
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setSelectedPeriod(opt.id)}
+              disabled={periodLoading}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+                selectedPeriod === opt.id
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                  : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-transparent'
+              } disabled:opacity-50`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Error State */}
+        {periodError && !periodLoading && (
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-red-400 font-medium">Error al cargar detalles</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">{periodError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Success State */}
+        {periodData && !periodError && (
+          <>
+            {/* Summary Cards Grid */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2.5 rounded-xl bg-white/5">
+                <p className="text-[10px] text-gray-500 mb-0.5">Total viajes</p>
+                <p className="text-sm font-bold text-white">{periodData.summary.total_rides}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                <p className="text-[10px] text-gray-500 mb-0.5">Ganancia total</p>
+                <p className="text-sm font-bold text-emerald-400">{periodData.summary.total_earnings_formatted}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-500/10">
+                <p className="text-[10px] text-gray-500 mb-0.5">Total propinas</p>
+                <p className="text-sm font-bold text-amber-400">{periodData.summary.total_tips_formatted}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/5">
+                <p className="text-[10px] text-gray-500 mb-0.5">Distancia total</p>
+                <p className="text-sm font-bold text-white">{periodData.summary.total_distance_km}<span className="text-[10px] text-gray-500 ml-0.5">km</span></p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/5">
+                <p className="text-[10px] text-gray-500 mb-0.5">Promedio diario</p>
+                <p className="text-sm font-bold text-cyan-400">{periodData.summary.avg_daily_earnings_formatted}</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white/5">
+                <p className="text-[10px] text-gray-500 mb-0.5">Tarifa promedio</p>
+                <p className="text-sm font-bold text-purple-400">{periodData.summary.avg_fare_formatted}</p>
+              </div>
+            </div>
+
+            {/* Daily Bar Chart */}
+            {periodData.daily.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-xs text-gray-400">
+                    Ganancias por dia ({PERIOD_OPTIONS.find(p => p.id === selectedPeriod)?.label})
+                  </span>
+                </div>
+                <div className="flex items-end gap-1.5 h-28 overflow-x-auto pb-1">
+                  {(() => {
+                    const maxDaily = Math.max(...periodData.daily.map(d => d.earnings), 1);
+                    return periodData.daily.map((d, i) => {
+                      const dateObj = new Date(d.date + 'T12:00:00');
+                      const label = selectedPeriod === 'year'
+                        ? RPC_MONTH_NAMES[dateObj.getMonth()]
+                        : RPC_DAY_NAMES[dateObj.getDay()];
+                      const dayNum = dateObj.getDate();
+                      const heightPct = Math.max((d.earnings / maxDaily) * 100, 3);
+                      return (
+                        <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-[28px]">
+                          <span className="text-[8px] text-gray-600">{d.earnings > 0 ? `₡${(d.earnings / 1000).toFixed(0)}k` : ''}</span>
+                          <motion.div
+                            initial={{ height: 0 }}
+                            animate={{ height: `${heightPct}%` }}
+                            transition={{ duration: 0.5, delay: i * 0.04 }}
+                            className="w-full rounded-t-md bg-gradient-to-t from-cyan-600 to-emerald-400 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                            title={`${dayNum} ${selectedPeriod === 'year' ? RPC_MONTH_NAMES[dateObj.getMonth()] : ''}: ${d.rides} viajes - ₡${Math.round(d.earnings).toLocaleString()}`}
+                          />
+                          <span className="text-[9px] text-gray-500 font-medium">{selectedPeriod === 'today' ? `${dayNum}` : label}</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {periodData.daily.length === 0 && (
+              <p className="text-xs text-gray-500 text-center py-3">Sin datos para este periodo</p>
+            )}
+          </>
+        )}
       </motion.div>
 
       {/* Today's Earnings Card */}

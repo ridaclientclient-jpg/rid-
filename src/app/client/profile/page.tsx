@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { User, Mail, Phone, Shield, Star, CreditCard, FileText, HelpCircle, LogOut, ChevronRight, Camera, Bell, Lock, Loader2 } from 'lucide-react';
+import { EmergencyContacts } from '@/components/EmergencyContacts';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -12,7 +13,7 @@ const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Se
 
 export default function ClientProfile() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, session, logout } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [totalRides, setTotalRides] = useState(0);
   const [avgRating, setAvgRating] = useState<number | null>(null);
@@ -137,6 +138,11 @@ export default function ClientProfile() {
             <ChevronRight className="w-4 h-4 text-gray-600" />
           </button>
         ))}
+      </motion.div>
+
+      {/* Emergency Contacts */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+        <EmergencyContacts session={session ? { access_token: session.access_token } : null} />
       </motion.div>
 
       {/* Logout */}

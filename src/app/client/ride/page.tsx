@@ -50,6 +50,21 @@ export default function ClientRide() {
   const userGPSRef = useRef<{ lat: number; lng: number } | null>(null);
   const [showChat, setShowChat] = useState(false);
 
+  // ─── Match Retry ─────────────────────────────────
+  const [searchStartTime, setSearchStartTime] = useState<number | null>(null);
+  const [matchRetries, setMatchRetries] = useState(0);
+  const [retryingMatch, setRetryingMatch] = useState(false);
+
+  useEffect(() => {
+    if (currentRide?.status === 'searching' && !searchStartTime) {
+      setSearchStartTime(Date.now());
+    }
+    if (currentRide?.status !== 'searching') {
+      setSearchStartTime(null);
+      setMatchRetries(0);
+    }
+  }, [currentRide?.status, searchStartTime]);
+
   // ─── Fare Estimate ─────────────────────────────────
   const [fareEstimate, setFareEstimate] = useState<{price: number; distance: number; duration: number; eta: number} | null>(null);
   const [fareLoading, setFareLoading] = useState(false);
@@ -482,6 +497,31 @@ export default function ClientRide() {
       const [h, m] = t.split(':').map(Number);
       return h * 60 + m >= minMinutes;
     });
+  };
+
+  const handleRetryMatch = async () => {
+    if (!currentRide || currentRide.status !== 'searching' || !session?.access_token) return;
+    setRetryingMatch(true);
+    try {
+      const newRetry = matchRetries + 1;
+      const expandedRadius = 5 + (newRetry * 3); // Start at 5km, expand by 3km each retry
+      const res = await fetch('/api/rides/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ ride_id: currentRide.id, radius_km: expandedRadius }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMatchRetries(newRetry);
+        toast.success(`Buscando en radio de ${expandedRadius}km... (intento ${newRetry})`);
+      } else {
+        toast.error(data.error || 'Error al ampliar busqueda');
+      }
+    } catch (err: any) {
+      toast.error('Error de conexion al ampliar busqueda');
+    } finally {
+      setRetryingMatch(false);
+    }
   };
 
   const handleCreateRide = async () => {
@@ -1261,6 +1301,43 @@ export default function ClientRide() {
               )}
             </div>
 
+            {/* Match Retry Banner */}
+            {currentRide.status === 'searching' && searchStartTime && (Date.now() - searchStartTime > 30000) && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass rounded-2xl p-4 border border-amber-500/20"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Search className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span className="text-xs font-semibold text-white">Tomando mas tiempo de lo esperado</span>
+                </div>
+                <p className="text-[10px] text-gray-400 mb-3">
+                  Amplia el radio de busqueda para encontrar un conductor mas rapido
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRetryMatch}
+                  disabled={retryingMatch}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {retryingMatch ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Navigation className="w-4 h-4" />
+                  )}
+                  {matchRetries > 0
+                    ? `Ampliar busqueda (${5 + (matchRetries + 1) * 3}km)`
+                    : 'Ampliar area de busqueda'}
+                </button>
+                {matchRetries > 0 && (
+                  <p className="text-[9px] text-gray-500 text-center mt-2">
+                    Intentos de ampliacion: {matchRetries} &middot; Radio actual: {5 + matchRetries * 3}km
+                  </p>
+                )}
+              </motion.div>
+            )}
+
             {/* Scheduled Ride Info */}
             {currentRide.status === 'scheduled' && (
               <motion.div
@@ -1334,6 +1411,29 @@ export default function ClientRide() {
                     <MessageSquare className="w-4 h-4 text-blue-400" />
                   </button>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Verification PIN Display */}
+            {['assigned', 'arriving'].includes(currentRide.status) && (currentRide as any).verification_pin && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                className="bg-gradient-to-br from-emerald-500/15 to-cyan-500/10 border border-emerald-500/25 rounded-2xl p-4 text-center"
+              >
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-semibold text-emerald-300">PIN de verificacion</span>
+                </div>
+                <p className="text-[10px] text-gray-400 mb-2">Comparte este PIN con tu conductor</p>
+                <div className="flex justify-center gap-3">
+                  {(currentRide as any).verification_pin.split('').map((digit: string, i: number) => (
+                    <div key={i} className="w-12 h-14 rounded-xl bg-white/10 border border-emerald-500/30 flex items-center justify-center">
+                      <span className="text-2xl font-bold text-white">{digit}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[9px] text-gray-500 mt-2">El conductor ingresara este PIN para confirmar el viaje</p>
               </motion.div>
             )}
 

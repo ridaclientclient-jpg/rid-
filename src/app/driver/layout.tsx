@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, Car, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X, BarChart3, Users } from 'lucide-react';
+import { Home, Car, Wallet, User as UserIcon, Zap, ArrowLeft, LogOut, Bell, Menu, X, BarChart3, Users, Wrench } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -60,6 +60,7 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
     { icon: MessageSquare, label: 'Notificaciones', desc: notifCount > 0 ? `${notifCount} no leida(s)` : 'Sin novedad', href: '/driver/notifications', badge: notifCount > 0 ? { text: String(notifCount), color: 'bg-red-500' } : null },
     { icon: InfoIcon, label: 'Centro de info', desc: 'Recursos', href: '/driver/terms', badge: null },
     { icon: CarIcon, label: 'Vehiculo', desc: 'Tu vehiculo', href: '/driver/vehicle', badge: null },
+    { icon: Wrench, label: 'Mantenimiento', desc: 'Servicio de vehiculos', href: '/driver/maintenance', badge: null },
   ];
 
   return (

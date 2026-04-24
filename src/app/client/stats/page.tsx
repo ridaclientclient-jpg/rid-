@@ -20,6 +20,22 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
+// ─── RPC Stats Types ───────────────────────────────
+interface RPCPassengerStats {
+  total_rides: number;
+  total_spent: number;
+  total_spent_formatted: string;
+  total_tips: number;
+  total_tips_formatted: string;
+  total_distance_km: number;
+  avg_fare: number;
+  avg_fare_formatted: string;
+  completed: number;
+  cancelled: number;
+  cancellation_rate: number;
+  most_common_type: string | null;
+}
+
 // ─── Types ──────────────────────────────────────────
 interface DailySpend {
   day: number;
@@ -91,9 +107,14 @@ const itemVariants = {
 // ─── Component ─────────────────────────────────────
 export default function ClientStats() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<MonthlyStats | null>(null);
+
+  // ─── RPC Stats State ─────────────────────────────
+  const [rpcStats, setRpcStats] = useState<RPCPassengerStats | null>(null);
+  const [rpcLoading, setRpcLoading] = useState(false);
+  const [rpcError, setRpcError] = useState<string | null>(null);
 
   // Month selector state
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -270,6 +291,33 @@ export default function ClientStats() {
     [],
   );
 
+  // ─── Fetch RPC Stats ─────────────────────────────
+  useEffect(() => {
+    if (!session?.access_token) return;
+    const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+    let cancelled = false;
+    (async () => {
+      setRpcLoading(true);
+      setRpcError(null);
+      try {
+        const res = await fetch(`/api/rides/passenger-stats?month=${monthStr}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.error || `Error ${res.status}`);
+        }
+        const json = await res.json();
+        if (!cancelled && json.success) setRpcStats(json.stats);
+      } catch (err: any) {
+        if (!cancelled) setRpcError(err?.message || 'Error al cargar estadisticas del sistema');
+      } finally {
+        if (!cancelled) setRpcLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [session?.access_token, selectedYear, selectedMonth]);
+
   useEffect(() => {
     if (user?.id) {
       fetchStats(user.id, selectedYear, selectedMonth);
@@ -388,6 +436,96 @@ export default function ClientStats() {
         >
           <ChevronRight className="w-4 h-4 text-gray-400" />
         </button>
+      </motion.div>
+
+      {/* ═══ Resumen del Sistema (RPC) ═══ */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="glass-strong rounded-2xl p-4"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-semibold text-white">Resumen del Sistema</h3>
+          </div>
+          {rpcLoading && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
+          {rpcStats && (
+            <div className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              RPC
+            </div>
+          )}
+        </div>
+
+        {rpcError && !rpcLoading && (
+          <div className="flex items-start gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-amber-400 font-medium">Sin datos del sistema</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Se muestran los datos calculados localmente</p>
+            </div>
+          </div>
+        )}
+
+        {rpcStats && !rpcError && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10">
+              <div className="flex items-center gap-1.5 mb-1">
+                <DollarSign className="w-3 h-3 text-emerald-400" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide">Total Gastado</span>
+              </div>
+              <p className="text-sm font-bold text-emerald-400">{rpcStats.total_spent_formatted}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-cyan-500/10">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Car className="w-3 h-3 text-cyan-400" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide">Total Viajes</span>
+              </div>
+              <p className="text-sm font-bold text-cyan-400">{rpcStats.total_rides}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide">Completados</span>
+              </div>
+              <p className="text-sm font-bold text-white">{rpcStats.completed}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide">Cancelados</span>
+              </div>
+              <p className="text-sm font-bold text-red-400">{rpcStats.cancelled}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingUp className="w-3 h-3 text-purple-400" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide">Tarifa Promedio</span>
+              </div>
+              <p className="text-sm font-bold text-purple-400">{rpcStats.avg_fare_formatted}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Route className="w-3 h-3 text-amber-400" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wide">Tasa Cancelacion</span>
+              </div>
+              <p className="text-sm font-bold text-amber-400">{rpcStats.cancellation_rate}%</p>
+            </div>
+            {rpcStats.most_common_type && (
+              <div className="col-span-2 p-2.5 rounded-xl bg-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <PieChartIcon className="w-3 h-3 text-pink-400" />
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Tipo Mas Comun</span>
+                </div>
+                <span className="text-xs font-semibold text-pink-400 bg-pink-500/10 px-2 py-0.5 rounded-full">
+                  {RIDE_TYPE_CONFIG[rpcStats.most_common_type]?.label || rpcStats.most_common_type}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </motion.div>
 
       {/* Stats Cards Grid */}

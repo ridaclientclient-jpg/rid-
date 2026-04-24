@@ -4,14 +4,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
-import { supabase, type Driver } from '@/lib/supabase';
+import { supabase, type Driver, type Ride } from '@/lib/supabase';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
+import { PinVerification } from '@/components/PinVerification';
 import {
   Power, Star, Car, Clock, TrendingUp, ChevronRight,
   Shield, Trophy, Diamond, Target, Wallet,
-  Navigation, BarChart3, Zap, Award, Eye, Bell, AlertTriangle,
+  Navigation, BarChart3, Zap, Award, Eye, Bell, AlertTriangle, Coffee,
 } from 'lucide-react';
 
 // Level system
@@ -39,6 +40,52 @@ function getNextLevel(totalRides: number) {
   return null;
 }
 
+// ─── Break Countdown Helper ────────────────────────────────────
+function BreakCountdown({ targetTime }: { targetTime: string }) {
+  const [timeLeft, setTimeLeft] = useState('');
+  const [progress, setProgress] = useState(100);
+
+  useEffect(() => {
+    const target = new Date(targetTime).getTime();
+    const totalMs = 30 * 60 * 1000; // 30 min assumed break
+    const startMs = target - totalMs;
+
+    const tick = () => {
+      const now = Date.now();
+      const diff = target - now;
+      if (diff <= 0) {
+        setTimeLeft('00:00');
+        setProgress(100);
+        return;
+      }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(`${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+      const elapsed = now - startMs;
+      setProgress(Math.min((elapsed / totalMs) * 100, 100));
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [targetTime]);
+
+  return (
+    <div>
+      <p className="text-3xl font-bold text-amber-400 mb-2">{timeLeft}</p>
+      <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 1, ease: 'easeOut' }}
+          className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500"
+        />
+      </div>
+      <p className="text-[10px] text-gray-500 mt-1">Tiempo restante</p>
+    </div>
+  );
+}
+
 export default function DriverHome() {
   const router = useRouter();
   const { user, session } = useAuthStore();
@@ -56,6 +103,14 @@ export default function DriverHome() {
   const [metrics, setMetrics] = useState<any>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
+  // ─── Break Enforcement ─────────────────────────────
+  const [showBreakModal, setShowBreakModal] = useState(false);
+  const [breakUntilTime, setBreakUntilTime] = useState<string | null>(null);
+
+  // ─── PIN Verification ──────────────────────────────
+  const [showPinVerify, setShowPinVerify] = useState(true);
+  const [currentRide, setCurrentRide] = useState<Ride | null>(null);
 
   const level = getDriverLevel(driver?.total_rides || 0);
   const nextLevel = getNextLevel(driver?.total_rides || 0);
@@ -201,9 +256,75 @@ export default function DriverHome() {
     };
   }, [isOnline, getUserLocation, sendLocation, userCoords]);
 
+  // ─── Break Enforcement Check ────────────────────────
+  const checkBreakStatus = useCallback(async () => {
+    if (!user?.id) return false;
+    try {
+      const { data: driver } = await supabase
+        .from('drivers')
+        .select('break_until, total_break_time_min')
+        .eq('user_id', user.id)
+        .single();
+      if (driver?.break_until) {
+        const breakTime = new Date(driver.break_until);
+        if (breakTime > new Date()) {
+          setBreakUntilTime(driver.break_until);
+          setShowBreakModal(true);
+          return true;
+        }
+      }
+      setBreakUntilTime(null);
+      setShowBreakModal(false);
+      return false;
+    } catch {
+      return false;
+    }
+  }, [user?.id]);
+
+  // Fetch driver's active ride
+  useEffect(() => {
+    if (!driver?.id) return;
+    const fetchActiveRide = async () => {
+      const { data } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('driver_id', driver.id)
+        .in('status', ['assigned', 'arriving', 'started'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (data && data.length > 0) {
+        setCurrentRide(data[0] as Ride);
+      } else {
+        setCurrentRide(null);
+      }
+    };
+    fetchActiveRide();
+    const interval = setInterval(fetchActiveRide, 15000);
+    return () => clearInterval(interval);
+  }, [driver?.id]);
+
+  // Auto-show PIN when a new ride is assigned
+  useEffect(() => {
+    if (currentRide?.status === 'assigned' || currentRide?.status === 'arriving') {
+      if (!(currentRide as any).pin_verified) {
+        setShowPinVerify(true);
+      }
+    }
+  }, [currentRide?.status, currentRide?.id, (currentRide as any)?.pin_verified]);
+
   // Toggle online/offline via API
   const handleToggleOnline = useCallback(async () => {
     if (!session?.access_token) return;
+
+    // Check break enforcement before going online
+    if (!isOnline) {
+      const onBreak = await checkBreakStatus();
+      if (onBreak) {
+        toast.error('Debes completar tu descanso antes de conectarte');
+        return;
+      }
+    }
+
     setIsToggling(true);
 
     const newStatus = isOnline ? 'offline' : 'online';
@@ -243,7 +364,7 @@ export default function DriverHome() {
     } finally {
       setIsToggling(false);
     }
-  }, [isOnline, session?.access_token, userCoords, sendLocation]);
+  }, [isOnline, session?.access_token, userCoords, sendLocation, checkBreakStatus]);
 
   // Open Google Maps navigation
   const openNavigation = useCallback(() => {
@@ -608,7 +729,66 @@ export default function DriverHome() {
             </div>
           </div>
         </motion.div>
+
+        {/* Active Ride - PIN Verification */}
+        {currentRide && ['assigned', 'arriving'].includes(currentRide.status) && session?.access_token && showPinVerify && (
+          <PinVerification
+            key={currentRide.id}
+            rideId={currentRide.id}
+            session={{ access_token: session.access_token }}
+            onVerified={() => {
+              setShowPinVerify(false);
+              toast.success('PIN verificado, viaje confirmado');
+            }}
+            onSkip={() => {
+              setShowPinVerify(false);
+            }}
+          />
+        )}
+
+        {/* Manual Verify PIN Button */}
+        {currentRide && ['assigned', 'arriving'].includes(currentRide.status) && !showPinVerify && !(currentRide as any).pin_verified && (
+          <button
+            type="button"
+            onClick={() => setShowPinVerify(true)}
+            className="w-full flex items-center justify-center gap-2 glass rounded-xl p-3 text-emerald-400 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <Shield className="w-4 h-4" />
+            <span className="text-xs font-medium">Verificar PIN del pasajero</span>
+          </button>
+        )}
       </div>
+
+      {/* Break Enforcement Modal */}
+      <AnimatePresence>
+        {showBreakModal && breakUntilTime && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="glass-strong rounded-2xl p-6 max-w-sm w-full text-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
+                <Coffee className="w-8 h-8 text-amber-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Descanso obligatorio</h3>
+              <p className="text-sm text-gray-400 mb-4">
+                Por tu seguridad, necesitas completar tu descanso antes de conectarte de nuevo.
+              </p>
+              <BreakCountdown targetTime={breakUntilTime} />
+              <p className="text-[10px] text-gray-500 mt-3">
+                El descanso es obligatorio por normativa de seguridad vial
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
