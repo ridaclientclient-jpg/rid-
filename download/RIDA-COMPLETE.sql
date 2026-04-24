@@ -11,6 +11,53 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║  LIMPIEZA: Borrar tablas existentes para empezar fresco       ║
+-- ╚══════════════════════════════════════════════════════════════╝
+DROP TABLE IF EXISTS public.deliveries CASCADE;
+DROP TABLE IF EXISTS public.couriers CASCADE;
+DROP TABLE IF EXISTS public.ride_messages CASCADE;
+DROP TABLE IF EXISTS public.referrals CASCADE;
+DROP TABLE IF EXISTS public.vehicle_maintenance CASCADE;
+DROP TABLE IF EXISTS public.user_achievements CASCADE;
+DROP TABLE IF EXISTS public.emergency_contacts CASCADE;
+DROP TABLE IF EXISTS public.chat_messages CASCADE;
+DROP TABLE IF EXISTS public.support_chats CASCADE;
+DROP TABLE IF EXISTS public.saved_cards CASCADE;
+DROP TABLE IF EXISTS public.withdrawal_queue CASCADE;
+DROP TABLE IF EXISTS public.client_preferences CASCADE;
+DROP TABLE IF EXISTS public.ride_splits CASCADE;
+DROP TABLE IF EXISTS public.recent_destinations CASCADE;
+DROP TABLE IF EXISTS public.cancel_reasons CASCADE;
+DROP TABLE IF EXISTS public.location_shares CASCADE;
+DROP TABLE IF EXISTS public.ride_tracking_points CASCADE;
+DROP TABLE IF EXISTS public.driver_activity_log CASCADE;
+DROP TABLE IF EXISTS public.app_notifications CASCADE;
+DROP TABLE IF EXISTS public.location_areas CASCADE;
+DROP TABLE IF EXISTS public.organization_members CASCADE;
+DROP TABLE IF EXISTS public.organizations CASCADE;
+DROP TABLE IF EXISTS public.reward_levels CASCADE;
+DROP TABLE IF EXISTS public.service_categories CASCADE;
+DROP TABLE IF EXISTS public.vehicle_types CASCADE;
+DROP TABLE IF EXISTS public.reviews CASCADE;
+DROP TABLE IF EXISTS public.promo_code_usage CASCADE;
+DROP TABLE IF EXISTS public.promo_codes CASCADE;
+DROP TABLE IF EXISTS public.settings CASCADE;
+DROP TABLE IF EXISTS public.sos_events CASCADE;
+DROP TABLE IF EXISTS public.notifications CASCADE;
+DROP TABLE IF EXISTS public.products CASCADE;
+DROP TABLE IF EXISTS public.vendors CASCADE;
+DROP TABLE IF EXISTS public.terms_accepted CASCADE;
+DROP TABLE IF EXISTS public.reports CASCADE;
+DROP TABLE IF EXISTS public.documents CASCADE;
+DROP TABLE IF EXISTS public.transactions CASCADE;
+DROP TABLE IF EXISTS public.wallets CASCADE;
+DROP TABLE IF EXISTS public.rides CASCADE;
+DROP TABLE IF EXISTS public.vehicles CASCADE;
+DROP TABLE IF EXISTS public.drivers CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+DROP VIEW IF EXISTS public.unified_notifications CASCADE;
+
 
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  SECCION 1: Tablas Base (Fase 1)                            ║
