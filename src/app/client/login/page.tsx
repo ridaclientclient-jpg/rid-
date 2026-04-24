@@ -40,7 +40,12 @@ export default function ClientLogin() {
       toast.error('Completa todos los campos');
       return;
     }
-    
+
+    if (isLocked) {
+      toast.error('Cuenta bloqueada temporalmente. Intenta mas tarde.');
+      return;
+    }
+
     const result = await login(email, password);
     if (result.success) {
       toast.success('Bienvenido a RIDA!');
@@ -55,12 +60,22 @@ export default function ClientLogin() {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin + '/client' },
+        options: {
+          redirectTo: `${window.location.origin}/client`,
+          data: { role: 'client' },
+        },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('not configured') || msg.includes('not enabled') || msg.includes('provider')) {
+          toast.error('Google no esta configurado. Usa correo y contrasena.', { duration: 5000 });
+        } else {
+          toast.error('Error al conectar con Google: ' + error.message);
+        }
+        setGoogleLoading(false);
+      }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error al conectar con Google';
-      toast.error(message);
+      toast.error('No se pudo conectar con Google en este momento.');
       setGoogleLoading(false);
     }
   };
@@ -68,7 +83,7 @@ export default function ClientLogin() {
   const handleSendOtp = async () => {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length < 8) {
-      toast.error('Ingresa un numero de telefono valido');
+      toast.error('Ingresa un numero de telefono valido (8 digitos)');
       return;
     }
 
@@ -76,15 +91,26 @@ export default function ClientLogin() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         phone: `+506${cleanPhone}`,
+        options: {
+          data: { role: 'client' },
+        },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('not configured') || msg.includes('sms') || msg.includes('provider')) {
+          toast.error('SMS no disponible. Usa correo y contrasena.', { duration: 5000 });
+        } else {
+          toast.error(error.message);
+        }
+        setOtpLoading(false);
+        return;
+      }
       setOtpSent(true);
       setAuthView('otp');
       setResendCooldown(60);
-      toast.success('Codigo enviado a tu telefono');
+      toast.success('Codigo enviado a +506 ' + cleanPhone);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error al enviar codigo';
-      toast.error(message);
+      toast.error('Error al enviar codigo. Intenta de nuevo.');
     } finally {
       setOtpLoading(false);
     }
@@ -100,17 +126,55 @@ export default function ClientLogin() {
     const cleanPhone = phone.replace(/\D/g, '');
     setVerifyLoading(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         phone: `+506${cleanPhone}`,
         token,
         type: 'sms',
       });
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('expired')) {
+          toast.error('Codigo expirado. Reenvia uno nuevo.');
+        } else if (error.message.includes('invalid')) {
+          toast.error('Codigo incorrecto. Verifica e intenta de nuevo.');
+        } else {
+          toast.error(error.message);
+        }
+        setVerifyLoading(false);
+        return;
+      }
+
+      /* Auto-create profile if this is a new user */
+      if (data.user) {
+        try {
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', data.user.id)
+            .single();
+
+          if (!existingProfile) {
+            const meta = data.user.user_metadata || {};
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              name: meta.name || meta.phone || `Usuario ${cleanPhone.slice(-4)}`,
+              email: data.user.email || '',
+              phone: cleanPhone,
+              role: meta.role || 'client',
+              is_verified: true,
+            }, { onConflict: 'id' });
+          }
+        } catch (profileErr) {
+          console.warn('Profile auto-create failed:', profileErr);
+        }
+
+        /* Refresh auth state */
+        useAuthStore.getState().initAuth();
+      }
+
       toast.success('Bienvenido a RIDA!');
       router.replace('/client');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Codigo invalido';
-      toast.error(message);
+      toast.error('Error al verificar. Intenta de nuevo.');
     } finally {
       setVerifyLoading(false);
     }
