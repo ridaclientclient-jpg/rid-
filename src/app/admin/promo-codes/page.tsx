@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Tag, Plus, Search, Edit3, Trash2, ToggleLeft, ToggleRight,
   Calendar, Percent, DollarSign, Hash, Loader2, X, Copy,
-  Clock, CheckCircle2, XCircle, AlertCircle, Gift,
+  Clock, CheckCircle2, XCircle, AlertCircle, Gift, ArrowLeft, ChevronRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -78,6 +79,80 @@ const emptyForm = {
   valid_until: '',
   is_active: true,
 };
+
+function PromoCodesLoadingSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6">
+      {/* Stats Skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="glass rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/5" />
+              <div>
+                <div className="h-3 w-28 bg-white/5 rounded mb-1" />
+                <div className="h-5 w-16 bg-white/5 rounded" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Search & Filters Skeleton */}
+      <div className="glass rounded-2xl p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="h-10 flex-1 bg-white/5 rounded-xl" />
+          <div className="flex gap-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-10 w-20 bg-white/5 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Table Skeleton */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-white/10">
+              {[...Array(6)].map((_, i) => (
+                <th key={i} className="px-4 py-3">
+                  <div className="h-3 w-16 bg-white/5 rounded" />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[...Array(5)].map((_, i) => (
+              <tr key={i} className="border-b border-white/5">
+                <td className="px-4 py-3">
+                  <div className="h-7 w-20 bg-white/5 rounded-lg" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-5 w-16 bg-white/5 rounded" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-4 w-12 bg-white/5 rounded" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-4 w-20 bg-white/5 rounded" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-6 w-20 bg-white/5 rounded-full" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    <div className="w-8 h-8 bg-white/5 rounded-lg" />
+                    <div className="w-8 h-8 bg-white/5 rounded-lg" />
+                    <div className="w-8 h-8 bg-white/5 rounded-lg" />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -336,6 +411,16 @@ export default function PromoCodesPage() {
         </motion.button>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Codigos Promocionales</span>
+      </div>
+
       {/* ─── Stats ───────────────────────────────────────── */}
       <motion.div
         className="grid grid-cols-1 sm:grid-cols-3 gap-4"
@@ -422,9 +507,7 @@ export default function PromoCodesPage() {
         transition={{ delay: 0.2 }}
       >
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-          </div>
+          <PromoCodesLoadingSkeleton />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-500">
             <Tag className="w-12 h-12 mb-3 opacity-40" />

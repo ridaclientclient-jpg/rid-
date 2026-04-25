@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Edit3, Loader2, X, DollarSign, Clock, Zap,
   Crown, Car, Sparkles, Battery, Rocket, Users,
   Star, ToggleLeft, ToggleRight, Tag, Gauge,
+  ArrowLeft, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -79,6 +81,59 @@ const emptyForm = {
   surge_enabled: true,
   is_active: true,
 };
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4">
+      {/* Stats cards skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="glass rounded-2xl p-4 border border-white/5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+              <div className="space-y-1.5">
+                <div className="h-3 w-24 bg-white/5 rounded animate-pulse" />
+                <div className="h-5 w-10 bg-white/5 rounded animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Category cards skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} className="glass rounded-2xl p-5">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-white/5 animate-pulse" />
+                <div className="space-y-1.5">
+                  <div className="h-4 w-24 bg-white/5 rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-white/5 rounded animate-pulse" />
+                </div>
+              </div>
+              <div className="w-8 h-8 bg-white/5 rounded-lg animate-pulse" />
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[1, 2, 3].map((j) => (
+                <div key={j} className="bg-white/5 rounded-lg p-2 space-y-1.5">
+                  <div className="h-2.5 w-12 mx-auto bg-white/5 rounded animate-pulse" />
+                  <div className="h-3.5 w-14 mx-auto bg-white/5 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between pt-3 border-t border-white/5">
+              <div className="w-11 h-6 bg-white/5 rounded-full animate-pulse" />
+              <div className="flex gap-2">
+                <div className="h-4 w-12 bg-white/5 rounded-full animate-pulse" />
+                <div className="h-4 w-16 bg-white/5 rounded-full animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -257,7 +312,18 @@ export default function ServiceCategoriesPage() {
         </motion.button>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Categorias de Servicio</span>
+      </div>
+
       {/* ─── Stats ───────────────────────────────────────── */}
+      {!loading && (
       <motion.div
         className="grid grid-cols-1 sm:grid-cols-3 gap-4"
         initial={{ opacity: 0, y: 15 }}
@@ -301,12 +367,11 @@ export default function ServiceCategoriesPage() {
           </div>
         </div>
       </motion.div>
+      )}
 
       {/* ─── Category Cards Grid ────────────────────────── */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-        </div>
+        <LoadingSkeleton />
       ) : categories.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-gray-500">
           <Tag className="w-12 h-12 mb-3 opacity-40" />

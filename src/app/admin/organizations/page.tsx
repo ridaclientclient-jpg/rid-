@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Search, Plus, Edit2, ToggleLeft, ToggleRight,
-  Users, Trash2, Loader2, X, UserPlus, ChevronDown, Filter, AlertTriangle
+  Users, Trash2, Loader2, X, UserPlus, ChevronDown, Filter, AlertTriangle,
+  ArrowLeft, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -67,6 +69,55 @@ const emptyOrg = (): Omit<Organization, 'id' | 'created_at' | 'updated_at'> => (
   is_active: true,
   notes: '',
 });
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header skeleton */}
+      <div className="space-y-2">
+        <div className="h-8 w-48 bg-white/5 rounded-lg animate-pulse" />
+        <div className="h-4 w-80 max-w-full bg-white/5 rounded-lg animate-pulse" />
+      </div>
+      {/* Filters bar skeleton */}
+      <div className="glass rounded-2xl p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 h-10 bg-white/5 rounded-xl animate-pulse" />
+          <div className="h-10 w-40 bg-white/5 rounded-xl animate-pulse" />
+          <div className="h-10 w-36 bg-white/5 rounded-xl animate-pulse" />
+          <div className="h-10 w-44 bg-white/5 rounded-xl animate-pulse" />
+        </div>
+      </div>
+      {/* Table skeleton */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="border-b border-white/10">
+          <div className="flex gap-4 px-4 py-3">
+            {['w-20', 'w-16', 'w-24', 'w-28', 'w-28', 'w-16', 'w-16', 'w-16'].map((w, i) => (
+              <div key={i} className={`h-3 ${w} bg-white/5 rounded animate-pulse`} />
+            ))}
+          </div>
+        </div>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-white/5">
+            <div className="flex items-center gap-2 w-40">
+              <div className="w-8 h-8 rounded-lg bg-white/5 animate-pulse" />
+              <div className="h-4 w-24 bg-white/5 rounded animate-pulse" />
+            </div>
+            <div className="h-5 w-16 bg-white/5 rounded-full animate-pulse" />
+            <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-28 bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-8 bg-white/5 rounded animate-pulse" />
+            <div className="h-5 w-5 bg-white/5 rounded animate-pulse" />
+            <div className="flex gap-1">
+              <div className="w-8 h-8 bg-white/5 rounded-lg animate-pulse" />
+              <div className="w-8 h-8 bg-white/5 rounded-lg animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -293,14 +344,7 @@ export default function OrganizationsPage() {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-        <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-        <p className="text-sm">Cargando organizaciones...</p>
-      </div>
-    );
-  }
+
 
   return (
     <div className="space-y-6">
@@ -310,7 +354,21 @@ export default function OrganizationsPage() {
         <p className="text-gray-400 mt-1">Gestion de cuentas corporativas y metodos de pago empresariales</p>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Organizaciones</span>
+      </div>
+
+      {/* Loading Skeleton */}
+      {loading && <LoadingSkeleton />}
+
       {/* Filters Bar */}
+      {!loading && (
       <motion.div
         className="glass rounded-2xl p-4"
         initial={{ opacity: 0, y: 15 }}
@@ -371,8 +429,10 @@ export default function OrganizationsPage() {
           </button>
         </div>
       </motion.div>
+      )}
 
       {/* Table */}
+      {!loading && (
       <motion.div
         className="glass rounded-2xl overflow-hidden"
         initial={{ opacity: 0, y: 15 }}
@@ -473,6 +533,7 @@ export default function OrganizationsPage() {
           </div>
         )}
       </motion.div>
+      )}
 
       {/* ===================== FORM MODAL ===================== */}
       <AnimatePresence>

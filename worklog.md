@@ -72,3 +72,31 @@ Stage Summary:
 - 4 RED issues fixed, 0 remaining critical issues
 - All confirmation dialogs now use custom modals (no native confirm/alert)
 - Build passes cleanly
+
+---
+Task ID: 4
+Agent: Main Agent + 4 Subagents
+Task: Fix YELLOW issues - Loading skeletons + breadcrumbs for all admin pages
+
+Work Log:
+- Audited all 24 admin pages for UX issues
+- Added loading skeletons (animate-pulse, bg-white/5) matching each page layout to 17 pages
+- Added breadcrumb navigation (Panel > Page Name with ArrowLeft + ChevronRight) to 17 pages
+- Fixed duplicate VehicleTypesLoadingSkeleton function
+- Build verified: 0 errors, 140 pages
+
+Pages updated with skeletons + breadcrumbs:
+- couriers, pricing, vehicle-types, banners, promo-codes
+- rewards, organizations, services/categories, reviews, admins
+- reports, locations, settings
+- heat-map, geo-map, gods-view, driver-alerts
+
+Pages already had good UX (no changes needed):
+- drivers, users, rides, analytics, payment-report, chat, leaderboard
+- marketplace/* (already rewritten with proper skeletons)
+
+Stage Summary:
+- 17 admin pages now have proper loading skeletons
+- 17 admin pages now have breadcrumb navigation
+- All YELLOW issues resolved
+- Build passes cleanly

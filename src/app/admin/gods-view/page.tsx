@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import {
   Eye, Car, MapPin, Users, Navigation, Loader2,
   RefreshCw, ZoomIn, ZoomOut, Crosshair, Maximize2,
   Activity, Clock, TrendingUp, Search, User, Star,
-  Monitor, Wifi,
+  Monitor, Wifi, ChevronRight, ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { loadGoogleMaps } from '@/lib/googleMaps';
@@ -32,6 +33,22 @@ interface OnlineDriver {
   active_ride_status?: string;
   active_ride_origin?: string;
   active_ride_destination?: string;
+}
+
+/* ─── Loading Skeleton ──────────────────────────────────────── */
+function LoadingSkeleton() {
+  return (
+    <div className="absolute inset-0 bg-rida-dark/80 z-10 animate-pulse">
+      <div className="absolute inset-0 bg-white/5" />
+      {/* Center loading indicator */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-white/5 mx-auto mb-3" />
+          <div className="h-4 w-40 bg-white/5 rounded mx-auto" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const CR_CENTER = { lat: 9.9281, lng: -84.0907 };
@@ -345,6 +362,16 @@ export default function GodsViewPage() {
   /* ─── Render ──────────────────────────────────────────── */
   return (
     <div className="space-y-4 h-[calc(100vh-140px)] flex flex-col">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Vista Dios</span>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
@@ -399,14 +426,7 @@ export default function GodsViewPage() {
             <>
               <div ref={mapRef} className="absolute inset-0" />
 
-              {mapLoading && (
-                <div className="absolute inset-0 bg-rida-dark/80 flex items-center justify-center z-10">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">Cargando mapa...</p>
-                  </div>
-                </div>
-              )}
+              {mapLoading && <LoadingSkeleton />}
 
               {/* Map Controls */}
               {viewMode === 'map' && !mapLoading && (

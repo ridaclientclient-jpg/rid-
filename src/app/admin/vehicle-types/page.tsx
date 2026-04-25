@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bike, Car, Truck, Bus, Gem, Package, Plus, Edit3,
   Loader2, X, Users, DollarSign, Clock, Gauge,
-  ChevronRight, ToggleLeft, ToggleRight, Tag, Zap,
+  ChevronRight, ToggleLeft, ToggleRight, Tag, Zap, ArrowLeft
 } from 'lucide-react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -85,6 +86,55 @@ const emptyForm = {
   capacity: 4,
   is_active: true,
 };
+
+function VehicleTypesLoadingSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6">
+      {/* Stats Skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {[...Array(2)].map((_, i) => (
+          <div key={i} className="glass rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/5" />
+              <div>
+                <div className="h-3 w-24 bg-white/5 rounded mb-1" />
+                <div className="h-5 w-16 bg-white/5 rounded" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Vehicle Type Cards Skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="glass rounded-2xl p-5">
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-white/5" />
+              <div className="flex gap-1">
+                <div className="w-8 h-8 rounded-lg bg-white/5" />
+                <div className="w-8 h-8 rounded-lg bg-white/5" />
+              </div>
+            </div>
+            <div className="h-4 w-28 bg-white/5 rounded mb-1" />
+            <div className="h-3 w-40 bg-white/5 rounded mb-4" />
+            <div className="grid grid-cols-3 gap-2">
+              {[...Array(3)].map((_, j) => (
+                <div key={j} className="bg-white/5 rounded-lg p-2.5">
+                  <div className="h-3 w-12 bg-white/5 rounded mb-1" />
+                  <div className="h-4 w-14 bg-white/5 rounded" />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/5">
+              <div className="h-3 w-28 bg-white/5 rounded" />
+              <div className="h-5 w-14 bg-white/5 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -271,6 +321,16 @@ export default function VehicleTypesPage() {
         </motion.button>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Tipos de Vehiculo</span>
+      </div>
+
       {/* ─── Stats ───────────────────────────────────────── */}
       <motion.div
         className="grid grid-cols-1 sm:grid-cols-2 gap-4"
@@ -303,9 +363,7 @@ export default function VehicleTypesPage() {
 
       {/* ─── Vehicle Type Cards ─────────────────────────── */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-        </div>
+        <VehicleTypesLoadingSkeleton />
       ) : vehicleTypes.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-gray-500">
           <Car className="w-12 h-12 mb-3 opacity-40" />

@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import {
   Search, FileText, AlertTriangle, Shield, AlertCircle,
   MessageSquare, CheckCircle2, Eye, Clock, ChevronDown,
-  ChevronUp, Loader2
+  ChevronUp, ChevronRight, ArrowLeft, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -66,6 +67,36 @@ function formatCreatedAt(dateStr: string): string {
   const d = new Date(dateStr);
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="glass rounded-xl p-4 animate-pulse">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-white/5 flex-shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-16 rounded bg-white/5" />
+                <div className="h-4 w-16 rounded-md bg-white/5" />
+                <div className="h-4 w-16 rounded-md bg-white/5" />
+              </div>
+              <div className="h-4 w-3/4 rounded bg-white/5" />
+              <div className="flex items-center gap-3">
+                <div className="h-3 w-24 rounded bg-white/5" />
+                <div className="h-3 w-32 rounded bg-white/5" />
+              </div>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white/5" />
+              <div className="w-8 h-8 rounded-lg bg-white/5" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function ReportsPage() {
@@ -187,6 +218,14 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Panel
+            </Link>
+            <ChevronRight className="w-3 h-3" />
+            <span className="text-white font-medium">Reportes</span>
+          </div>
           <h1 className="text-3xl font-bold text-white">Reportes</h1>
           <p className="text-gray-400 mt-1">{reports.length} reportes y incidentes</p>
         </div>
@@ -241,12 +280,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Loading State */}
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-          <p className="text-sm">Cargando reportes...</p>
-        </div>
-      )}
+      {loading && <LoadingSkeleton />}
 
       {/* Reports List */}
       {!loading && (

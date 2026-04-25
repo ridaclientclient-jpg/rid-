@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, ShieldCheck, Plus, Trash2, UserCheck, UserX,
-  Mail, AlertTriangle, Loader2, X, Crown, Users
+  Mail, AlertTriangle, Loader2, X, Crown, Users,
+  ArrowLeft, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -16,6 +18,63 @@ interface AdminUser {
   role: string;
   is_active: boolean;
   created_at: string;
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Stats skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="glass rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-white/5 animate-pulse" />
+              <div className="space-y-1.5">
+                <div className="h-7 w-10 bg-white/5 rounded animate-pulse" />
+                <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Admin list skeleton */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/5">
+          <div className="h-5 w-40 bg-white/5 rounded animate-pulse" />
+        </div>
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-4 w-28 bg-white/5 rounded animate-pulse" />
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-white/5 rounded animate-pulse" />
+                  <div className="h-3 w-36 bg-white/5 rounded animate-pulse" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-20 bg-white/5 rounded-full animate-pulse" />
+              <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+              <div className="w-8 h-8 bg-white/5 rounded-lg animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Info box skeleton */}
+      <div className="glass rounded-2xl p-5">
+        <div className="flex items-start gap-3">
+          <div className="w-5 h-5 bg-white/5 rounded animate-pulse flex-shrink-0 mt-0.5" />
+          <div className="space-y-2 flex-1">
+            <div className="h-4 w-40 bg-white/5 rounded animate-pulse" />
+            <div className="h-3 w-full bg-white/5 rounded animate-pulse" />
+            <div className="h-3 w-3/4 bg-white/5 rounded animate-pulse" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AdminManagementPage() {
@@ -145,7 +204,18 @@ export default function AdminManagementPage() {
         </motion.button>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Administradores</span>
+      </div>
+
       {/* Stats */}
+      {!loading && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <motion.div
           className="glass rounded-2xl p-5"
@@ -200,6 +270,7 @@ export default function AdminManagementPage() {
           </div>
         </motion.div>
       </div>
+      )}
 
       {/* Admin List */}
       <div className="glass rounded-2xl overflow-hidden">
@@ -208,9 +279,7 @@ export default function AdminManagementPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
-          </div>
+          <LoadingSkeleton />
         ) : admins.length === 0 ? (
           <div className="text-center py-12">
             <Users className="w-10 h-10 text-gray-600 mx-auto mb-3" />
@@ -299,6 +368,7 @@ export default function AdminManagementPage() {
       </div>
 
       {/* Info box */}
+      {!loading && (
       <div className="glass rounded-2xl p-5">
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -309,6 +379,7 @@ export default function AdminManagementPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ═══════ CREATE MODAL ═══════ */}
       <AnimatePresence>

@@ -2,16 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import {
   ShieldAlert, ShieldCheck, MapPin, Phone, Clock, User, Car,
   Navigation, Loader2, Bell, Search, Filter, CheckCircle2,
   AlertTriangle, Volume2, VolumeX, RefreshCw, ExternalLink,
-  ChevronDown,
+  ChevronDown, ChevronRight, ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
-import { Skeleton } from '@/components/ui/skeleton';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -97,24 +97,27 @@ function getGoogleMapsLink(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
-/* ─── Skeleton Cards ─────────────────────────────────────────────────────── */
+/* ─── Loading Skeleton ─────────────────────────────────────────────────────── */
 
-function SOSSkeleton() {
+function LoadingSkeleton() {
   return (
     <div className="space-y-3 p-4">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div key={i} className="animate-pulse rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
           <div className="flex items-center gap-3">
-            <Skeleton className="w-10 h-10 rounded-full bg-white/10" />
+            <div className="w-10 h-10 rounded-full bg-white/5" />
             <div className="flex-1 space-y-2">
-              <Skeleton className="h-4 w-32 bg-white/10" />
-              <Skeleton className="h-3 w-48 bg-white/5" />
+              <div className="h-4 w-32 bg-white/5 rounded" />
+              <div className="h-3 w-48 bg-white/5 rounded" />
             </div>
           </div>
-          <Skeleton className="h-3 w-full bg-white/5" />
+          <div className="h-3 w-full bg-white/5 rounded" />
+          <div className="bg-white/5 rounded-lg px-3 py-2">
+            <div className="h-3 w-52 bg-white/5 rounded" />
+          </div>
           <div className="flex gap-2">
-            <Skeleton className="h-8 w-24 bg-white/10" />
-            <Skeleton className="h-8 w-24 bg-white/10" />
+            <div className="h-8 w-24 bg-white/5 rounded" />
+            <div className="h-8 w-28 bg-white/5 rounded" />
           </div>
         </div>
       ))}
@@ -591,6 +594,16 @@ export default function DriverAlertsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Alertas SOS</span>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -717,7 +730,7 @@ export default function DriverAlertsPage() {
         transition={{ delay: 0.2 }}
       >
         {currentLoading ? (
-          <SOSSkeleton />
+          <LoadingSkeleton />
         ) : currentList.length > 0 ? (
           <div className="max-h-[calc(100vh-380px)] overflow-y-auto">
             <AnimatePresence mode="popLayout">

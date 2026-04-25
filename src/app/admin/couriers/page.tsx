@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Truck, Bike, Car, Eye, ToggleLeft, ToggleRight,
   Ban, CheckCircle2, XCircle, MoreHorizontal, ChevronDown,
-  Loader2, MapPin, Star, Package, Users, X
+  Loader2, MapPin, Star, Package, Users, X, ArrowLeft, ChevronRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import type { Courier } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -41,6 +42,49 @@ const statusBadge: Record<string, { label: string; color: string }> = {
   delivering: { label: 'Entregando', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   suspended: { label: 'Suspendido', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
+
+function LoadingSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6">
+      {/* Stats Cards Skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="glass rounded-2xl p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="h-3 w-24 bg-white/5 rounded mb-2" />
+                <div className="h-7 w-12 bg-white/5 rounded" />
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-white/5" />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Search Skeleton */}
+      <div className="glass rounded-2xl p-4">
+        <div className="h-10 w-full bg-white/5 rounded-xl" />
+      </div>
+      {/* Courier List Skeleton */}
+      <div className="space-y-2">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="glass rounded-xl p-4">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-white/5 flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-32 bg-white/5 rounded" />
+                <div className="h-3 w-48 bg-white/5 rounded" />
+              </div>
+              <div className="h-7 w-20 bg-white/5 rounded-lg hidden sm:block" />
+              <div className="h-7 w-24 bg-white/5 rounded-lg hidden sm:block" />
+              <div className="h-7 w-20 bg-white/5 rounded-lg hidden lg:block" />
+              <div className="w-8 h-8 rounded-lg bg-white/5" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminCouriersPage() {
   const [couriers, setCouriers] = useState<CourierRow[]>([]);
@@ -176,6 +220,16 @@ export default function AdminCouriersPage() {
         </div>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Repartidores</span>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <motion.div
@@ -246,9 +300,7 @@ export default function AdminCouriersPage() {
       {/* Courier List */}
       <div className="space-y-2">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 text-orange-400 animate-spin" />
-          </div>
+          <LoadingSkeleton />
         ) : (
           <>
             <AnimatePresence mode="popLayout">

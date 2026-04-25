@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import {
   Settings as SettingsIcon, Shield, Globe, Key, Server,
   Save, Info, AlertTriangle, Zap, X, RotateCcw, Trash2,
-  Eye, EyeOff, Copy, CheckCircle2, Clock, Cpu, Loader2
+  Eye, EyeOff, Copy, CheckCircle2, Clock, Cpu, Loader2,
+  ChevronRight, ArrowLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -49,6 +51,89 @@ const settingDefaults: SystemSetting[] = [
   { id: 'surge', key: 'surge_pricing', label: 'Precios dinámicos (Surge)', description: 'Activa multiplicadores de precio por alta demanda', enabled: true, icon: TrendingUp },
   { id: 'sos', key: 'sos_enabled', label: 'Sistema SOS', description: 'Activa el botón de emergencia SOS para pasajeros', enabled: true, icon: Shield },
 ];
+
+function LoadingSkeleton() {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-pulse">
+      {/* System Settings skeleton */}
+      <div className="xl:col-span-2 space-y-4">
+        <div className="glass rounded-2xl p-6">
+          <div className="h-5 w-48 rounded bg-white/5 mb-5" />
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/5" />
+                  <div className="space-y-1.5">
+                    <div className="h-4 w-32 rounded bg-white/5" />
+                    <div className="h-3 w-48 rounded bg-white/5" />
+                  </div>
+                </div>
+                <div className="w-14 h-7 rounded-full bg-white/5" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* API Keys skeleton */}
+        <div className="glass rounded-2xl p-6">
+          <div className="h-5 w-24 rounded bg-white/5 mb-5" />
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white/5 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="h-4 w-32 rounded bg-white/5" />
+                  <div className="flex gap-1">
+                    <div className="w-8 h-8 rounded-lg bg-white/5" />
+                    <div className="w-8 h-8 rounded-lg bg-white/5" />
+                  </div>
+                </div>
+                <div className="h-8 w-full rounded-lg bg-white/5" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Save button skeleton */}
+        <div className="h-12 w-full rounded-xl bg-white/5" />
+      </div>
+      {/* Right panel skeleton */}
+      <div className="space-y-4">
+        <div className="glass rounded-2xl p-5">
+          <div className="h-5 w-40 rounded bg-white/5 mb-4" />
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                <div className="w-8 h-8 rounded-lg bg-white/5" />
+                <div className="space-y-1">
+                  <div className="h-3 w-16 rounded bg-white/5" />
+                  <div className="h-4 w-24 rounded bg-white/5" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="glass rounded-2xl p-5">
+          <div className="h-5 w-32 rounded bg-white/5 mb-4" />
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between bg-white/5 rounded-xl p-3">
+                <div className="h-4 w-32 rounded bg-white/5" />
+                <div className="h-5 w-6 rounded bg-white/5" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="glass rounded-2xl p-5 border border-red-500/20">
+          <div className="h-5 w-28 rounded bg-white/5 mb-3" />
+          <div className="h-3 w-48 rounded bg-white/5 mb-4" />
+          <div className="space-y-2">
+            <div className="h-10 w-full rounded-xl bg-white/5" />
+            <div className="h-10 w-full rounded-xl bg-white/5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SystemSetting[]>(settingDefaults);
@@ -193,17 +278,20 @@ export default function SettingsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+          <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Panel
+          </Link>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-white font-medium">Configuración</span>
+        </div>
         <h1 className="text-3xl font-bold text-white">Configuración</h1>
         <p className="text-gray-400 mt-1">Ajustes globales del sistema RIDA</p>
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-          <p className="text-sm">Cargando configuración...</p>
-        </div>
-      )}
+      {loading && <LoadingSkeleton />}
 
       {!loading && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

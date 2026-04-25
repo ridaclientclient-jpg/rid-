@@ -4,10 +4,68 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign, TrendingUp, Zap, Save, Info, Percent,
-  Calculator, Wallet, TrendingDown, RefreshCw
+  Calculator, Wallet, TrendingDown, RefreshCw, ArrowLeft, ChevronRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+
+function PricingLoadingSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6">
+      {/* Stats Skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="glass rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/5" />
+              <div>
+                <div className="h-3 w-28 bg-white/5 rounded mb-1" />
+                <div className="h-5 w-20 bg-white/5 rounded" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Controls Skeleton */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 space-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="glass rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="h-5 w-36 bg-white/5 rounded mb-1" />
+                  <div className="h-3 w-48 bg-white/5 rounded" />
+                </div>
+                <div className="h-8 w-20 bg-white/5 rounded" />
+              </div>
+              <div className="h-2 w-full bg-white/5 rounded-full" />
+              <div className="flex justify-between mt-2">
+                <div className="h-3 w-12 bg-white/5 rounded" />
+                <div className="h-3 w-14 bg-white/5 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-4">
+          <div className="glass rounded-2xl p-5">
+            <div className="h-5 w-32 bg-white/5 rounded mb-1" />
+            <div className="h-3 w-40 bg-white/5 rounded mb-4" />
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="h-3 w-20 bg-white/5 rounded" />
+                  <div className="flex-1 h-3 bg-white/5 rounded-full" />
+                  <div className="h-3 w-6 bg-white/5 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type ZoneRideCount = { zone: string; count: number };
 
@@ -170,7 +228,21 @@ export default function PricingPage() {
         <p className="text-gray-400 mt-1">Ajusta las tarifas y comisiones del sistema</p>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Precios y Tarifas</span>
+      </div>
+
       {/* Commission Stats Banner */}
+      {isLoading ? (
+        <PricingLoadingSkeleton />
+      ) : (
+        <>
       <motion.div
         className="grid grid-cols-1 sm:grid-cols-3 gap-4"
         initial={{ opacity: 0, y: 15 }}
@@ -579,6 +651,8 @@ export default function PricingPage() {
           </motion.button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

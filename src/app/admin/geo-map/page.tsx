@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import {
   MapPin, Loader2, X, MapPinned, ZoomIn, ZoomOut,
   Maximize2, Layers, ChevronDown, Info, Crosshair, Filter,
-  Car, Users, RefreshCw, Activity
+  Car, Users, RefreshCw, Activity, ChevronRight, ArrowLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -74,6 +75,41 @@ const areaTypeColors: Record<string, { fill: string; stroke: string; text: strin
 };
 
 const CR_CENTER = { lat: 9.9281, lng: -84.0907 };
+
+/* ─── Loading Skeleton ──────────────────────────────────────── */
+function LoadingSkeleton() {
+  return (
+    <div className="absolute inset-0 bg-rida-dark/80 z-10 animate-pulse">
+      <div className="absolute inset-0 bg-white/5" />
+      {/* Live stats skeleton */}
+      <div className="absolute top-4 left-4 w-[180px]">
+        <div className="glass-strong rounded-xl p-3 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-white/5" />
+            <div className="h-3 w-14 bg-white/5 rounded" />
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="bg-white/5 rounded-lg p-2">
+              <div className="h-2 w-16 bg-white/5 rounded" />
+              <div className="h-4 w-8 bg-white/5 rounded mt-1" />
+            </div>
+            <div className="bg-white/5 rounded-lg p-2">
+              <div className="h-2 w-12 bg-white/5 rounded" />
+              <div className="h-4 w-8 bg-white/5 rounded mt-1" />
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Center loading indicator */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-white/5 mx-auto mb-3" />
+          <div className="h-4 w-32 bg-white/5 rounded mx-auto" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -415,6 +451,16 @@ export default function GeoMapPage() {
   /* ─── Render ──────────────────────────────────────────── */
   return (
     <div className="space-y-4 h-[calc(100vh-140px)] flex flex-col">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Mapa Geográfico</span>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div>
@@ -438,11 +484,7 @@ export default function GeoMapPage() {
       <div className="flex-1 relative rounded-2xl overflow-hidden glass" style={{ minHeight: '400px' }}>
         <div ref={mapRef} className="absolute inset-0" />
 
-        {mapLoading && (
-          <div className="absolute inset-0 bg-rida-dark/80 flex items-center justify-center z-10">
-            <div className="text-center"><Loader2 className="w-8 h-8 animate-spin text-cyan-400 mx-auto mb-2" /><p className="text-sm text-gray-400">Cargando mapa...</p></div>
-          </div>
-        )}
+        {mapLoading && <LoadingSkeleton />}
 
         {/* Zoom Controls */}
         <div className="absolute top-4 right-4 z-10 flex flex-col gap-1">
@@ -540,7 +582,19 @@ export default function GeoMapPage() {
               </div>
               <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
                 {loading ? (
-                  <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-cyan-400" /></div>
+                  <div className="space-y-1.5 p-2">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="animate-pulse p-2.5 rounded-xl bg-white/5">
+                        <div className="flex items-start gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-white/5" />
+                          <div className="flex-1 space-y-1.5">
+                            <div className="h-3 w-24 bg-white/5 rounded" />
+                            <div className="h-2 w-32 bg-white/5 rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : areas.filter(a => typeFilters.has(a.area_type) && (showInactive || a.is_active)).length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" /><p className="text-xs">No hay zonas</p>

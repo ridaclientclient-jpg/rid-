@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Star, Medal, Plus, Save, Loader2, Award,
-  ChevronDown, ChevronUp, Trash2, AlertTriangle, X
+  ChevronDown, ChevronUp, Trash2, AlertTriangle, X,
+  ArrowLeft, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -85,6 +87,58 @@ const emptyLevel = (): Omit<RewardLevel, 'id' | 'created_at' | 'updated_at'> => 
   reward_multiplier: 1.0,
   bonus_per_ride: 0,
 });
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header skeleton */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-8 w-64 bg-white/5 rounded-lg animate-pulse" />
+          <div className="h-4 w-96 max-w-full bg-white/5 rounded-lg animate-pulse" />
+        </div>
+        <div className="h-7 w-32 bg-white/5 rounded-full animate-pulse" />
+      </div>
+      {/* Button skeleton */}
+      <div className="h-12 w-40 bg-white/5 rounded-xl animate-pulse" />
+      {/* Cards grid skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="glass rounded-2xl overflow-hidden">
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+                <div className="space-y-1.5">
+                  <div className="h-5 w-28 bg-white/5 rounded animate-pulse" />
+                  <div className="h-3 w-16 bg-white/5 rounded animate-pulse" />
+                </div>
+              </div>
+              <div className="h-5 w-16 bg-white/5 rounded-full animate-pulse" />
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex justify-center">
+                <div className="w-16 h-16 rounded-full bg-white/5 animate-pulse" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <div key={j} className="space-y-1.5">
+                    <div className="h-3 w-20 bg-white/5 rounded animate-pulse" />
+                    <div className="h-9 bg-white/5 rounded-lg animate-pulse" />
+                  </div>
+                ))}
+              </div>
+              <div className="h-20 bg-white/5 rounded-xl animate-pulse" />
+              <div className="flex gap-3">
+                <div className="flex-1 h-10 bg-white/5 rounded-xl animate-pulse" />
+                <div className="h-10 w-10 bg-white/5 rounded-xl animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function RewardsPage() {
   const [levels, setLevels] = useState<RewardLevel[]>([]);
@@ -190,14 +244,7 @@ export default function RewardsPage() {
 
   const formatColones = (val: number) => `₡${Math.round(val).toLocaleString()}`;
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-        <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-        <p className="text-sm">Cargando niveles de recompensa...</p>
-      </div>
-    );
-  }
+
 
   return (
     <div className="space-y-6">
@@ -215,6 +262,19 @@ export default function RewardsPage() {
         </div>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRight className="w-3 h-3" />
+        <span className="text-white font-medium">Recompensas</span>
+      </div>
+
+      {/* Loading Skeleton */}
+      {loading && <LoadingSkeleton />}
+
       {/* Create Button */}
       <motion.button
         type="button"
@@ -230,6 +290,7 @@ export default function RewardsPage() {
       </motion.button>
 
       {/* Reward Level Cards Grid */}
+      {!loading && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <AnimatePresence>
           {levels.map((level, index) => {
@@ -489,8 +550,9 @@ export default function RewardsPage() {
           })}
         </AnimatePresence>
       </div>
+      )}
 
-      {levels.length === 0 && !loading && (
+      {levels.length === 0 && (
         <motion.div
           className="glass rounded-2xl p-12 text-center"
           initial={{ opacity: 0 }}

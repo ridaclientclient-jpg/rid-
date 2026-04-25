@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Star, Search, MessageSquare, Loader2, Eye, X, ChevronLeft,
   ChevronRight, ChevronsLeft, ChevronsRight, User, TrendingUp,
-  AlertTriangle, ThumbsUp,
+  AlertTriangle, ThumbsUp, ArrowLeft, ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -55,6 +56,61 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md
           }`}
         />
       ))}
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Stats skeleton */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="glass rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-3 w-20 bg-white/5 rounded animate-pulse" />
+              <div className="w-4 h-4 bg-white/5 rounded animate-pulse" />
+            </div>
+            <div className="h-7 w-12 bg-white/5 rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+      {/* Filter bar skeleton */}
+      <div className="glass rounded-2xl p-4 space-y-3">
+        <div className="h-10 bg-white/5 rounded-xl animate-pulse" />
+        <div className="flex flex-wrap gap-2">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-8 w-20 bg-white/5 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      </div>
+      {/* Table skeleton */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="border-b border-white/5">
+          <div className="flex gap-4 px-5 py-3">
+            {['w-16', 'w-24', 'w-24', 'w-20', 'w-32', 'w-16'].map((w, i) => (
+              <div key={i} className={`h-3 ${w} bg-white/5 rounded animate-pulse`} />
+            ))}
+          </div>
+        </div>
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+          <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-white/5">
+            <div className="h-4 w-28 bg-white/5 rounded animate-pulse" />
+            <div className="flex items-center gap-2 w-32">
+              <div className="w-7 h-7 rounded-full bg-white/5 animate-pulse" />
+              <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+            </div>
+            <div className="h-4 w-24 bg-white/5 rounded animate-pulse" />
+            <div className="flex gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <div key={s} className="w-3.5 h-3.5 bg-white/5 rounded animate-pulse" />
+              ))}
+            </div>
+            <div className="h-4 w-40 bg-white/5 rounded animate-pulse" />
+            <div className="w-8 h-8 bg-white/5 rounded-lg animate-pulse" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -202,7 +258,18 @@ export default function ReviewsPage() {
         <p className="text-gray-400 mt-1">Monitoreo de resenas, calificaciones y satisfaccion de usuarios</p>
       </div>
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+        <Link href="/admin" className="hover:text-white transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Panel
+        </Link>
+        <ChevronRightIcon className="w-3 h-3" />
+        <span className="text-white font-medium">Resenas</span>
+      </div>
+
       {/* Stats */}
+      {!loading && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat, i) => {
           const Icon = stat.icon;
@@ -223,8 +290,10 @@ export default function ReviewsPage() {
           );
         })}
       </div>
+      )}
 
       {/* Search & Filters */}
+      {!loading && (
       <div className="glass rounded-2xl p-4">
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
@@ -255,6 +324,7 @@ export default function ReviewsPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Table */}
       <motion.div
@@ -264,10 +334,7 @@ export default function ReviewsPage() {
         transition={{ delay: 0.2 }}
       >
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
-            <p className="text-sm">Cargando resenas...</p>
-          </div>
+          <LoadingSkeleton />
         ) : (
           <>
             <div className="overflow-x-auto">
