@@ -164,42 +164,16 @@ export default function OrdersPage() {
   const [updating, setUpdating] = useState<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  /* ── Fetch orders ──────────────────────────────────────────── */
+  /* ── Fetch orders via RPC (SECURITY DEFINER — bypasses all RLS) */
   const fetchOrders = useCallback(async (showLoading = false) => {
     if (!user?.id || !vendorId) return;
 
     if (showLoading) setLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from('deliveries')
-        .select(`
-          id,
-          courier_id,
-          customer_id,
-          vendor_id,
-          status,
-          pickup_address,
-          delivery_address,
-          items,
-          subtotal,
-          delivery_fee,
-          total,
-          payment_method,
-          notes,
-          created_at,
-          updated_at,
-          profiles!deliveries_customer_id_fkey(name, phone),
-          couriers(
-            id,
-            user_id,
-            vehicle_type,
-            rating,
-            profiles:courier_profiles(name, phone)
-          )
-        `)
-        .eq('vendor_id', vendorId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await supabase.rpc('get_vendor_orders', {
+        p_vendor_id: vendorId,
+      });
 
       if (error) {
         console.error('Error fetching orders:', error);
