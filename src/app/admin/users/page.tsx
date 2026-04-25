@@ -426,7 +426,7 @@ export default function UsersPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ delay: i * 0.03 }}
-              className="glass rounded-xl p-4 hover:bg-white/[0.07] transition-all group"
+              className={`glass rounded-xl p-4 hover:bg-white/[0.07] transition-all group ${openMenu === user.id ? 'relative z-50' : ''}`}
             >
               <div className="flex items-center gap-4">
                 {/* Avatar */}
