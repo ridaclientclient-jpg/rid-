@@ -95,6 +95,12 @@ function MapEditor({
   const drawingMode = useRef(true);
   const tempPolylineRef = useRef<google.maps.Polyline | null>(null);
 
+  // Ref to always have latest coords in the click listener (stale closure fix)
+  const coordsRef = useRef(existingCoords);
+  useEffect(() => {
+    coordsRef.current = existingCoords;
+  }, [existingCoords]);
+
   const colors = areaTypeColors[areaType] || areaTypeColors.service_area;
 
   useEffect(() => {
@@ -129,7 +135,7 @@ function MapEditor({
         if (!drawingMode.current || !mapInstanceRef.current) return;
         const lat = e.latLng!.lat();
         const lng = e.latLng!.lng();
-        const newCoords = [...existingCoords, { lat: String(lat), lng: String(lng) }];
+        const newCoords = [...coordsRef.current, { lat: String(lat), lng: String(lng) }];
         onCoordsChange(newCoords);
       });
 
@@ -282,7 +288,7 @@ function MapEditor({
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MAP VIEWER SUB-COMPONENT (preview in list)
+   MAP VIEWER SUB-COMPONENT (preview a single area)
    ═══════════════════════════════════════════════════════════════ */
 function ZoneMapPreview({ area, onClose }: { area: LocationArea; onClose: () => void }) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -354,6 +360,100 @@ function ZoneMapPreview({ area, onClose }: { area: LocationArea; onClose: () => 
       >
         <X className="w-3.5 h-3.5" />
       </button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ALL AREAS MAP VIEWER (renders each area as a SEPARATE polygon)
+   ═══════════════════════════════════════════════════════════════ */
+function AllAreasMapPreview({ areas, onClose }: { areas: LocationArea[]; onClose: () => void }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    loadGoogleMaps().then((google) => {
+      if (!mapRef.current) return;
+
+      const map = new google.maps.Map(mapRef.current, {
+        center: CR_CENTER,
+        zoom: 11,
+        disableDefaultUI: true,
+        zoomControl: true,
+        gestureHandling: 'greedy',
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#1d2c4d' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#1a3646' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#304a7d' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
+          { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#283d6a' }] },
+        ],
+      });
+
+      mapInstanceRef.current = map;
+      const bounds = new google.maps.LatLngBounds();
+      let hasBounds = false;
+
+      // Render each area as its own separate polygon with its own color
+      areas.forEach((area) => {
+        try {
+          const coords: [number, number][] = JSON.parse(area.coordinates || '[]');
+          if (coords.length < 3) return;
+
+          const colors = areaTypeColors[area.area_type] || areaTypeColors.service_area;
+          const path = coords.map(([lat, lng]) => ({ lat, lng }));
+
+          // Extend bounds to include this area
+          path.forEach(p => { bounds.extend(p); hasBounds = true; });
+
+          new google.maps.Polygon({
+            paths: path,
+            fillColor: colors.stroke,
+            fillOpacity: 0.2,
+            strokeColor: colors.stroke,
+            strokeOpacity: 0.85,
+            strokeWeight: 2,
+            map: map,
+          });
+        } catch {
+          // skip invalid coordinates
+        }
+      });
+
+      if (hasBounds) {
+        map.fitBounds(bounds, { padding: 50 });
+      }
+    }).catch(() => {
+      toast.error('Error al cargar el mapa');
+    });
+
+    return () => {
+      if (mapInstanceRef.current) mapInstanceRef.current = null;
+    };
+  }, [areas]);
+
+  return (
+    <div className="rounded-2xl overflow-hidden border border-white/10 relative" style={{ height: '500px' }}>
+      <div ref={mapRef} className="w-full h-full" />
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-3 right-3 z-10 w-8 h-8 rounded-lg bg-black/70 flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+      >
+        <X className="w-4 h-4" />
+      </button>
+      <div className="absolute bottom-3 left-3 z-10 glass-strong rounded-xl p-3 max-w-[220px]">
+        <p className="text-[10px] font-semibold text-white mb-1.5">Leyenda</p>
+        {Object.entries(areaTypeColors).map(([key, c]) => (
+          <div key={key} className="flex items-center gap-2 mb-1 last:mb-0">
+            <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: c.stroke }} />
+            <span className="text-[10px] text-gray-300">{areaTypeLabels[key]}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -668,21 +768,8 @@ export default function LocationsPage() {
         </motion.div>
       )}
 
-      {/* MAP VIEW - Preview all areas */}
-      {viewMode === 'map' && <ZoneMapPreview area={{
-        id: '__all__',
-        name: 'Todas las Zonas',
-        area_type: 'service_area',
-        country: 'Costa Rica',
-        coordinates: JSON.stringify(filteredAreas.flatMap(a => {
-          try { return JSON.parse(a.coordinates || '[]'); } catch { return []; }
-        })),
-        is_active: true,
-        notes: '',
-        surge_multiplier: 1,
-        created_at: '',
-        updated_at: '',
-      }} onClose={() => setViewMode('list')} />}
+      {/* MAP VIEW - Preview all areas as separate polygons */}
+      {viewMode === 'map' && <AllAreasMapPreview areas={filteredAreas} onClose={() => setViewMode('list')} />}
 
       {/* ===================== FORM MODAL ===================== */}
       <AnimatePresence>

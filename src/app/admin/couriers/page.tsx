@@ -338,8 +338,12 @@ export default function AdminCouriersPage() {
                               </button>
                               {!courier.is_verified && (
                                 <button
-                                  onClick={() => {
-                                    supabase.from('couriers').update({ is_verified: true }).eq('id', courier.id);
+                                  onClick={async () => {
+                                    const { error } = await supabase.from('couriers').update({ is_verified: true }).eq('id', courier.id);
+                                    if (error) {
+                                      toast.error('Error al verificar repartidor');
+                                      return;
+                                    }
                                     setCouriers(prev => prev.map(c => c.id === courier.id ? { ...c, is_verified: true } : c));
                                     toast.success('Repartidor verificado');
                                     setOpenMenu(null);

@@ -89,6 +89,23 @@ export default function AdminVendorsPage() {
 
       if (vendorError) throw vendorError;
 
+      // Batch-fetch earnings for all vendors (delivered orders)
+      const vendorIds = (vendorData || []).map((v) => v.id);
+      const earningsMap: Record<string, number> = {};
+      if (vendorIds.length > 0) {
+        const { data: deliveredOrders } = await supabase
+          .from('deliveries')
+          .select('vendor_id, total')
+          .eq('status', 'delivered')
+          .in('vendor_id', vendorIds);
+
+        for (const order of deliveredOrders || []) {
+          if (order.vendor_id) {
+            earningsMap[order.vendor_id] = (earningsMap[order.vendor_id] || 0) + (order.total || 0);
+          }
+        }
+      }
+
       const mappedVendors: Vendor[] = await Promise.all(
         (vendorData || []).map(async (v) => {
           let productCount = 0;
@@ -115,6 +132,8 @@ export default function AdminVendorsPage() {
             ? new Date(profile.created_at).toLocaleDateString('es-CR', { year: 'numeric', month: '2-digit', day: '2-digit' })
             : 'N/A';
 
+          const vendorEarnings = earningsMap[v.id] || 0;
+
           return {
             id: v.id,
             name: profile?.name || 'Sin nombre',
@@ -124,7 +143,7 @@ export default function AdminVendorsPage() {
             products: productCount,
             status,
             joined: joinedDate,
-            earnings: '₡0',
+            earnings: `₡${vendorEarnings.toLocaleString()}`,
             userId: v.user_id,
           };
         })

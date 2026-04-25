@@ -86,7 +86,29 @@ export default function AdminProductsPage() {
 
       if (error) throw error;
 
-      const mappedProducts: Product[] = (data || []).map((p) => {
+      const allProducts = data || [];
+
+      // Batch-fetch sold counts from deliveries items
+      // Delivery items contain { id (product_id), name, price, qty, category }
+      const productIds = allProducts.map((p) => p.id);
+      const soldMap: Record<string, number> = {};
+      if (productIds.length > 0) {
+        const { data: completedDeliveries } = await supabase
+          .from('deliveries')
+          .select('items')
+          .eq('status', 'delivered');
+
+        for (const delivery of completedDeliveries || []) {
+          const items = (delivery.items || []) as Array<{ id?: string; qty?: number }>;
+          for (const item of items) {
+            if (item.id && productIds.includes(item.id)) {
+              soldMap[item.id] = (soldMap[item.id] || 0) + (item.qty || 1);
+            }
+          }
+        }
+      }
+
+      const mappedProducts: Product[] = allProducts.map((p) => {
         const vendor = p.vendors as { store_name?: string; category?: string } | null;
         const vendorCat = vendor?.category || 'other';
         const displayCat = productCategoryMap[p.category] || vendorCategoryMap[vendorCat] || p.category || 'Otro';
@@ -99,7 +121,7 @@ export default function AdminProductsPage() {
           category: displayCat,
           vendor: vendor?.store_name || 'Sin vendedor',
           inStock: p.in_stock,
-          sold: 0,
+          sold: soldMap[p.id] || 0,
           vendorCategory: vendorCategoryMap[vendorCat] || vendorCat,
         };
       });

@@ -43,6 +43,10 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.E
   in_progress: { label: 'En curso', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: Clock },
   pending: { label: 'Pendiente', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', icon: Clock },
   scheduled: { label: 'Programado', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: Calendar },
+  searching: { label: 'Buscando', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', icon: Search },
+  assigned: { label: 'Asignado', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: Car },
+  arriving: { label: 'Llegando', color: 'bg-violet-500/20 text-violet-400 border-violet-500/30', icon: ArrowLeftRight },
+  started: { label: 'En curso', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: Clock },
 };
 
 const filterTabs = [
@@ -131,7 +135,6 @@ export default function RidesPage() {
   const [selectedRide, setSelectedRide] = useState<RideRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
 
   /* ─── Reassign driver state ──────────────────────────── */
   const [reassignRide, setReassignRide] = useState<RideRow | null>(null);
@@ -140,32 +143,15 @@ export default function RidesPage() {
   const [selectedDriverForReassign, setSelectedDriverForReassign] = useState('');
   const [reassigning, setReassigning] = useState(false);
 
-  const fetchRides = useCallback(async (currentDateFilter: string, currentPage: number) => {
+  const fetchRides = useCallback(async (currentDateFilter: string) => {
     setLoading(true);
     try {
       const dateThreshold = buildDateFilter(currentDateFilter);
 
-      let countQuery = supabase
-        .from('rides')
-        .select('*', { count: 'exact', head: true });
-      if (dateThreshold) {
-        countQuery = countQuery.gte('created_at', dateThreshold);
-      }
-      const { count, error: countError } = await countQuery;
-
-      if (countError) {
-        console.error('Error fetching rides count:', countError);
-      }
-      setTotalCount(count || 0);
-
-      const from = (currentPage - 1) * PAGE_SIZE;
-      const to = currentPage * PAGE_SIZE - 1;
-
       let query = supabase
         .from('rides')
         .select('*')
-        .order('created_at', { ascending: false })
-        .range(from, to);
+        .order('created_at', { ascending: false });
 
       if (dateThreshold) {
         query = query.gte('created_at', dateThreshold);
@@ -222,12 +208,9 @@ export default function RidesPage() {
         }
       }
 
+      const validStatuses: RideStatus[] = ['completed', 'cancelled', 'pending', 'scheduled', 'searching', 'assigned', 'arriving', 'started', 'in_progress'];
       const mapped: RideRow[] = (rideData || []).map(r => {
-        let uiStatus: RideStatus;
-        if (r.status === 'started' || r.status === 'assigned' || r.status === 'arriving') uiStatus = 'in_progress';
-        else if (r.status === 'searching') uiStatus = 'pending';
-        else if (r.status === 'completed' || r.status === 'cancelled' || r.status === 'scheduled') uiStatus = r.status as RideStatus;
-        else uiStatus = 'pending';
+        const uiStatus: RideStatus = validStatuses.includes(r.status) ? r.status as RideStatus : 'pending';
 
         const dur = r.duration ? `${Math.round(r.duration)} min` : (uiStatus === 'in_progress' ? 'En curso' : '-');
         const dist = r.distance ? `${r.distance.toFixed(1)} km` : '-';
@@ -266,8 +249,8 @@ export default function RidesPage() {
   }, []);
 
   useEffect(() => {
-    fetchRides(dateFilter, page);
-  }, [dateFilter, page, fetchRides]);
+    fetchRides(dateFilter);
+  }, [dateFilter, fetchRides]);
 
   const filteredRides = rides.filter((r) => {
     const matchSearch = r.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -278,16 +261,8 @@ export default function RidesPage() {
 
     let matchStatus = true;
     if (statusFilter !== 'all') {
-      if (statusFilter === 'started') {
-        matchStatus = ['started', 'assigned', 'arriving'].includes(r.status) || r.status === 'in_progress';
-      } else if (statusFilter === 'searching') {
-        matchStatus = r.status === 'pending' || r.status === 'searching';
-      } else if (statusFilter === 'assigned') {
-        matchStatus = r.status === 'in_progress';
-      } else if (statusFilter === 'arriving') {
-        matchStatus = r.status === 'in_progress';
-      } else if (statusFilter === 'scheduled') {
-        matchStatus = r.status === 'scheduled';
+      if (statusFilter === 'searching') {
+        matchStatus = r.status === 'searching' || r.status === 'pending';
       } else {
         matchStatus = r.status === statusFilter;
       }
@@ -299,10 +274,10 @@ export default function RidesPage() {
   const completedToday = rides.filter(r => r.status === 'completed').length;
   const cancelledCount = rides.filter(r => r.status === 'cancelled').length;
   const scheduledCount = rides.filter(r => r.status === 'scheduled').length;
-  const activeNow = rides.filter(r => r.status === 'in_progress' || r.status === 'pending').length;
+  const activeNow = rides.filter(r => ['assigned', 'arriving', 'started', 'searching', 'pending'].includes(r.status)).length;
 
   const stats = [
-    { label: 'Total Viajes', value: totalCount, color: 'text-white' },
+    { label: 'Total Viajes', value: rides.length, color: 'text-white' },
     { label: 'Activos', value: activeNow, color: 'text-cyan-400' },
     { label: 'Completados', value: completedToday, color: 'text-emerald-400' },
     { label: 'Programados', value: scheduledCount, color: 'text-purple-400' },
@@ -393,7 +368,7 @@ export default function RidesPage() {
 
       toast.success('Conductor reasignado exitosamente');
       setReassignRide(null);
-      fetchRides(dateFilter, page);
+      fetchRides(dateFilter);
     } catch (err) {
       console.error('Reassign error:', err);
       toast.error('Error al reasignar conductor');
@@ -402,9 +377,11 @@ export default function RidesPage() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const showingFrom = totalCount > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
-  const showingTo = Math.min(page * PAGE_SIZE, totalCount);
+  const totalFiltered = filteredRides.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const paginatedRides = filteredRides.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const showingFrom = totalFiltered > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const showingTo = Math.min(page * PAGE_SIZE, totalFiltered);
 
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
@@ -417,6 +394,11 @@ export default function RidesPage() {
     }
     return pages;
   }, [page, totalPages]);
+
+  // Clamp page if filters reduce total pages below current page
+  useEffect(() => {
+    if (page > totalPages) setPage(1);
+  }, [totalPages, page]);
 
   const handleDateFilterChange = (df: string) => {
     setDateFilter(df);
@@ -434,7 +416,7 @@ export default function RidesPage() {
           <p className="text-gray-400 mt-1">Gestion y seguimiento de todos los viajes</p>
         </div>
         <button
-          onClick={() => fetchRides(dateFilter, page)}
+          onClick={() => fetchRides(dateFilter)}
           className="flex items-center gap-2 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" /> Actualizar
@@ -460,7 +442,7 @@ export default function RidesPage() {
               type="text"
               placeholder="Buscar por ID, pasajero, conductor, origen o destino..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 focus:border-cyan-500 text-white placeholder:text-gray-600 outline-none text-sm transition-all"
             />
           </div>
@@ -482,7 +464,7 @@ export default function RidesPage() {
           {filterTabs.map((tab) => (
             <button
               key={tab.value}
-              onClick={() => setStatusFilter(tab.value)}
+              onClick={() => { setStatusFilter(tab.value); setPage(1); }}
               className={`px-4 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                 statusFilter === tab.value
                   ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
@@ -512,11 +494,11 @@ export default function RidesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredRides.map((ride, i) => {
+              {paginatedRides.map((ride, i) => {
                 const cfg = statusConfig[ride.status] || statusConfig.pending;
                 const StatusIcon = cfg.icon;
-                const canCancel = ride.status === 'in_progress' || ride.status === 'pending';
-                const canReassign = ride.status === 'pending' || ride.status === 'in_progress';
+                const canCancel = ['pending', 'searching', 'assigned', 'arriving', 'started'].includes(ride.status);
+                const canReassign = canCancel;
 
                 return (
                   <motion.tr
@@ -574,7 +556,7 @@ export default function RidesPage() {
           </table>
         </div>
 
-        {filteredRides.length === 0 && (
+        {paginatedRides.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             <MapPin className="w-10 h-10 mx-auto mb-2 opacity-50" />
             <p>No se encontraron viajes</p>
@@ -582,10 +564,10 @@ export default function RidesPage() {
         )}
 
         {/* Pagination */}
-        {totalCount > 0 && (
+        {totalFiltered > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
             <p className="text-xs text-gray-400">
-              Mostrando {showingFrom}-{showingTo} de {totalCount} viajes
+              Mostrando {showingFrom}-{showingTo} de {totalFiltered} viajes
             </p>
             <div className="flex items-center gap-1">
               <button
@@ -729,7 +711,7 @@ export default function RidesPage() {
                 </div>
 
                 {/* Actions */}
-                {(selectedRide.status === 'in_progress' || selectedRide.status === 'pending') && (
+                {(['pending', 'searching', 'assigned', 'arriving', 'started'].includes(selectedRide.status)) && (
                   <div className="flex gap-3 pt-2">
                     <button
                       onClick={() => {

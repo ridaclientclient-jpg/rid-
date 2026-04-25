@@ -185,8 +185,7 @@ export default function PaymentReportPage() {
         .from('rides')
         .select('*')
         .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(500);
+        .order('created_at', { ascending: false });
 
       if (ridesErr) throw ridesErr;
 
@@ -276,12 +275,14 @@ export default function PaymentReportPage() {
         // Get user names for transactions
         const walletIds = [...new Set(txData.map(t => t.wallet_id).filter(Boolean))];
         let txUserMap: Record<string, { name: string; phone?: string }> = {};
+        let walletsData: { id: string; user_id: string }[] | null = null;
         if (walletIds.length > 0) {
           const { data: wallets } = await supabase
             .from('wallets')
             .select('id, user_id')
             .in('id', walletIds);
           if (wallets) {
+            walletsData = wallets;
             const txUserIds = wallets.map(w => w.user_id).filter(Boolean);
             if (txUserIds.length > 0) {
               const { data: txProfiles } = await supabase
@@ -296,8 +297,8 @@ export default function PaymentReportPage() {
         }
 
         const walletToUser: Record<string, string> = {};
-        if (wallets) {
-          wallets.forEach(w => { walletToUser[w.id] = w.user_id; });
+        if (walletsData) {
+          walletsData.forEach(w => { walletToUser[w.id] = w.user_id; });
         }
 
         const mappedTx: TransactionRow[] = txData.map(t => ({

@@ -398,6 +398,12 @@ export default function AdminChatPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const prevMessageCountRef = useRef<number>(0);
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const chatsRef = useRef<SupportChat[]>(chats);
+  const soundEnabledRef = useRef(soundEnabled);
+
+  // Keep refs in sync with state without triggering re-creations of callbacks
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
 
   /* ── Derived State ────────────────────────────────────────────────── */
 
@@ -461,12 +467,12 @@ export default function AdminChatPage() {
       prevMessageCountRef.current = msgs.length;
 
       // New messages from user arrived while we had this chat open
-      if (msgs.length > prevCount && prevCount > 0 && soundEnabled) {
+      if (msgs.length > prevCount && prevCount > 0 && soundEnabledRef.current) {
         playMessageSound();
       }
 
       // Mark admin unread as 0
-      const currentChat = chats.find(c => c.id === chatId);
+      const currentChat = chatsRef.current.find(c => c.id === chatId);
       if (currentChat && currentChat.unread_by_admin > 0) {
         await supabase
           .from('support_chats')
@@ -478,7 +484,7 @@ export default function AdminChatPage() {
     } finally {
       setLoadingMessages(false);
     }
-  }, [chats, soundEnabled]);
+  }, []);
 
   /* ── Select Chat ──────────────────────────────────────────────────── */
 
@@ -524,18 +530,7 @@ export default function AdminChatPage() {
 
       setMessageInput('');
 
-      // Optimistic update
-      const optimisticMsg: ChatMessage = {
-        id: 'temp-' + Date.now(),
-        chat_id: selectedChatId,
-        sender_type: 'admin',
-        sender_id: user?.id,
-        content: trimmed,
-        message_type: 'text',
-        created_at: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, optimisticMsg]);
-
+      // Refetch messages from DB (no optimistic update — avoids duplicates)
       await Promise.all([fetchMessages(selectedChatId), fetchChats()]);
     } catch {
       toast.error('Error de conexion al enviar mensaje');
@@ -543,6 +538,7 @@ export default function AdminChatPage() {
       setSendingMessage(false);
     }
   }, [messageInput, selectedChatId, sendingMessage, user, selectedChat, fetchMessages, fetchChats]);
+  // NOTE: selectedChat is intentionally a dependency here so unread_by_user is current
 
   /* ── Change Chat Status ───────────────────────────────────────────── */
 

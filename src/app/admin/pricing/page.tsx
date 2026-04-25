@@ -9,38 +9,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
-const surgeZones = [
-  [0, 0, 1, 0, 0, 0, 1, 0],
-  [0, 1, 2, 1, 0, 1, 2, 0],
-  [0, 1, 3, 2, 1, 2, 3, 1],
-  [1, 2, 3, 4, 2, 3, 4, 2],
-  [0, 1, 2, 3, 2, 2, 3, 1],
-  [0, 0, 1, 2, 1, 1, 2, 0],
-  [0, 0, 0, 1, 0, 0, 1, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0],
-];
-
-function getZoneColor(value: number) {
-  switch (value) {
-    case 0: return 'bg-white/5 border-white/5';
-    case 1: return 'bg-emerald-500/30 border-emerald-500/20';
-    case 2: return 'bg-amber-500/40 border-amber-500/20';
-    case 3: return 'bg-orange-500/50 border-orange-500/20';
-    case 4: return 'bg-red-500/60 border-red-500/20';
-    default: return 'bg-white/5 border-white/5';
-  }
-}
-
-function getZoneLabel(value: number) {
-  switch (value) {
-    case 0: return 'Sin demanda';
-    case 1: return 'Normal';
-    case 2: return '1.2x';
-    case 3: return '1.5x';
-    case 4: return '2x+';
-    default: return '';
-  }
-}
+type ZoneRideCount = { zone: string; count: number };
 
 export default function PricingPage() {
   const [basePrice, setBasePrice] = useState(1500);
@@ -57,6 +26,10 @@ export default function PricingPage() {
   const [totalDriverEarnings, setTotalDriverEarnings] = useState(0);
   const [totalRidesCompleted, setTotalRidesCompleted] = useState(0);
   const [statsLoading, setStatsLoading] = useState(true);
+
+  // Real zone ride data
+  const [zoneRideCounts, setZoneRideCounts] = useState<ZoneRideCount[]>([]);
+  const [zoneDataLoading, setZoneDataLoading] = useState(true);
 
   const formatColones = (val: number) => `₡${Math.round(val).toLocaleString()}`;
 
@@ -75,6 +48,7 @@ export default function PricingPage() {
 
         setBasePrice(get('base_price', 1500));
         setPricePerKm(get('price_per_km', 500));
+        setPricePerMin(get('price_per_min', 50));
         setSurgeEnabled(get('surge_enabled', 1) === 1);
         setCommission(get('commission_percentage', 15));
         setBaseFee(get('base_fee', 200));
@@ -104,17 +78,44 @@ export default function PricingPage() {
     setStatsLoading(false);
   }, []);
 
+  const loadZoneData = useCallback(async () => {
+    setZoneDataLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('origin_zone')
+        .not('origin_zone', 'is', null);
+
+      if (!error && data) {
+        const counts: Record<string, number> = {};
+        data.forEach((r: any) => {
+          const zone = r.origin_zone;
+          if (zone) {
+            counts[zone] = (counts[zone] || 0) + 1;
+          }
+        });
+        const sorted = Object.entries(counts)
+          .map(([zone, count]) => ({ zone, count }))
+          .sort((a, b) => b.count - a.count);
+        setZoneRideCounts(sorted);
+      }
+    } catch (err) {
+      console.error('Error loading zone data:', err);
+    }
+    setZoneDataLoading(false);
+  }, []);
+
   useEffect(() => {
     loadSettings();
     loadStats();
-  }, [loadSettings, loadStats]);
+    loadZoneData();
+  }, [loadSettings, loadStats, loadZoneData]);
 
   // ── Calculate estimates ─────────────────────────────────────────
 
   const estimatedFare = (km: number, min: number) => {
-    let surge = 1;
-    if (surgeEnabled) surge = 1 + Math.random() * 0.5;
-    return Math.round((basePrice + km * pricePerKm + min * pricePerMin) * surge);
+    // Surge is applied externally based on real demand; estimates use base rate (1.0x) only
+    return Math.round(basePrice + km * pricePerKm + min * pricePerMin);
   };
 
   const estimatedCommission = (km: number, min: number) => {
@@ -136,6 +137,7 @@ export default function PricingPage() {
       const settingsData = [
         { key: 'base_price', value: String(basePrice) },
         { key: 'price_per_km', value: String(pricePerKm) },
+        { key: 'price_per_min', value: String(pricePerMin) },
         { key: 'surge_enabled', value: surgeEnabled ? '1' : '0' },
         { key: 'commission_percentage', value: String(commission) },
         { key: 'base_fee', value: String(baseFee) },
@@ -451,7 +453,7 @@ export default function PricingPage() {
 
         {/* Right Panel */}
         <div className="space-y-4">
-          {/* Surge Zone Heatmap */}
+          {/* Real Demand by Zone */}
           <motion.div
             className="glass rounded-2xl p-5"
             initial={{ opacity: 0, y: 15 }}
@@ -460,34 +462,47 @@ export default function PricingPage() {
           >
             <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
-              Zonas de Surge
+              Demanda por Zona
             </h3>
-            <p className="text-xs text-gray-500 mb-4">Mapa de demanda actual</p>
+            <p className="text-xs text-gray-500 mb-1">Viajes agrupados por zona de origen</p>
+            <p className="text-[10px] text-cyan-400/70 mb-4">El mapa de demanda se basa en datos reales de viajes</p>
 
-            <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${surgeZones[0].length}, 1fr)` }}>
-              {surgeZones.map((row, ri) =>
-                row.map((val, ci) => (
-                  <motion.div
-                    key={`${ri}-${ci}`}
-                    className={`aspect-square rounded-md border ${getZoneColor(val)} flex items-center justify-center cursor-pointer transition-colors`}
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.4 + (ri * surgeZones[0].length + ci) * 0.01 }}
-                    whileHover={{ scale: 1.15, zIndex: 10 }}
-                    title={getZoneLabel(val)}
-                  >
-                    {val > 0 && <span className="text-[8px] font-bold text-white/80">{getZoneLabel(val)}</span>}
-                  </motion.div>
-                ))
-              )}
-            </div>
+            {zoneDataLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-4 h-4 border-2 border-white/20 border-t-cyan-400 rounded-full animate-spin" />
+              </div>
+            ) : zoneRideCounts.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-xs text-gray-500">No hay datos de viajes por zona aun.</p>
+                <p className="text-[10px] text-gray-600 mt-1">Los datos apareceran cuando se completen viajes.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {zoneRideCounts.map((z) => {
+                  const maxCount = zoneRideCounts[0]?.count || 1;
+                  const pct = Math.round((z.count / maxCount) * 100);
+                  let barColor = 'bg-emerald-500';
+                  if (pct >= 75) barColor = 'bg-red-500';
+                  else if (pct >= 50) barColor = 'bg-orange-500';
+                  else if (pct >= 25) barColor = 'bg-amber-500';
 
-            <div className="flex flex-wrap gap-2 mt-4">
-              <span className="flex items-center gap-1.5 text-[10px] text-gray-400"><span className="w-3 h-3 rounded bg-emerald-500/30" /> Normal</span>
-              <span className="flex items-center gap-1.5 text-[10px] text-gray-400"><span className="w-3 h-3 rounded bg-amber-500/40" /> 1.2x</span>
-              <span className="flex items-center gap-1.5 text-[10px] text-gray-400"><span className="w-3 h-3 rounded bg-orange-500/50" /> 1.5x</span>
-              <span className="flex items-center gap-1.5 text-[10px] text-gray-400"><span className="w-3 h-3 rounded bg-red-500/60" /> 2x+</span>
-            </div>
+                  return (
+                    <div key={z.zone} className="flex items-center gap-3">
+                      <span className="text-[11px] text-gray-400 w-24 truncate" title={z.zone}>{z.zone}</span>
+                      <div className="flex-1 h-3 rounded-full bg-white/5 overflow-hidden">
+                        <motion.div
+                          className={`h-full rounded-full ${barColor}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.5, delay: 0.1 }}
+                        />
+                      </div>
+                      <span className="text-[11px] font-semibold text-gray-300 w-8 text-right">{z.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
 
           {/* Fare Estimates with Commission Breakdown */}

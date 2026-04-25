@@ -305,7 +305,7 @@ export default function ReviewsPage() {
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2">
                             <StarRating rating={r.rating} />
-                            <span className="text-xs text-gray-500">{r.rating}.0</span>
+                            <span className="text-xs text-gray-500">{r.rating.toFixed(1)}</span>
                           </div>
                         </td>
                         <td className="px-5 py-3 text-sm text-gray-400 hidden lg:table-cell max-w-[200px] truncate">{r.comment || 'Sin comentario'}</td>
@@ -418,7 +418,7 @@ export default function ReviewsPage() {
               {/* Rating + Stars */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-amber-400">{selectedReview.rating}.0</span>
+                  <span className="text-2xl font-bold text-amber-400">{selectedReview.rating.toFixed(1)}</span>
                 </div>
                 <div className="flex-1">
                   <StarRating rating={selectedReview.rating} size="lg" />

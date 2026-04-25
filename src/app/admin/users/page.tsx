@@ -280,13 +280,25 @@ export default function UsersPage() {
 
       if (data && data.length > 0) {
         setUserDocuments(data);
-        /* Get public URLs for each document */
+        /* Get signed URLs for each document (private bucket) */
         const urls: Record<string, string> = {};
         for (const doc of data) {
-          const { data: urlData } = supabase.storage
-            .from('documents')
-            .getPublicUrl(doc.url);
-          urls[doc.type] = urlData.publicUrl;
+          try {
+            // Extract path from full URL if needed
+            const path = doc.url.startsWith('http') ? doc.url.split('/documents/')[1] : doc.url;
+            const { data: urlData, error: urlError } = await supabase.storage
+              .from('documents')
+              .createSignedUrl(path || doc.url, 3600);
+            if (!urlError && urlData) {
+              urls[doc.type] = urlData.signedUrl;
+            }
+          } catch {
+            // Fallback: try public URL
+            const { data: pubData } = supabase.storage
+              .from('documents')
+              .getPublicUrl(doc.url);
+            urls[doc.type] = pubData.publicUrl;
+          }
         }
         setDocImages(urls);
       }

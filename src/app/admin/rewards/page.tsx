@@ -207,9 +207,9 @@ export default function RewardsPage() {
           <p className="text-gray-400 mt-1">Admin puede definir la duracion y criterios para las campanas de recompensas de conductores</p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <span className="text-xs text-gray-500 hidden sm:inline">Campana Activa:</span>
-          <span className="glass rounded-full px-3 py-1.5 text-xs font-medium text-gray-400 border border-gray-500/20">
-            Super Reward
+          <span className="text-xs text-gray-500 hidden sm:inline">Niveles Activos:</span>
+          <span className="glass rounded-full px-3 py-1.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
+            {levels.filter(l => l.is_active).length} de {levels.length}
           </span>
         </div>
       </div>
