@@ -27,3 +27,30 @@ Stage Summary:
 - Modified: 5 marketplace page files
 - Root cause fixed: vendor record auto-creation when missing
 - All marketplace pages now share the same reliable vendor resolution logic
+
+---
+Task ID: 2
+Agent: Main Agent + Subagents
+Task: Marketplace Overhaul - Full Uber Eats/Didi Food style improvement
+
+Work Log:
+- Created marketplace-overhaul.sql with 13 sections: categories table, vendor_wallets, vendor_transactions, product_reviews, vendor columns, product columns, triggers, RLS policies, settings, indexes, realtime
+- Updated TypeScript types in src/lib/supabase.ts (Vendor, Product, MarketplaceCategory, VendorWallet, VendorTransaction, ProductReview)
+- Fixed RLS policies for profiles and couriers so vendors can read customer/courier data in deliveries
+- Rewrote vendor profile page (real data, editable fields, wallet, transactions, logo upload)
+- Rewrote vendor dashboard (real stats, revenue chart, top products, recent orders, realtime)
+- Rewrote vendor products page (Uber Eats style, drag-drop upload, bulk actions, marketplace_categories)
+- Rewrote vendor categories page (connects to marketplace_categories table, not settings hack)
+- Rewrote admin marketplace dashboard (clickable rows, revenue chart, top vendors, realtime)
+- Rewrote admin marketplace products (full CRUD, bulk actions, vendor selector, reviews)
+- Created admin marketplace categories page (CRUD, reorder, icon picker, image upload)
+- Rewrote admin marketplace orders (all 6 statuses preserved, timeline, no more status mapping)
+- Rewrote client market page (Uber Eats style, address bar, vendor cards, category pills, cart integration)
+- Build verification: 0 errors, 140 pages compiled
+
+Stage Summary:
+- 9 pages rewritten/created across 3 apps (vendor, admin, client)
+- 1 SQL file with complete schema changes
+- All data is REAL via Supabase — no demo/hardcoded data
+- All buttons functional with proper CRUD operations
+- Build passes cleanly

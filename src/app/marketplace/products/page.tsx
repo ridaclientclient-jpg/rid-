@@ -3,15 +3,47 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Search, Plus, Edit3, Trash2, Package, Pill, UtensilsCrossed, ShoppingBag,
-  X, Filter, Check, ImageIcon, Loader2, Upload, AlertTriangle, BoxIcon
+  Search, Plus, Edit3, Trash2, Package, ImageIcon, X, Loader2,
+  Star, ShoppingBag, AlertTriangle, ToggleLeft, ToggleRight,
+  ChevronDown, ArrowUpDown, Check, CheckSquare, Square,
+  Filter, Sparkles, Eye, EyeOff, UploadCloud,
+  ArrowUp, ArrowDown, Hash
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { supabase, type Product, type MarketplaceCategory } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { useVendorId } from '@/hooks/useVendorId';
 
-/* ── Types ──────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+function formatCRC(amount: number): string {
+  return `₡${Math.round(amount).toLocaleString('es-CR')}`;
+}
+
+function renderStars(rating: number) {
+  const stars: React.ReactNode[] = [];
+  const full = Math.floor(rating);
+  const hasHalf = rating - full >= 0.25;
+  for (let i = 0; i < 5; i++) {
+    if (i < full) {
+      stars.push(<Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />);
+    } else if (i === full && hasHalf) {
+      stars.push(<Star key={i} className="w-3 h-3 fill-amber-400/50 text-amber-400" />);
+    } else {
+      stars.push(<Star key={i} className="w-3 h-3 text-gray-600" />);
+    }
+  }
+  return stars;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   TYPES
+   ══════════════════════════════════════════════════════════════════ */
+
+type StatusFilter = 'all' | 'in_stock' | 'out_of_stock' | 'featured';
+type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'most_sold';
 
 interface ProductRow {
   id: string;
@@ -21,10 +53,14 @@ interface ProductRow {
   price: number;
   category: string;
   image_url: string | null;
+  image_path: string | null;
   in_stock: boolean;
+  stock_quantity: number;
+  sold_count: number;
+  is_featured: boolean;
+  avg_rating: number;
   created_at: string;
   updated_at: string;
-  sold: number;
 }
 
 interface FormData {
@@ -33,6 +69,8 @@ interface FormData {
   price: string;
   category: string;
   inStock: boolean;
+  stockQuantity: string;
+  isFeatured: boolean;
 }
 
 const emptyForm: FormData = {
@@ -41,81 +79,145 @@ const emptyForm: FormData = {
   price: '',
   category: '',
   inStock: true,
+  stockQuantity: '10',
+  isFeatured: false,
 };
 
-/* ── Category helpers ──────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   ANIMATION VARIANTS
+   ══════════════════════════════════════════════════════════════════ */
 
-const defaultCategoryIcons: Record<string, React.ReactNode> = {
-  Farmacia: <Pill className="w-5 h-5" />,
-  Comida: <UtensilsCrossed className="w-5 h-5" />,
-  Tiendas: <ShoppingBag className="w-5 h-5" />,
-  pharmacy: <Pill className="w-5 h-5" />,
-  food: <UtensilsCrossed className="w-5 h-5" />,
-  stores: <ShoppingBag className="w-5 h-5" />,
-  other: <BoxIcon className="w-5 h-5" />,
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05, delayChildren: 0.05 },
+  },
 };
 
-const defaultCategoryColors: Record<string, string> = {
-  Farmacia: 'from-emerald-500/20 to-green-500/20 text-emerald-400',
-  Comida: 'from-amber-500/20 to-orange-500/20 text-amber-400',
-  Tiendas: 'from-blue-500/20 to-cyan-500/20 text-blue-400',
-  pharmacy: 'from-emerald-500/20 to-green-500/20 text-emerald-400',
-  food: 'from-amber-500/20 to-orange-500/20 text-amber-400',
-  stores: 'from-blue-500/20 to-cyan-500/20 text-blue-400',
-  other: 'from-purple-500/20 to-pink-500/20 text-purple-400',
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+  },
 };
 
-const defaultCategoryBadgeColors: Record<string, string> = {
-  Farmacia: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  Comida: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  Tiendas: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-  pharmacy: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  food: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  stores: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-  other: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
-};
+/* ══════════════════════════════════════════════════════════════════
+   LOADING SKELETON
+   ══════════════════════════════════════════════════════════════════ */
 
-const FALLBACK_ICON = <Package className="w-5 h-5" />;
-const FALLBACK_COLOR = 'from-gray-500/20 to-gray-600/20 text-gray-400';
-const FALLBACK_BADGE = 'bg-gray-500/15 text-gray-400 border-gray-500/30';
+function ProductSkeleton() {
+  return (
+    <div className="glass rounded-2xl overflow-hidden animate-pulse">
+      <div className="h-48 bg-white/5 relative">
+        <div className="absolute top-3 left-3 w-16 h-5 bg-white/5 rounded-full" />
+        <div className="absolute top-3 right-3 w-14 h-5 bg-white/5 rounded-full" />
+      </div>
+      <div className="p-4 space-y-3">
+        <div className="h-4 bg-white/5 rounded w-3/4" />
+        <div className="h-3 bg-white/5 rounded w-full" />
+        <div className="h-3 bg-white/5 rounded w-1/2" />
+        <div className="flex items-center justify-between pt-2">
+          <div className="flex gap-1">
+            <div className="w-3 h-3 bg-white/5 rounded-full" />
+            <div className="w-3 h-3 bg-white/5 rounded-full" />
+            <div className="w-3 h-3 bg-white/5 rounded-full" />
+          </div>
+          <div className="h-5 w-20 bg-white/5 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-/* ── Component ─────────────────────────────────────────────── */
+function StatsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-pulse">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="glass rounded-xl p-4">
+          <div className="h-4 w-20 bg-white/5 rounded" />
+          <div className="h-6 w-12 bg-white/5 rounded mt-2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ══════════════════════════════════════════════════════════════════ */
 
 export default function ProductsPage() {
   const { user } = useAuthStore();
-  const { vendorId, loading: vendorLoading, error: vendorError } = useVendorId();
+  const { vendorId, loading: vendorLoading } = useVendorId();
+
+  /* ── State ─────────────────────────────────────────────────── */
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dbCategories, setDbCategories] = useState<MarketplaceCategory[]>([]);
+
+  // Filters & sort
   const [search, setSearch] = useState('');
-  const [filterCategory, setFilterCategory] = useState('Todos');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
+
+  // Modal
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [customCategory, setCustomCategory] = useState('');
 
-  /* ── vendorId provided by useVendorId hook ──────── */
+  // Delete confirmation
+  const [deletingProduct, setDeletingProduct] = useState<ProductRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  /* ── Load products ───────────────────────────────────── */
-  useEffect(() => {
+  // Bulk select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'stock' | 'featured' | 'delete' | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Image URLs cache (signed URLs)
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+
+  /* ── Category helpers ─────────────────────────────────────── */
+  const categoryNames = useMemo(() => {
+    const names = new Set<string>();
+    dbCategories
+      .filter((c) => c.is_active)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .forEach((c) => names.add(c.name));
+    products.forEach((p) => {
+      if (p.category) names.add(p.category);
+    });
+    return Array.from(names).sort();
+  }, [dbCategories, products]);
+
+  /* ── Load products ───────────────────────────────────────── */
+  const loadProducts = useCallback(async () => {
     if (!vendorId) return;
-    (async () => {
-      setLoading(true);
+    setLoading(true);
+
+    try {
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('vendor_id', vendorId)
         .order('created_at', { ascending: false });
-      if (error) {
-        toast.error('Error al cargar productos: ' + error.message);
-        setLoading(false);
-        return;
-      }
+
+      if (error) throw error;
+
       const rows: ProductRow[] = (data || []).map((p: Record<string, unknown>) => ({
         id: p.id as string,
         vendor_id: p.vendor_id as string,
@@ -124,109 +226,149 @@ export default function ProductsPage() {
         price: Number(p.price),
         category: p.category as string,
         image_url: (p.image_url as string) || null,
+        image_path: (p.image_path as string) || null,
         in_stock: p.in_stock as boolean,
+        stock_quantity: (p.stock_quantity as number) ?? 0,
+        sold_count: (p.sold_count as number) ?? 0,
+        is_featured: (p.is_featured as boolean) ?? false,
+        avg_rating: (p.avg_rating as number) ?? 0,
         created_at: p.created_at as string,
         updated_at: p.updated_at as string,
-        sold: 0,
       }));
-      setProducts(rows);
-      // Load sold counts
-      await loadSoldCounts(rows);
-      setLoading(false);
-    })();
-  }, [vendorId]);
 
-  /* ── Sold count from deliveries ──────────────────────── */
-  const loadSoldCounts = async (rows: ProductRow[]) => {
-    if (!vendorId || rows.length === 0) return;
-    try {
-      const { data: deliveries } = await supabase
-        .from('deliveries')
-        .select('items')
-        .eq('vendor_id', vendorId)
-        .eq('status', 'delivered');
-      if (!deliveries || deliveries.length === 0) return;
-      // Build a map of product_id -> sold count
-      const soldMap: Record<string, number> = {};
-      for (const d of deliveries) {
-        const items = d.items as Array<Record<string, unknown>> | null;
-        if (!items || !Array.isArray(items)) continue;
-        for (const item of items) {
-          const pid = item.product_id as string | undefined;
-          const qty = Number(item.quantity || 1);
-          if (pid && soldMap[pid] !== undefined) {
-            soldMap[pid] += qty;
-          } else if (pid) {
-            soldMap[pid] = qty;
+      setProducts(rows);
+
+      // Load signed URLs for images
+      const urlMap: Record<string, string> = {};
+      for (const row of rows) {
+        if (row.image_path) {
+          try {
+            const { data: urlData } = await supabase.storage
+              .from('product-images')
+              .createSignedUrl(row.image_path, 3600);
+            if (urlData?.signedUrl) {
+              urlMap[row.id] = urlData.signedUrl;
+            } else if (row.image_url) {
+              urlMap[row.id] = row.image_url;
+            }
+          } catch {
+            if (row.image_url) urlMap[row.id] = row.image_url;
           }
+        } else if (row.image_url) {
+          urlMap[row.id] = row.image_url;
         }
       }
-      setProducts((prev) =>
-        prev.map((p) => ({ ...p, sold: soldMap[p.id] || 0 }))
-      );
-    } catch {
-      // Silently fail — sold count is non-critical
+      setSignedUrls(urlMap);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al cargar productos';
+      toast.error(msg);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [vendorId]);
 
-  /* ── Categories from own products ────────────────────── */
-  const categories = useMemo(() => {
-    const cats = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
-    return cats.sort();
+  /* ── Load categories from marketplace_categories ────────── */
+  const loadCategories = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('marketplace_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      if (data) setDbCategories(data);
+    } catch {
+      // Non-critical — categories will be derived from products
+    }
+  }, []);
+
+  useEffect(() => {
+    if (vendorId) {
+      loadProducts();
+      loadCategories();
+    }
+  }, [vendorId, loadProducts, loadCategories]);
+
+  /* ── Stats ──────────────────────────────────────────────── */
+  const stats = useMemo(() => {
+    const total = products.length;
+    const inStock = products.filter((p) => p.in_stock).length;
+    const outOfStock = products.filter((p) => !p.in_stock).length;
+    const featured = products.filter((p) => p.is_featured).length;
+    const totalSold = products.reduce((sum, p) => sum + p.sold_count, 0);
+    return { total, inStock, outOfStock, featured, totalSold };
   }, [products]);
 
-  /* ── Filtered products ───────────────────────────────── */
+  /* ── Filtered + Sorted products ─────────────────────────── */
   const filtered = useMemo(() => {
-    return products.filter((p) => {
-      const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-      const matchCat = filterCategory === 'Todos' || p.category === filterCategory;
-      return matchSearch && matchCat;
+    let result = [...products];
+
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.description && p.description.toLowerCase().includes(q))
+      );
+    }
+
+    // Category filter
+    if (filterCategory !== 'all') {
+      result = result.filter((p) => p.category === filterCategory);
+    }
+
+    // Status filter
+    switch (filterStatus) {
+      case 'in_stock':
+        result = result.filter((p) => p.in_stock);
+        break;
+      case 'out_of_stock':
+        result = result.filter((p) => !p.in_stock);
+        break;
+      case 'featured':
+        result = result.filter((p) => p.is_featured);
+        break;
+    }
+
+    // Sort
+    switch (sortBy) {
+      case 'newest':
+        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        break;
+      case 'price_asc':
+        result.sort((a, b) => a.price - b.price);
+        break;
+      case 'price_desc':
+        result.sort((a, b) => b.price - a.price);
+        break;
+      case 'most_sold':
+        result.sort((a, b) => b.sold_count - a.sold_count);
+        break;
+    }
+
+    return result;
+  }, [products, search, filterCategory, filterStatus, sortBy]);
+
+  /* ── Bulk selection helpers ─────────────────────────────── */
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
-  }, [products, search, filterCategory]);
+  };
 
-  /* ── Ensure storage bucket exists ────────────────────── */
-  const ensureBucket = async () => {
-    try {
-      const { error } = await supabase.storage.createBucket('product-images', {
-        public: true,
-        fileSizeLimit: 5242880, // 5MB
-      });
-      if (error && !error.message.includes('already exists')) {
-        console.warn('Bucket creation issue:', error.message);
-      }
-    } catch {
-      // Bucket may already exist
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((p) => p.id)));
     }
   };
 
-  /* ── Upload image ────────────────────────────────────── */
-  const uploadProductImage = async (productId: string, file: File): Promise<string | null> => {
-    setUploadingImage(true);
-    try {
-      await ensureBucket();
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${vendorId}/${productId}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(path, file, { upsert: true, contentType: file.type });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(path);
-      return urlData.publicUrl + '?t=' + Date.now();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error subiendo imagen';
-      toast.error(msg);
-      return null;
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  /* ── Image file handling ─────────────────────────────── */
-  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  /* ── Image upload ───────────────────────────────────────── */
+  const handleImageSelect = useCallback((file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       toast.error('Solo se aceptan JPG, PNG y WebP');
       return;
@@ -241,17 +383,113 @@ export default function ProductsPage() {
     reader.readAsDataURL(file);
   }, []);
 
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageSelect(file);
+  }, [handleImageSelect]);
+
+  // Drag and drop
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZoneRef.current?.classList.add('border-cyan-500/50', 'bg-cyan-500/5');
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZoneRef.current?.classList.remove('border-cyan-500/50', 'bg-cyan-500/5');
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZoneRef.current?.classList.remove('border-cyan-500/50', 'bg-cyan-500/5');
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImageSelect(file);
+  }, [handleImageSelect]);
+
   const clearImage = () => {
     setImageFile(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  /* ── CRUD ────────────────────────────────────────────── */
+  const uploadProductImage = async (productId: string, file: File): Promise<{ url: string; path: string } | null> => {
+    setUploadingImage(true);
+    setUploadProgress(0);
+
+    try {
+      // Simulate progress for UX
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 15;
+        });
+      }, 200);
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `products/${vendorId}/${productId}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(path, file, { upsert: true, contentType: file.type });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = await supabase.storage
+        .from('product-images')
+        .createSignedUrl(path, 3600);
+
+      if (!urlData?.signedUrl) throw new Error('No se pudo generar URL firmada');
+
+      return { url: urlData.signedUrl, path };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error subiendo imagen';
+      toast.error(msg);
+      return null;
+    } finally {
+      setTimeout(() => {
+        setUploadingImage(false);
+        setUploadProgress(0);
+      }, 500);
+    }
+  };
+
+  const deleteOldImage = async (productId: string) => {
+    try {
+      const product = products.find((p) => p.id === productId);
+      if (!product?.image_path) return;
+
+      // List files for this product to find all versions
+      const { data: files } = await supabase.storage
+        .from('product-images')
+        .list(`products/${vendorId}`);
+
+      if (files) {
+        const productFiles = files.filter((f) => f.name.startsWith(productId));
+        for (const pf of productFiles) {
+          await supabase.storage
+            .from('product-images')
+            .remove([`products/${vendorId}/${pf.name}`]);
+        }
+      }
+    } catch {
+      // Non-critical
+    }
+  };
+
+  /* ── CRUD Operations ───────────────────────────────────── */
 
   const openAddModal = () => {
     setEditingProduct(null);
-    setFormData({ ...emptyForm, category: categories[0] || '' });
+    setFormData({ ...emptyForm, category: categoryNames[0] || '' });
     setImageFile(null);
     setImagePreview(null);
     setShowCustomCategory(false);
@@ -267,9 +505,12 @@ export default function ProductsPage() {
       price: product.price.toString(),
       category: product.category,
       inStock: product.in_stock,
+      stockQuantity: product.stock_quantity?.toString() || '0',
+      isFeatured: product.is_featured,
     });
     setImageFile(null);
-    setImagePreview(product.image_url || null);
+    // Use cached signed URL or image_url for preview
+    setImagePreview(signedUrls[product.id] || product.image_url || null);
     setShowCustomCategory(false);
     setCustomCategory('');
     setShowModal(true);
@@ -294,29 +535,35 @@ export default function ProductsPage() {
 
     try {
       if (editingProduct) {
-        // UPDATE
+        // ── UPDATE ──
         const updates: Record<string, unknown> = {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           price: Number(formData.price),
           category: cat.trim(),
           in_stock: formData.inStock,
+          stock_quantity: formData.inStock ? Number(formData.stockQuantity) || 0 : 0,
+          is_featured: formData.isFeatured,
           updated_at: new Date().toISOString(),
         };
 
-        // Handle image upload
         if (imageFile) {
-          const url = await uploadProductImage(editingProduct.id, imageFile);
-          if (url) updates.image_url = url;
-        } else if (imagePreview === null && editingProduct.image_url) {
-          // User explicitly cleared the image
+          const result = await uploadProductImage(editingProduct.id, imageFile);
+          if (result) {
+            updates.image_url = result.url;
+            updates.image_path = result.path;
+          }
+        } else if (imagePreview === null && (editingProduct.image_url || editingProduct.image_path)) {
+          await deleteOldImage(editingProduct.id);
           updates.image_url = null;
+          updates.image_path = null;
         }
 
         const { error } = await supabase
           .from('products')
           .update(updates)
           .eq('id', editingProduct.id);
+
         if (error) throw error;
 
         setProducts((prev) =>
@@ -329,14 +576,29 @@ export default function ProductsPage() {
                   price: updates.price as number,
                   category: updates.category as string,
                   in_stock: updates.in_stock as boolean,
+                  stock_quantity: updates.stock_quantity as number,
+                  is_featured: updates.is_featured as boolean,
                   image_url: (updates.image_url as string) ?? p.image_url,
+                  image_path: (updates.image_path as string) ?? p.image_path,
+                  updated_at: updates.updated_at as string,
                 }
               : p
           )
         );
+
+        if (imageFile && updates.image_url) {
+          setSignedUrls((prev) => ({ ...prev, [editingProduct.id]: updates.image_url as string }));
+        } else if (imagePreview === null) {
+          setSignedUrls((prev) => {
+            const next = { ...prev };
+            delete next[editingProduct.id];
+            return next;
+          });
+        }
+
         toast.success('Producto actualizado correctamente');
       } else {
-        // CREATE
+        // ── CREATE ──
         const { data: newProduct, error } = await supabase
           .from('products')
           .insert({
@@ -346,15 +608,23 @@ export default function ProductsPage() {
             price: Number(formData.price),
             category: cat.trim(),
             in_stock: formData.inStock,
+            stock_quantity: formData.inStock ? Number(formData.stockQuantity) || 0 : 0,
+            is_featured: formData.isFeatured,
           })
           .select()
           .single();
+
         if (error) throw error;
 
-        // Upload image if selected
         let imageUrl: string | null = null;
+        let imagePath: string | null = null;
+
         if (imageFile) {
-          imageUrl = await uploadProductImage(newProduct.id, imageFile);
+          const result = await uploadProductImage(newProduct.id, imageFile);
+          if (result) {
+            imageUrl = result.url;
+            imagePath = result.path;
+          }
         }
 
         const row: ProductRow = {
@@ -365,12 +635,21 @@ export default function ProductsPage() {
           price: Number(newProduct.price),
           category: newProduct.category,
           image_url: imageUrl || newProduct.image_url || null,
+          image_path: imagePath || (newProduct.image_path as string) || null,
           in_stock: newProduct.in_stock,
+          stock_quantity: newProduct.stock_quantity ?? 0,
+          sold_count: (newProduct.sold_count as number) ?? 0,
+          is_featured: (newProduct.is_featured as boolean) ?? false,
+          avg_rating: (newProduct.avg_rating as number) ?? 0,
           created_at: newProduct.created_at,
           updated_at: newProduct.updated_at,
-          sold: 0,
         };
+
         setProducts((prev) => [row, ...prev]);
+        if (imageUrl) {
+          setSignedUrls((prev) => ({ ...prev, [newProduct.id]: imageUrl! }));
+        }
+
         toast.success('Producto creado correctamente');
       }
       setShowModal(false);
@@ -387,7 +666,11 @@ export default function ProductsPage() {
     try {
       const { error } = await supabase
         .from('products')
-        .update({ in_stock: newVal, updated_at: new Date().toISOString() })
+        .update({
+          in_stock: newVal,
+          stock_quantity: newVal ? product.stock_quantity || 0 : 0,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', product.id);
       if (error) throw error;
       setProducts((prev) =>
@@ -400,31 +683,163 @@ export default function ProductsPage() {
     }
   };
 
-  const handleDelete = async (product: ProductRow) => {
+  const handleToggleFeatured = async (product: ProductRow) => {
+    const newVal = !product.is_featured;
     try {
       const { error } = await supabase
         .from('products')
-        .delete()
+        .update({ is_featured: newVal, updated_at: new Date().toISOString() })
         .eq('id', product.id);
       if (error) throw error;
-      setProducts((prev) => prev.filter((p) => p.id !== product.id));
-      toast.success(`"${product.name}" eliminado`);
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id ? { ...p, is_featured: newVal } : p))
+      );
+      toast.success(newVal ? 'Producto destacado' : 'Producto sin destacar');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al eliminar';
+      const msg = err instanceof Error ? err.message : 'Error al actualizar';
       toast.error(msg);
     }
   };
 
-  /* ── Render ──────────────────────────────────────────── */
+  const handleDelete = async () => {
+    if (!deletingProduct) return;
+    setDeleting(true);
+    try {
+      await deleteOldImage(deletingProduct.id);
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', deletingProduct.id);
+      if (error) throw error;
+      setProducts((prev) => prev.filter((p) => p.id !== deletingProduct.id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deletingProduct.id);
+        return next;
+      });
+      setSignedUrls((prev) => {
+        const next = { ...prev };
+        delete next[deletingProduct.id];
+        return next;
+      });
+      toast.success(`"${deletingProduct.name}" eliminado`);
+      setDeletingProduct(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar';
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /* ── Bulk Actions ───────────────────────────────────────── */
+  const executeBulkAction = async () => {
+    if (selectedIds.size === 0 || !bulkAction) return;
+    setBulkLoading(true);
+
+    try {
+      if (bulkAction === 'delete') {
+        for (const id of selectedIds) {
+          await deleteOldImage(id);
+        }
+        const { error } = await supabase
+          .from('products')
+          .delete()
+          .in('id', Array.from(selectedIds));
+        if (error) throw error;
+        setProducts((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+        toast.success(`${selectedIds.size} producto(s) eliminado(s)`);
+      } else if (bulkAction === 'stock') {
+        const { error } = await supabase
+          .from('products')
+          .update({ in_stock: true, updated_at: new Date().toISOString() })
+          .in('id', Array.from(selectedIds));
+        if (error) throw error;
+        setProducts((prev) =>
+          prev.map((p) => (selectedIds.has(p.id) ? { ...p, in_stock: true } : p))
+        );
+        toast.success(`${selectedIds.size} producto(s) habilitados`);
+      } else if (bulkAction === 'featured') {
+        const { error } = await supabase
+          .from('products')
+          .update({ is_featured: true, updated_at: new Date().toISOString() })
+          .in('id', Array.from(selectedIds));
+        if (error) throw error;
+        setProducts((prev) =>
+          prev.map((p) => (selectedIds.has(p.id) ? { ...p, is_featured: true } : p))
+        );
+        toast.success(`${selectedIds.size} producto(s) destacados`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error en acción masiva';
+      toast.error(msg);
+    } finally {
+      setBulkLoading(false);
+      setBulkAction(null);
+      setSelectedIds(new Set());
+    }
+  };
+
+  /* ── Sort options config ────────────────────────────────── */
+  const sortOptions: { value: SortOption; label: string; icon: React.ReactNode }[] = [
+    { value: 'newest', label: 'Más recientes', icon: <ArrowDown className="w-3 h-3" /> },
+    { value: 'price_asc', label: 'Precio: menor a mayor', icon: <ArrowUp className="w-3 h-3" /> },
+    { value: 'price_desc', label: 'Precio: mayor a menor', icon: <ArrowDown className="w-3 h-3" /> },
+    { value: 'most_sold', label: 'Más vendidos', icon: <Hash className="w-3 h-3" /> },
+  ];
+
+  const statusOptions: { value: StatusFilter; label: string }[] = [
+    { value: 'all', label: 'Todos' },
+    { value: 'in_stock', label: 'En stock' },
+    { value: 'out_of_stock', label: 'Agotados' },
+    { value: 'featured', label: 'Destacados' },
+  ];
+
+  /* ══════════════════════════════════════════════════════════════
+     RENDER
+     ══════════════════════════════════════════════════════════════ */
+
+  if (vendorLoading || loading) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-8 w-48 bg-white/5 rounded-lg animate-pulse" />
+            <div className="h-4 w-32 bg-white/5 rounded-lg animate-pulse" />
+          </div>
+        </div>
+        <StatsSkeleton />
+        <div className="flex gap-3">
+          <div className="h-10 flex-1 bg-white/5 rounded-xl animate-pulse" />
+          <div className="h-10 w-40 bg-white/5 rounded-xl animate-pulse" />
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <ProductSkeleton key={i} />
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-6"
+    >
+      {/* ─── Header ──────────────────────────────────────── */}
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+      >
         <div>
-          <h1 className="text-2xl font-bold text-white">Productos</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            Productos
+          </h1>
           <p className="text-gray-400 text-sm mt-1">
-            {loading ? 'Cargando...' : `${products.length} producto${products.length !== 1 ? 's' : ''} en total`}
+            {products.length} producto{products.length !== 1 ? 's' : ''} en tu tienda
           </p>
         </div>
         <motion.button
@@ -436,187 +851,400 @@ export default function ProductsPage() {
           <Plus className="w-4 h-4" />
           Agregar Producto
         </motion.button>
-      </div>
+      </motion.div>
 
-      {/* Search & Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar productos..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors"
-          />
+      {/* ─── Stats Bar ───────────────────────────────────── */}
+      <motion.div variants={itemVariants}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[
+            { label: 'Total Productos', value: stats.total.toString(), gradient: 'from-cyan-500 to-cyan-600', icon: Package },
+            { label: 'En Stock', value: stats.inStock.toString(), gradient: 'from-emerald-500 to-green-500', icon: Eye },
+            { label: 'Agotados', value: stats.outOfStock.toString(), gradient: 'from-red-500 to-rose-500', icon: EyeOff },
+            { label: 'Destacados', value: stats.featured.toString(), gradient: 'from-amber-500 to-orange-500', icon: Sparkles },
+            { label: 'Total Vendidos', value: stats.totalSold.toString(), gradient: 'from-purple-500 to-pink-500', icon: ShoppingBag },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="glass rounded-xl p-4 group hover:glow-cyan transition-all duration-300"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${stat.gradient} flex items-center justify-center`}>
+                  <stat.icon className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="text-[11px] text-gray-500 font-medium">{stat.label}</span>
+              </div>
+              <p className="text-xl font-bold text-white">{stat.value}</p>
+            </div>
+          ))}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setFilterCategory('Todos')}
-            className={`px-4 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
-              filterCategory === 'Todos'
-                ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
-            }`}
-          >
-            Todos
-          </button>
-          {categories.map((cat) => (
+      </motion.div>
+
+      {/* ─── Search + Filters ────────────────────────────── */}
+      <motion.div variants={itemVariants} className="space-y-3">
+        {/* Search + Sort */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o descripción..."
+              className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Sort dropdown */}
+          <div className="relative">
+            <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="appearance-none w-full sm:w-52 bg-white/5 border border-white/10 rounded-xl pl-10 pr-8 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50 transition-colors cursor-pointer"
+            >
+              {sortOptions.map((opt) => (
+                <option key={opt.value} value={opt.value} className="bg-[#111827] text-gray-200">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Filter pills: Status + Category */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Status pills */}
+          <div className="flex gap-1.5 flex-wrap">
+            <Filter className="w-4 h-4 text-gray-500 mt-2" />
+            {statusOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setFilterStatus(opt.value)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                  filterStatus === opt.value
+                    ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                    : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Category pills */}
+          <div className="flex gap-1.5 flex-wrap overflow-x-auto pb-1">
             <button
-              key={cat}
-              onClick={() => setFilterCategory(cat)}
-              className={`px-4 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
-                filterCategory === cat
-                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+              onClick={() => setFilterCategory('all')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                filterCategory === 'all'
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                   : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
               }`}
             >
-              {cat}
+              Todas las categorías
             </button>
-          ))}
+            {categoryNames.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                  filterCategory === cat
+                    ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                    : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Loading skeleton */}
-      {loading && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="glass rounded-2xl overflow-hidden animate-pulse">
-              <div className="h-36 bg-white/5" />
-              <div className="p-4 space-y-3">
-                <div className="h-4 bg-white/5 rounded w-3/4" />
-                <div className="h-3 bg-white/5 rounded w-1/2" />
-                <div className="flex justify-between">
-                  <div className="h-4 bg-white/5 rounded w-1/3" />
-                  <div className="h-4 bg-white/5 rounded w-1/4" />
-                </div>
-              </div>
+      {/* ─── Bulk Actions Bar ────────────────────────────── */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="glass-strong rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleSelectAll}
+                className="flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
+              >
+                {selectedIds.size === filtered.length ? (
+                  <CheckSquare className="w-4 h-4" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                <span>{selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
+              </button>
+              <div className="w-px h-5 bg-white/10 hidden sm:block" />
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Product Grid */}
-      {!loading && (
-        <>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <AnimatePresence mode="popLayout">
-              {filtered.map((product, i) => (
-                <motion.div
-                  key={product.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="glass rounded-2xl overflow-hidden group hover:glow-cyan transition-all duration-300"
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setBulkAction('stock')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  bulkAction === 'stock'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Eye className="w-3 h-3" />
+                Habilitar stock
+              </button>
+              <button
+                onClick={() => setBulkAction('featured')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  bulkAction === 'featured'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                Destacar
+              </button>
+              <button
+                onClick={() => setBulkAction('delete')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  bulkAction === 'delete'
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <Trash2 className="w-3 h-3" />
+                Eliminar
+              </button>
+            </div>
+            {bulkAction && (
+              <div className="flex items-center gap-2 ml-auto">
+                <motion.button
+                  onClick={executeBulkAction}
+                  disabled={bulkLoading}
+                  className="btn-neon text-white px-4 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
+                  whileTap={{ scale: 0.97 }}
                 >
-                  {/* Image or gradient placeholder */}
-                  <div
-                    className={`h-36 bg-gradient-to-br ${
-                      defaultCategoryColors[product.category] || FALLBACK_COLOR
-                    } flex items-center justify-center relative overflow-hidden`}
+                  {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  Aplicar
+                </motion.button>
+                <button
+                  onClick={() => setBulkAction(null)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Product Grid ────────────────────────────────── */}
+      <motion.div variants={itemVariants}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <AnimatePresence mode="popLayout">
+            {filtered.map((product, i) => (
+              <motion.div
+                key={product.id}
+                layout
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: i * 0.03, duration: 0.3 }}
+                className="glass rounded-2xl overflow-hidden group hover:glow-cyan transition-all duration-300 relative"
+              >
+                {/* Bulk select checkbox */}
+                <div className="absolute top-3 left-3 z-20">
+                  <button
+                    onClick={() => toggleSelect(product.id)}
+                    className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${
+                      selectedIds.has(product.id)
+                        ? 'bg-cyan-500 text-white'
+                        : 'bg-black/40 backdrop-blur-sm text-transparent hover:text-gray-300 border border-white/20'
+                    }`}
                   >
-                    {product.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="relative z-10 opacity-60">
-                        {defaultCategoryIcons[product.category] || FALLBACK_ICON}
-                      </div>
-                    )}
-                    {/* Stock toggle */}
+                    {selectedIds.has(product.id) && <Check className="w-3 h-3" />}
+                  </button>
+                </div>
+
+                {/* Image area */}
+                <div className="h-48 bg-gradient-to-br from-white/5 to-white/[0.02] relative overflow-hidden">
+                  {signedUrls[product.id] ? (
+                    <img
+                      src={signedUrls[product.id]}
+                      alt={product.name}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <ImageIcon className="w-12 h-12 text-gray-700" />
+                    </div>
+                  )}
+
+                  {/* Overlay gradient */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                  {/* Featured badge */}
+                  {product.is_featured && (
+                    <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 backdrop-blur-sm">
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span className="text-[10px] font-semibold text-amber-400">Destacado</span>
+                    </div>
+                  )}
+
+                  {/* Stock badge */}
+                  {!product.is_featured && (
                     <div
-                      className={`absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium cursor-pointer backdrop-blur-sm transition-colors z-10 ${
+                      className={`absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium backdrop-blur-sm cursor-pointer transition-all hover:scale-105 ${
                         product.in_stock
-                          ? 'bg-emerald-500/30 text-emerald-400'
-                          : 'bg-red-500/30 text-red-400'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-red-500/20 text-red-400 border border-red-500/30'
                       }`}
                       onClick={() => handleToggleStock(product)}
                     >
-                      <div
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          product.in_stock ? 'bg-emerald-400' : 'bg-red-400'
-                        }`}
-                      />
+                      <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400' : 'bg-red-400'}`} />
                       {product.in_stock ? 'En stock' : 'Agotado'}
                     </div>
+                  )}
+
+                  {/* Category badge */}
+                  <div className="absolute bottom-3 left-3 z-10">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-medium bg-black/40 backdrop-blur-sm text-gray-200 border border-white/10">
+                      {product.category}
+                    </span>
                   </div>
 
-                  {/* Content */}
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-white truncate">{product.name}</h3>
-                        <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
-                          {product.description || 'Sin descripción'}
-                        </p>
-                      </div>
-                    </div>
+                  {/* Price */}
+                  <div className="absolute bottom-3 right-3 z-10">
+                    <span className="text-lg font-bold text-white drop-shadow-lg">
+                      {formatCRC(product.price)}
+                    </span>
+                  </div>
 
-                    <div className="flex items-center justify-between mt-3">
-                      <div>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                            defaultCategoryBadgeColors[product.category] || FALLBACK_BADGE
-                          }`}
-                        >
-                          {product.category}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-1">{product.sold} vendido{product.sold !== 1 ? 's' : ''}</p>
-                      </div>
-                      <p className="text-lg font-bold text-white">
-                        ₡{product.price.toLocaleString('es-CR')}
-                      </p>
-                    </div>
+                  {/* Hover overlay with quick actions */}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-10">
+                    <button
+                      onClick={() => openEditModal(product)}
+                      className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 backdrop-blur-sm flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-colors"
+                      title="Editar"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleToggleStock(product)}
+                      className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 backdrop-blur-sm flex items-center justify-center text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                      title={product.in_stock ? 'Desactivar stock' : 'Activar stock'}
+                    >
+                      {product.in_stock ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={() => handleToggleFeatured(product)}
+                      className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 backdrop-blur-sm flex items-center justify-center text-amber-400 hover:bg-amber-500/30 transition-colors"
+                      title={product.is_featured ? 'Quitar destacado' : 'Destacar'}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeletingProduct(product)}
+                      className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 backdrop-blur-sm flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-colors"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-2 mt-4 pt-3 border-t border-white/10">
-                      <button
-                        onClick={() => openEditModal(product)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => {
-                          toast('¿Eliminar este producto?', {
-                            action: {
-                              label: 'Eliminar',
-                              onClick: () => handleDelete(product),
-                            },
-                          });
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        Eliminar
-                      </button>
+                {/* Content */}
+                <div className="p-4">
+                  <h3 className="text-sm font-semibold text-white truncate mb-1">{product.name}</h3>
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-3 leading-relaxed min-h-[2rem]">
+                    {product.description || 'Sin descripción'}
+                  </p>
+
+                  {/* Rating + Sold count */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {product.avg_rating > 0 ? (
+                        <div className="flex items-center gap-1">
+                          <div className="flex">{renderStars(product.avg_rating)}</div>
+                          <span className="text-xs text-gray-400 ml-0.5">{product.avg_rating.toFixed(1)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-gray-600">Sin reseñas</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <ShoppingBag className="w-3 h-3" />
+                      <span>{product.sold_count} vendido{product.sold_count !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
 
-          {filtered.length === 0 && (
-            <div className="text-center py-16">
-              <Package className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">
-                {products.length === 0
-                  ? 'No tienes productos. Agrega tu primer producto.'
-                  : 'No se encontraron productos con esa búsqueda.'}
-              </p>
-            </div>
-          )}
-        </>
-      )}
+                  {/* Stock quantity indicator */}
+                  {product.in_stock && product.stock_quantity > 0 && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-cyan-500/50"
+                          style={{ width: `${Math.min((product.stock_quantity / 50) * 100, 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-gray-600">{product.stock_quantity} uds</span>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
 
-      {/* Add/Edit Modal */}
+        {/* Empty state */}
+        {filtered.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-20"
+          >
+            <Package className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+            <p className="text-gray-400 text-sm mb-1">
+              {products.length === 0
+                ? 'No tienes productos aún'
+                : 'No se encontraron productos'}
+            </p>
+            <p className="text-gray-600 text-xs mb-6">
+              {products.length === 0
+                ? 'Agrega tu primer producto para empezar a vender'
+                : 'Intenta cambiar los filtros de búsqueda'}
+            </p>
+            {products.length === 0 && (
+              <motion.button
+                onClick={openAddModal}
+                className="btn-neon text-white px-5 py-2.5 rounded-xl text-sm font-medium inline-flex items-center gap-2"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Plus className="w-4 h-4" />
+                Agregar Primer Producto
+              </motion.button>
+            )}
+          </motion.div>
+        )}
+      </motion.div>
+
+      {/* ═════════════════════════════════════════════════════════════
+         ADD / EDIT PRODUCT MODAL
+         ═════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {showModal && (
           <motion.div
@@ -625,37 +1253,50 @@ export default function ProductsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+            <div
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setShowModal(false)}
+            />
             <motion.div
-              className="relative w-full max-w-md glass-strong rounded-2xl p-6 z-10 max-h-[90vh] overflow-y-auto"
+              className="relative w-full max-w-lg glass-strong rounded-2xl z-10 max-h-[92vh] overflow-y-auto"
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
-              <div className="flex items-center justify-between mb-6">
+              {/* Modal header */}
+              <div className="sticky top-0 bg-[#111827]/90 backdrop-blur-xl z-10 px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <h2 className="text-lg font-bold text-white">
                   {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
                 </h2>
-                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="text-gray-400 hover:text-white transition-colors p-1"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {/* Photo upload */}
+              <div className="p-6 space-y-5">
+                {/* ── Image upload with drag & drop ── */}
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">Foto del producto</label>
                   <div
+                    ref={dropZoneRef}
                     onClick={() => fileInputRef.current?.click()}
-                    className="relative w-full h-40 bg-white/5 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-cyan-500/40 transition-colors overflow-hidden"
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className="relative w-full h-52 bg-white/5 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-cyan-500/40 transition-all duration-300 overflow-hidden group"
                   >
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
-                      onChange={handleImageSelect}
+                      onChange={handleFileInput}
                     />
+
                     {imagePreview ? (
                       <>
                         <img
@@ -663,57 +1304,74 @@ export default function ProductsPage() {
                           alt="Preview"
                           className="absolute inset-0 w-full h-full object-cover"
                         />
-                        <div className="absolute top-2 right-2 z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              clearImage();
-                            }}
-                            className="w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-red-500/80 transition-colors"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        {/* Upload progress overlay */}
+                        {uploadingImage && (
+                          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10">
+                            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-2" />
+                            <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <motion.div
+                                className="h-full bg-cyan-500 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${uploadProgress}%` }}
+                                transition={{ duration: 0.3 }}
+                              />
+                            </div>
+                            <span className="text-xs text-gray-400 mt-1">{uploadProgress}%</span>
+                          </div>
+                        )}
+                        {!uploadingImage && (
+                          <div className="absolute top-2 right-2 z-10">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                clearImage();
+                              }}
+                              className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white hover:bg-red-500/80 transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </>
                     ) : (
-                      <>
-                        <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center mb-2">
-                          <ImageIcon className="w-5 h-5 text-cyan-400" />
+                      <div className="flex flex-col items-center gap-2 group-hover:text-cyan-400 transition-colors">
+                        <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center mb-1">
+                          <UploadCloud className="w-6 h-6 text-cyan-400" />
                         </div>
-                        <p className="text-xs text-gray-500">Haz clic para subir foto</p>
-                        <p className="text-[10px] text-gray-600 mt-1">JPG, PNG o WebP — máx 5MB</p>
-                      </>
+                        <p className="text-sm text-gray-400">Arrastra o haz clic para subir</p>
+                        <p className="text-[10px] text-gray-600">JPG, PNG o WebP — máx 5MB</p>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* Name */}
-                <div className="space-y-2">
+                {/* ── Name ── */}
+                <div className="space-y-1.5">
                   <label className="text-sm text-gray-400 font-medium">Nombre del producto *</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Ej: Ibuprofeno 600mg"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
                   />
                 </div>
 
-                {/* Description */}
-                <div className="space-y-2">
+                {/* ── Description ── */}
+                <div className="space-y-1.5">
                   <label className="text-sm text-gray-400 font-medium">Descripción</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Descripción breve del producto"
-                    rows={2}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors resize-none"
+                    placeholder="Descripción breve del producto..."
+                    rows={3}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none"
                   />
                 </div>
 
-                {/* Price + Category */}
+                {/* ── Price + Category row ── */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className="text-sm text-gray-400 font-medium">Precio (₡) *</label>
                     <input
                       type="number"
@@ -722,13 +1380,13 @@ export default function ProductsPage() {
                       value={formData.price}
                       onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                       placeholder="3500"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className="text-sm text-gray-400 font-medium">Categoría *</label>
                     {!showCustomCategory ? (
-                      <div className="flex gap-1.5">
+                      <div className="relative">
                         <select
                           value={formData.category}
                           onChange={(e) => {
@@ -738,55 +1396,135 @@ export default function ProductsPage() {
                               setFormData({ ...formData, category: e.target.value });
                             }
                           }}
-                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors appearance-none"
+                          className="w-full appearance-none bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-white focus:outline-none focus:border-cyan-500/50 transition-colors pr-8 cursor-pointer"
                         >
-                          <option value="" className="bg-gray-900">Seleccionar...</option>
-                          {categories.map((cat) => (
-                            <option key={cat} value={cat} className="bg-gray-900">
+                          <option value="" className="bg-[#111827]">Seleccionar...</option>
+                          {categoryNames.map((cat) => (
+                            <option key={cat} value={cat} className="bg-[#111827]">
                               {cat}
                             </option>
                           ))}
-                          <option value="__custom__" className="bg-gray-900 text-cyan-400">
+                          <option value="__custom__" className="bg-[#111827] text-cyan-400">
                             + Nueva categoría
                           </option>
                         </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" />
                       </div>
                     ) : (
-                      <input
-                        type="text"
-                        value={customCategory}
-                        onChange={(e) => setCustomCategory(e.target.value)}
-                        placeholder="Nombre categoría"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500 transition-colors"
-                        autoFocus
-                      />
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={customCategory}
+                          onChange={(e) => setCustomCategory(e.target.value)}
+                          placeholder="Nombre categoría"
+                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              setShowCustomCategory(false);
+                              setCustomCategory('');
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            setShowCustomCategory(false);
+                            setCustomCategory('');
+                          }}
+                          className="text-gray-400 hover:text-white transition-colors p-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* In Stock Toggle */}
-                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
-                  <div>
-                    <p className="text-sm text-white font-medium">En stock</p>
-                    <p className="text-xs text-gray-500">Producto disponible para venta</p>
+                {/* ── Stock toggle + quantity ── */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                        formData.inStock
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-gray-500/15 text-gray-500'
+                      }`}>
+                        {formData.inStock ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <p className="text-sm text-white font-medium">En stock</p>
+                        <p className="text-[11px] text-gray-500">Disponible para venta</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, inStock: !formData.inStock })}
+                      className={`w-12 h-7 rounded-full transition-colors duration-200 flex items-center px-0.5 ${
+                        formData.inStock ? 'bg-cyan-500' : 'bg-gray-600'
+                      }`}
+                    >
+                      <motion.div
+                        className="w-6 h-6 rounded-full bg-white shadow-md"
+                        animate={{ x: formData.inStock ? 20 : 0 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      />
+                    </button>
+                  </div>
+
+                  {formData.inStock && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-1.5"
+                    >
+                      <label className="text-sm text-gray-400 font-medium">Cantidad en stock</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={formData.stockQuantity}
+                        onChange={(e) => setFormData({ ...formData, stockQuantity: e.target.value })}
+                        placeholder="10"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                      />
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* ── Featured toggle ── */}
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                      formData.isFeatured
+                        ? 'bg-amber-500/15 text-amber-400'
+                        : 'bg-gray-500/15 text-gray-500'
+                    }`}>
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-white font-medium">Destacado</p>
+                      <p className="text-[11px] text-gray-500">Se mostrará con insignia especial</p>
+                    </div>
                   </div>
                   <button
-                    onClick={() => setFormData({ ...formData, inStock: !formData.inStock })}
-                    className={`w-12 h-6 rounded-full transition-colors duration-200 flex items-center ${
-                      formData.inStock ? 'bg-cyan-500' : 'bg-gray-600'
+                    type="button"
+                    onClick={() => setFormData({ ...formData, isFeatured: !formData.isFeatured })}
+                    className={`w-12 h-7 rounded-full transition-colors duration-200 flex items-center px-0.5 ${
+                      formData.isFeatured ? 'bg-amber-500' : 'bg-gray-600'
                     }`}
                   >
-                    <div
-                      className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
-                        formData.inStock ? 'translate-x-6.5' : 'translate-x-0.5'
-                      }`}
+                    <motion.div
+                      className="w-6 h-6 rounded-full bg-white shadow-md"
+                      animate={{ x: formData.isFeatured ? 20 : 0 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     />
                   </button>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-3 mt-6">
+              {/* Modal footer actions */}
+              <div className="sticky bottom-0 bg-[#111827]/90 backdrop-blur-xl border-t border-white/10 px-6 py-4 flex gap-3">
                 <button
                   onClick={() => setShowModal(false)}
                   className="flex-1 py-3 rounded-xl text-sm font-medium text-gray-400 bg-white/5 hover:bg-white/10 transition-colors"
@@ -801,17 +1539,96 @@ export default function ProductsPage() {
                   whileTap={{ scale: saving ? 1 : 0.98 }}
                 >
                   {saving || uploadingImage ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {saving ? 'Guardando...' : 'Subiendo imagen...'}
+                    </>
                   ) : (
-                    <Check className="w-4 h-4" />
+                    <>
+                      <Check className="w-4 h-4" />
+                      {editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
+                    </>
                   )}
-                  {saving
-                    ? 'Guardando...'
-                    : uploadingImage
-                    ? 'Subiendo imagen...'
-                    : editingProduct
-                    ? 'Guardar Cambios'
-                    : 'Crear Producto'}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═════════════════════════════════════════════════════════════
+         DELETE CONFIRMATION MODAL
+         ═════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {deletingProduct && (
+          <motion.div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => !deleting && setDeletingProduct(null)}
+            />
+            <motion.div
+              className="relative w-full max-w-sm glass-strong rounded-2xl z-10 p-6"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            >
+              {/* Warning icon */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Eliminar producto</h3>
+                  <p className="text-xs text-gray-400 truncate max-w-[200px]">{deletingProduct.name}</p>
+                </div>
+              </div>
+
+              {/* Warning message */}
+              <div className="space-y-3 mb-5">
+                <p className="text-sm text-gray-300">
+                  ¿Estás seguro de que deseas eliminar{' '}
+                  <span className="text-white font-semibold">&quot;{deletingProduct.name}&quot;</span>?
+                </p>
+
+                {deletingProduct.sold_count > 0 && (
+                  <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-amber-400 font-medium">Advertencia</p>
+                      <p className="text-xs text-amber-400/70 mt-0.5">
+                        Este producto tiene {deletingProduct.sold_count} venta{deletingProduct.sold_count !== 1 ? 's' : ''} registrada{deletingProduct.sold_count !== 1 ? 's' : ''}.
+                        Los clientes que lo compraron seguirán viendo su historial.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500">Esta acción no se puede deshacer.</p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setDeletingProduct(null)}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 rounded-xl text-sm text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <motion.button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 rounded-xl text-sm text-white bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  whileTap={{ scale: 0.97 }}
+                >
+                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  Eliminar
                 </motion.button>
               </div>
             </motion.div>

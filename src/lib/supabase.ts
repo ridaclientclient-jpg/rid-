@@ -146,7 +146,19 @@ export type Vendor = {
   description?: string;
   category: 'pharmacy' | 'food' | 'stores' | 'other';
   is_approved: boolean;
+  is_active?: boolean;
   rating: number;
+  logo_url?: string;
+  phone?: string;
+  address?: string;
+  opening_hours?: Record<string, { open: string; close: string; active: boolean }>;
+  min_order_amount?: number;
+  delivery_radius_km?: number;
+  delivery_fee?: number;
+  latitude?: number;
+  longitude?: number;
+  created_at?: string;
+  updated_at?: string;
   profiles?: Profile;
 };
 
@@ -159,6 +171,12 @@ export type Product = {
   category: string;
   image_url?: string;
   in_stock: boolean;
+  stock_quantity?: number;
+  sold_count?: number;
+  is_featured?: boolean;
+  avg_rating?: number;
+  created_at?: string;
+  updated_at?: string;
   vendors?: Vendor;
 };
 
@@ -167,6 +185,49 @@ export type Settings = {
   key: string;
   value: string;
   type: 'string' | 'number' | 'boolean' | 'json';
+};
+
+export type MarketplaceCategory = {
+  id: string;
+  name: string;
+  icon?: string;
+  image_url?: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+};
+
+export type VendorWallet = {
+  id: string;
+  vendor_id: string;
+  balance: number;
+  total_earned: number;
+  total_withdrawn: number;
+  pending_balance: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type VendorTransaction = {
+  id: string;
+  vendor_id: string;
+  wallet_id: string;
+  type: 'earning' | 'withdrawal' | 'adjustment';
+  amount: number;
+  description?: string;
+  delivery_id?: string;
+  status: 'pending' | 'completed' | 'failed';
+  created_at?: string;
+};
+
+export type ProductReview = {
+  id: string;
+  product_id: string;
+  customer_id: string;
+  delivery_id?: string;
+  rating: number;
+  comment?: string;
+  created_at?: string;
 };
 
 export type SOS = {
