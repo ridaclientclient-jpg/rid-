@@ -279,6 +279,48 @@ export type SavedCard = {
   created_at: string;
 };
 
+// ─── Courier Wallet Types ──────────────────────────────────────
+
+export type CourierWallet = {
+  id: string;
+  courier_id: string;
+  balance: number;
+  available_balance: number;
+  pending_balance: number;
+  total_earned: number;
+  total_withdrawn: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type CourierTransaction = {
+  id: string;
+  courier_id: string;
+  wallet_id: string;
+  type: 'earning' | 'withdrawal' | 'adjustment' | 'commission';
+  amount: number;
+  description?: string;
+  delivery_id?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'queued';
+  queue_position?: number;
+  created_at?: string;
+};
+
+export type WithdrawalRequest = {
+  id: string;
+  courier_id: string;
+  wallet_id: string;
+  amount: number;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  queue_position?: number;
+  requested_at: string;
+  processable_at: string;
+  processed_at?: string;
+  notes?: string;
+  courier_name?: string;
+  courier_phone?: string;
+};
+
 // ─── Courier System Types ──────────────────────────────────────
 
 export type Courier = {
