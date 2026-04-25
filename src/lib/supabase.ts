@@ -365,3 +365,73 @@ export type Delivery = {
   couriers?: Courier;
   vendors?: Vendor;
 };
+
+// ─── Anti-Fraud System Types ────────────────────────────────────
+
+export type FraudRule = {
+  id: string;
+  name: string;
+  description?: string;
+  user_type: 'client' | 'vendor' | 'courier' | 'driver';
+  condition_key: string;
+  threshold_params: Record<string, any>;
+  points: number;
+  auto_action: 'none' | 'alert' | 'block' | 'freeze_withdrawals';
+  is_active: boolean;
+  created_at?: string;
+};
+
+export type FraudAlert = {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_email?: string;
+  user_phone?: string;
+  user_type: 'client' | 'vendor' | 'courier' | 'driver';
+  user_role?: string;
+  rule_name?: string;
+  alert_type: string;
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+  description?: string;
+  status: 'active' | 'under_review' | 'approved' | 'dismissed' | 'blocked';
+  risk_score: number;
+  withdrawals_frozen: boolean;
+  user_risk_score?: number;
+  user_status?: string;
+  details?: Record<string, any>;
+  created_at: string;
+  resolved_at?: string;
+  resolution_notes?: string;
+};
+
+export type FraudUserScore = {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_email?: string;
+  user_phone?: string;
+  user_type: 'client' | 'vendor' | 'courier' | 'driver';
+  risk_score: number;
+  status: 'normal' | 'suspicious' | 'high_risk' | 'blocked';
+  alert_count: number;
+  resolved_count: number;
+  blocked_count: number;
+  withdrawals_frozen: boolean;
+  last_alert_at?: string;
+  user_is_active?: boolean;
+};
+
+export type FraudDashboard = {
+  active_alerts: number;
+  under_review: number;
+  blocked_users: number;
+  frozen_withdrawals: number;
+  high_risk_users: number;
+  suspicious_users: number;
+  total_alerts_today: number;
+  total_rules: number;
+  client_high_risk: number;
+  vendor_high_risk: number;
+  courier_high_risk: number;
+  driver_high_risk: number;
+};

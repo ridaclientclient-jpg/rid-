@@ -9,7 +9,7 @@ import {
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
   Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare,
   Receipt, Star, AlertTriangle, Trophy, Building2, MapPinned,
-  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren
+  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren, ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -30,6 +30,7 @@ const navItems = [
   { href: '/admin/payment-report', label: 'Reporte Pagos', icon: Receipt },
   { href: '/admin/reviews', label: 'Resenas', icon: Star },
   { href: '/admin/driver-alerts', label: 'SOS Alertas', icon: Siren },
+  { href: '/admin/anti-fraud', label: 'Anti-Fraude', icon: ShieldAlert },
   { href: '/admin/couriers', label: 'Repartidores', icon: Truck },
   { href: '/admin/chat', label: 'Chat Soporte', icon: MessageSquare },
   { href: '/admin/rewards', label: 'Recompensas', icon: Trophy },

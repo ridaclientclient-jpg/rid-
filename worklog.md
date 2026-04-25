@@ -145,3 +145,35 @@ Stage Summary:
 - Fixed bucket name mismatch across entire codebase
 - Profile photo upload, product image upload, and all image display now use correct `products` bucket
 - No SQL changes needed — the `products` bucket already exists in Supabase
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Build complete Anti-Fraud system for RIDA admin
+
+Work Log:
+- Created comprehensive SQL file at /home/z/my-project/download/anti-fraud-system.sql
+- 4 tables: fraud_rules, fraud_alerts, fraud_user_scores, fraud_rule_hits
+- 16 seed rules across 4 user types (client, vendor, courier, driver)
+- 10 RPC functions including: run_fraud_check, create_fraud_alert, get_fraud_dashboard, get_fraud_alerts, resolve_fraud_alert, toggle_withdrawal_freeze, get_fraud_rules, toggle_fraud_rule, run_fraud_scan_all, get_top_risk_users
+- Risk score system 0-100 with auto-actions (alert at medium, block/freeze at high)
+- Added TypeScript types: FraudRule, FraudAlert, FraudUserScore, FraudDashboard
+- Added "Anti-Fraude" menu item to admin sidebar with ShieldAlert icon
+- Built complete admin page at /admin/anti-fraud/page.tsx with:
+  - Dashboard metrics (active alerts, under review, frozen withdrawals, risk users)
+  - Quick filter by user type (Clients, Vendors, Riders, Drivers)
+  - Alert list with search, filter by type/risk/status
+  - Alert detail modal with user info, risk score, action buttons
+  - Actions: Approve, Put under review, Dismiss, Block user
+  - Withdrawal freeze/unfreeze per user
+  - Rules view with enable/disable toggle
+  - Top Risk Users view with ranking
+  - "Scan All" button for batch fraud detection
+- Build verified: 0 errors, 141 pages
+
+Stage Summary:
+- SQL: /home/z/my-project/download/anti-fraud-system.sql
+- Page: /home/z/my-project/src/app/admin/anti-fraud/page.tsx
+- Types: Added to /home/z/my-project/src/lib/supabase.ts
+- Sidebar: Added to /home/z/my-project/src/app/admin/layout.tsx
+- All real data via Supabase RPC, no demo data
