@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Star, Medal, Plus, Save, Loader2, Award,
-  ChevronDown, ChevronUp, Trash2
+  ChevronDown, ChevronUp, Trash2, AlertTriangle, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -90,6 +90,7 @@ export default function RewardsPage() {
   const [levels, setLevels] = useState<RewardLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [deleteConfirm, setDeleteConfirm] = useState<RewardLevel | null>(null);
 
   const loadLevels = useCallback(async () => {
     setLoading(true);
@@ -473,9 +474,7 @@ export default function RewardsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm('¿Estas seguro de eliminar este nivel?')) deleteLevel(level);
-                            }}
+                            onClick={() => setDeleteConfirm(level)}
                             className="py-2.5 px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all flex items-center gap-2"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -502,6 +501,72 @@ export default function RewardsPage() {
           <p className="text-gray-600 text-xs mt-1">Haz clic en &quot;CREAR NIVEL&quot; para agregar uno</p>
         </motion.div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
+            <motion.div
+              className="relative glass-strong rounded-2xl p-6 w-full max-w-sm z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Eliminar Nivel</h2>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">
+                    ¿Estas seguro de eliminar este nivel?
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="text-white font-medium">{deleteConfirm.name || 'Sin nombre'}</span> — Esta accion no se puede deshacer.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 text-sm font-medium hover:bg-white/10 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteLevel(deleteConfirm);
+                    setDeleteConfirm(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/30 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

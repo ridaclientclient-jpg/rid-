@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Search, Plus, Edit2, ToggleLeft, ToggleRight,
-  Users, Trash2, Loader2, X, UserPlus, ChevronDown, Filter
+  Users, Trash2, Loader2, X, UserPlus, ChevronDown, Filter, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -92,6 +92,7 @@ export default function OrganizationsPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
+  const [removeConfirm, setRemoveConfirm] = useState<OrgMember | null>(null);
 
   const loadOrganizations = useCallback(async () => {
     setLoading(true);
@@ -271,7 +272,6 @@ export default function OrganizationsPage() {
   };
 
   const removeMember = async (member: OrgMember) => {
-    if (!confirm('¿Estas seguro de remover este miembro?')) return;
     try {
       const { error } = await supabase
         .from('organization_members')
@@ -735,7 +735,7 @@ export default function OrganizationsPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeMember(member)}
+                        onClick={() => setRemoveConfirm(member)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -744,6 +744,71 @@ export default function OrganizationsPage() {
                   ))}
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Remove Member Confirmation Modal */}
+      <AnimatePresence>
+        {removeConfirm && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/60" onClick={() => setRemoveConfirm(null)} />
+            <motion.div
+              className="relative glass-strong rounded-2xl p-6 w-full max-w-sm z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Remover Miembro</h2>
+                <button
+                  type="button"
+                  onClick={() => setRemoveConfirm(null)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">
+                    ¿Estas seguro de remover este miembro?
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="text-white font-medium">{removeConfirm.profiles?.name || 'Usuario'}</span> sera removido de la organizacion. Esta accion no se puede deshacer.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRemoveConfirm(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 text-sm font-medium hover:bg-white/10 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeMember(removeConfirm);
+                    setRemoveConfirm(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/30 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Remover
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

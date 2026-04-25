@@ -54,3 +54,21 @@ Stage Summary:
 - All data is REAL via Supabase — no demo/hardcoded data
 - All buttons functional with proper CRUD operations
 - Build passes cleanly
+
+---
+Task ID: 3
+Agent: Main Agent + Subagents
+Task: Fix admin RED issues + marketplace 412 error
+
+Work Log:
+- Fixed 412 Precondition Failed: Added deliveries_parties_update RLS policy allowing customers, vendors, couriers, and admins to update deliveries
+- Fixed RED 1: Couriers "Ver perfil" - replaced toast.info() with full courier profile detail modal
+- Fixed RED 2: Settings "Reiniciar Servidor"/"Limpiar Caché" - replaced toast.info() with proper modals
+- Fixed RED 3: Rewards confirm() - replaced native confirm() with custom confirmation modal
+- Fixed RED 4: Organizations confirm() - replaced native confirm() with custom confirmation modal
+- Build verified: 0 errors, 140 pages
+
+Stage Summary:
+- 4 RED issues fixed, 0 remaining critical issues
+- All confirmation dialogs now use custom modals (no native confirm/alert)
+- Build passes cleanly

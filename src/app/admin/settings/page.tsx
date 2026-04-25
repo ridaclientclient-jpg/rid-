@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings as SettingsIcon, Shield, Globe, Key, Server,
-  Save, Info, AlertTriangle, Zap,
+  Save, Info, AlertTriangle, Zap, X, RotateCcw, Trash2,
   Eye, EyeOff, Copy, CheckCircle2, Clock, Cpu, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -57,6 +57,8 @@ export default function SettingsPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showRestartModal, setShowRestartModal] = useState(false);
+  const [showCacheModal, setShowCacheModal] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -411,15 +413,17 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-500 mb-4">Acciones críticas que afectan el sistema</p>
               <div className="space-y-2">
                 <button
-                  onClick={() => toast.info('Función deshabilitada por seguridad')}
-                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all"
+                  onClick={() => setShowRestartModal(true)}
+                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
                 >
+                  <RotateCcw className="w-4 h-4" />
                   Reiniciar Servidor
                 </button>
                 <button
-                  onClick={() => toast.info('Función deshabilitada por seguridad')}
-                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all"
+                  onClick={() => setShowCacheModal(true)}
+                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
                 >
+                  <Trash2 className="w-4 h-4" />
                   Limpiar Caché
                 </button>
               </div>
@@ -427,6 +431,127 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Restart Server Modal */}
+      <AnimatePresence>
+        {showRestartModal && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/60" onClick={() => setShowRestartModal(false)} />
+            <motion.div
+              className="relative glass-strong rounded-2xl p-6 w-full max-w-sm z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Reiniciar Servidor</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowRestartModal(false)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">
+                    El reinicio del servidor debe gestionarse a traves del proveedor de hosting (Vercel, AWS, etc.).
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Esta accion no puede ejecutarse desde el panel de administracion por razones de seguridad.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowRestartModal(false)}
+                className="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm font-medium hover:bg-white/10 transition-all"
+              >
+                Entendido
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Clear Cache Modal */}
+      <AnimatePresence>
+        {showCacheModal && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/60" onClick={() => setShowCacheModal(false)} />
+            <motion.div
+              className="relative glass-strong rounded-2xl p-6 w-full max-w-sm z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Limpiar Caché</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowCacheModal(false)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">
+                    Se limpiara el almacenamiento local y de sesion del navegador. La pagina se recargara automaticamente.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Es posible que debas iniciar sesion nuevamente.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCacheModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 text-sm font-medium hover:bg-white/10 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    toast.success('Caché limpiado correctamente');
+                    setShowCacheModal(false);
+                    setTimeout(() => window.location.reload(), 500);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/30 transition-all"
+                >
+                  Limpiar y recargar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

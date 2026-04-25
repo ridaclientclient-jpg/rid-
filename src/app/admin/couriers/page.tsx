@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Truck, Bike, Car, Eye, ToggleLeft, ToggleRight,
   Ban, CheckCircle2, XCircle, MoreHorizontal, ChevronDown,
-  Loader2, MapPin, Star, Package, Users
+  Loader2, MapPin, Star, Package, Users, X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Courier } from '@/lib/supabase';
@@ -48,6 +48,7 @@ export default function AdminCouriersPage() {
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(8);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [selectedCourier, setSelectedCourier] = useState<CourierRow | null>(null);
 
   const fetchCouriers = useCallback(async () => {
     setLoading(true);
@@ -137,6 +138,14 @@ export default function AdminCouriersPage() {
   const totalCouriers = couriers.length;
   const onlineCouriers = couriers.filter(c => c.is_online || c.status === 'online' || c.status === 'delivering').length;
   const suspendedCouriers = couriers.filter(c => c.status === 'suspended').length;
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('es-CR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -321,7 +330,7 @@ export default function AdminCouriersPage() {
                               className="absolute right-0 top-10 w-52 glass-strong rounded-xl py-1.5 z-20 shadow-xl"
                             >
                               <button
-                                onClick={() => { toast.info(`Perfil de ${courier.name}`); setOpenMenu(null); }}
+                                onClick={() => { setSelectedCourier(courier); setOpenMenu(null); }}
                                 className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                               >
                                 <Eye className="w-4 h-4 text-cyan-400" /> Ver perfil
@@ -397,6 +406,173 @@ export default function AdminCouriersPage() {
           </>
         )}
       </div>
+
+      {/* Courier Profile Modal */}
+      <AnimatePresence>
+        {selectedCourier && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/60" onClick={() => setSelectedCourier(null)} />
+            <motion.div
+              className="relative glass-strong rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-lg font-bold text-white">Perfil del Repartidor</h2>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCourier(null)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Profile Info */}
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold bg-gradient-to-br from-orange-600 to-purple-500 text-white flex-shrink-0">
+                  {selectedCourier.name.charAt(0)}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold text-white truncate">{selectedCourier.name}</h3>
+                    {selectedCourier.is_verified && <CheckCircle2 className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
+                  </div>
+                  <p className="text-sm text-gray-400 truncate">{selectedCourier.email}</p>
+                  <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-lg text-xs font-medium border ${statusBadge[selectedCourier.status]?.color || statusBadge.offline.color}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${
+                      selectedCourier.status === 'online' || selectedCourier.status === 'delivering' ? 'bg-emerald-400 animate-pulse' : 'bg-current opacity-50'
+                    }`} />
+                    {statusBadge[selectedCourier.status]?.label || 'Desconectado'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div className="space-y-3 mb-6">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Vehiculo</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {(() => { const VI = vehicleIcons[selectedCourier.vehicle_type] || Truck; return <VI className="w-4 h-4 text-gray-300" />; })()}
+                      <span className="text-sm font-medium text-white">{vehicleLabels[selectedCourier.vehicle_type] || selectedCourier.vehicle_type || 'N/A'}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Rating</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Star className="w-4 h-4 text-amber-400" />
+                      <span className="text-sm font-medium text-white">{Number(selectedCourier.rating) > 0 ? Number(selectedCourier.rating).toFixed(1) : '5.0'}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Entregas</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Package className="w-4 h-4 text-gray-300" />
+                      <span className="text-sm font-medium text-white">{selectedCourier.total_deliveries || 0}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Ganancias</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-sm font-medium text-emerald-400">₡{Math.round(selectedCourier.total_earnings || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Verificacion</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {selectedCourier.is_verified ? (
+                        <><CheckCircle2 className="w-4 h-4 text-cyan-400" /><span className="text-sm font-medium text-cyan-400">Verificado</span></>
+                      ) : (
+                        <><XCircle className="w-4 h-4 text-red-400" /><span className="text-sm font-medium text-red-400">No verificado</span></>
+                      )}
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Registrado</p>
+                    <span className="text-sm font-medium text-white mt-1 block">{formatDate(selectedCourier.created_at)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2">
+                {!selectedCourier.is_verified && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { error } = await supabase.from('couriers').update({ is_verified: true }).eq('id', selectedCourier.id);
+                      if (error) { toast.error('Error al verificar'); return; }
+                      setCouriers(prev => prev.map(c => c.id === selectedCourier.id ? { ...c, is_verified: true } : c));
+                      setSelectedCourier(prev => prev ? { ...prev, is_verified: true } : null);
+                      toast.success('Repartidor verificado');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm font-medium hover:bg-cyan-500/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Verificar Repartidor
+                  </button>
+                )}
+                {selectedCourier.is_verified && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { error } = await supabase.from('couriers').update({ is_verified: false }).eq('id', selectedCourier.id);
+                      if (error) { toast.error('Error al quitar verificacion'); return; }
+                      setCouriers(prev => prev.map(c => c.id === selectedCourier.id ? { ...c, is_verified: false } : c));
+                      setSelectedCourier(prev => prev ? { ...prev, is_verified: false } : null);
+                      toast.success('Verificacion removida');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm font-medium hover:bg-amber-500/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <XCircle className="w-4 h-4" /> Quitar Verificacion
+                  </button>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleOnline(selectedCourier.id, selectedCourier.is_online)}
+                    className="py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 text-sm font-medium hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                  >
+                    {selectedCourier.is_online ? (
+                      <><ToggleRight className="w-4 h-4 text-emerald-400" /> Desconectar</>
+                    ) : (
+                      <><ToggleLeft className="w-4 h-4" /> Conectar</>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleStatus(selectedCourier.id, selectedCourier.status);
+                      setSelectedCourier(prev => prev ? { ...prev, status: selectedCourier.status === 'suspended' ? 'offline' : 'suspended' } : null);
+                    }}
+                    className={`py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                      selectedCourier.status === 'suspended'
+                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                        : 'bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20'
+                    }`}
+                  >
+                    {selectedCourier.status === 'suspended' ? (
+                      <><ToggleRight className="w-4 h-4" /> Reactivar</>
+                    ) : (
+                      <><Ban className="w-4 h-4" /> Suspender</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
