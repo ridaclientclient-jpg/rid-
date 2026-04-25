@@ -123,3 +123,25 @@ Stage Summary:
 - Created: /home/z/my-project/download/sesion-fixes-completos.sql
 - 7 major sections, ~690 lines of idempotent SQL
 - All fixes from the entire session in one file
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Fix "Bucket not found" error on profile photo upload
+
+Work Log:
+- User reported red error "Error al subir imagen: Bucket not found" when trying to upload profile logo
+- Root cause: Code referenced bucket name `product-images` but Supabase bucket was created as `products`
+- Found 5 files with incorrect bucket references (14 total occurrences)
+- Changed all `product-images` → `products` via replace_all in all 5 files:
+  1. src/app/marketplace/profile/page.tsx (4 refs)
+  2. src/app/marketplace/products/page.tsx (5 refs)
+  3. src/app/admin/marketplace/categories/page.tsx (6 refs)
+  4. src/app/admin/marketplace/products/page.tsx (5 refs)
+  5. src/app/client/market/page.tsx (1 ref)
+- Verified: zero remaining references to `product-images` in src/
+
+Stage Summary:
+- Fixed bucket name mismatch across entire codebase
+- Profile photo upload, product image upload, and all image display now use correct `products` bucket
+- No SQL changes needed — the `products` bucket already exists in Supabase

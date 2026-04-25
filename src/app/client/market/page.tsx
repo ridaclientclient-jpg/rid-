@@ -342,7 +342,7 @@ function SignedProductImage({
     (async () => {
       try {
         const { data } = await supabase.storage
-          .from('product-images')
+          .from('products')
           .createSignedUrl(imagePath, 3600);
         if (!cancelled && data?.signedUrl) {
           setSrc(data.signedUrl);

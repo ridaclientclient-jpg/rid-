@@ -244,7 +244,7 @@ export default function ProductsPage() {
         if (row.image_path) {
           try {
             const { data: urlData } = await supabase.storage
-              .from('product-images')
+              .from('products')
               .createSignedUrl(row.image_path, 3600);
             if (urlData?.signedUrl) {
               urlMap[row.id] = urlData.signedUrl;
@@ -435,7 +435,7 @@ export default function ProductsPage() {
       const path = `products/${vendorId}/${productId}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('product-images')
+        .from('products')
         .upload(path, file, { upsert: true, contentType: file.type });
 
       clearInterval(progressInterval);
@@ -444,7 +444,7 @@ export default function ProductsPage() {
       if (uploadError) throw uploadError;
 
       const { data: urlData } = await supabase.storage
-        .from('product-images')
+        .from('products')
         .createSignedUrl(path, 3600);
 
       if (!urlData?.signedUrl) throw new Error('No se pudo generar URL firmada');
@@ -469,14 +469,14 @@ export default function ProductsPage() {
 
       // List files for this product to find all versions
       const { data: files } = await supabase.storage
-        .from('product-images')
+        .from('products')
         .list(`products/${vendorId}`);
 
       if (files) {
         const productFiles = files.filter((f) => f.name.startsWith(productId));
         for (const pf of productFiles) {
           await supabase.storage
-            .from('product-images')
+            .from('products')
             .remove([`products/${vendorId}/${pf.name}`]);
         }
       }

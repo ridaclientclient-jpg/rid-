@@ -370,8 +370,8 @@ export default function AdminProductsPage() {
       for (const p of imagesToFetch) {
         try {
           const { data: urlData } = await supabase.storage
-            .from('product-images')
-            .createSignedUrl(p.image_url!.replace('product-images/', ''), 3600);
+            .from('products')
+            .createSignedUrl(p.image_url!.replace('products/', ''), 3600);
           if (urlData?.signedUrl) urlMap[p.id] = urlData.signedUrl;
         } catch {
           // fallback: use raw URL
@@ -626,10 +626,10 @@ export default function AdminProductsPage() {
         const ext = form.imageFile.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const { error: uploadErr } = await supabase.storage
-          .from('product-images')
+          .from('products')
           .upload(fileName, form.imageFile);
         if (uploadErr) throw uploadErr;
-        imageUrl = `product-images/${fileName}`;
+        imageUrl = `products/${fileName}`;
       }
 
       if (modal === 'add') {

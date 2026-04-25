@@ -178,9 +178,9 @@ export default function MarketplaceCategoriesPage() {
       const urlPromises = rows.map(async (row) => {
         if (row.image_url) {
           try {
-            const path = row.image_url.replace('product-images/', '');
+            const path = row.image_url.replace('products/', '');
             const { data: urlData } = await supabase.storage
-              .from('product-images')
+              .from('products')
               .createSignedUrl(path, 3600);
             if (urlData?.signedUrl) {
               row.image_signed_url = urlData.signedUrl;
@@ -327,10 +327,10 @@ export default function MarketplaceCategoriesPage() {
         const folderPath = editingId || `temp-${Date.now()}`;
         const filePath = `categories/${folderPath}/image.${ext}`;
         const { error: uploadErr } = await supabase.storage
-          .from('product-images')
+          .from('products')
           .upload(filePath, form.imageFile, { upsert: true });
         if (uploadErr) throw uploadErr;
-        imageUrl = `product-images/${filePath}`;
+        imageUrl = `products/${filePath}`;
       }
 
       if (modal === 'add') {
@@ -354,11 +354,11 @@ export default function MarketplaceCategoriesPage() {
           const correctPath = `categories/${newCat.id}/image.${ext}`;
           try {
             await supabase.storage
-              .from('product-images')
+              .from('products')
               .move(`categories/temp-${Date.now()}/image.${ext}`, correctPath);
             await supabase
               .from('marketplace_categories')
-              .update({ image_url: `product-images/${correctPath}` })
+              .update({ image_url: `products/${correctPath}` })
               .eq('id', newCat.id);
           } catch {
             // Keep the temp path, not critical
@@ -410,16 +410,16 @@ export default function MarketplaceCategoriesPage() {
     try {
       // Delete image from storage if exists
       if (deleteTarget.image_url) {
-        const path = deleteTarget.image_url.replace('product-images/', '');
+        const path = deleteTarget.image_url.replace('products/', '');
         try {
           // Try to remove the file; list and remove all files in the category folder
           const { data: files } = await supabase.storage
-            .from('product-images')
+            .from('products')
             .list(`categories/${deleteTarget.id}`);
           if (files && files.length > 0) {
             const pathsToRemove = files.map((f) => `categories/${deleteTarget.id}/${f.name}`);
             await supabase.storage
-              .from('product-images')
+              .from('products')
               .remove(pathsToRemove);
           }
         } catch {

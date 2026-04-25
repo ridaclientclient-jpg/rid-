@@ -286,7 +286,7 @@ export default function ProfilePage() {
         // Fetch signed URL for logo
         if (v.logo_url) {
           const { data: signedData } = await supabase.storage
-            .from('product-images')
+            .from('products')
             .createSignedUrl(v.logo_url, 3600);
           if (signedData?.signedUrl && !cancelled) {
             setLogoUrl(signedData.signedUrl);
@@ -450,12 +450,12 @@ export default function ProfilePage() {
 
       // Remove old logo if exists
       if (vendor?.logo_url) {
-        await supabase.storage.from('product-images').remove([vendor.logo_url]);
+        await supabase.storage.from('products').remove([vendor.logo_url]);
       }
 
       // Upload new logo
       const { error: uploadErr } = await supabase.storage
-        .from('product-images')
+        .from('products')
         .upload(filePath, file, { upsert: true, contentType: file.type });
 
       if (uploadErr) {
@@ -478,7 +478,7 @@ export default function ProfilePage() {
 
       // Get signed URL for preview
       const { data: signedData } = await supabase.storage
-        .from('product-images')
+        .from('products')
         .createSignedUrl(filePath, 3600);
 
       if (signedData?.signedUrl) {
