@@ -240,6 +240,17 @@ export default function ProfilePage() {
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
 
+  // Active panel / modal state
+  const [activePanel, setActivePanel] = useState<string | null>(null);
+
+  // Notification preferences
+  const [notifPrefs, setNotifPrefs] = useState({
+    newOrders: true,
+    orderStatus: true,
+    earnings: true,
+    support: false,
+  });
+
   /* ── Fetch all data ─────────────────────────────────────────── */
   const fetchAllData = useCallback(async () => {
     if (!vendorId) return;
@@ -489,11 +500,11 @@ export default function ProfilePage() {
   /* ── Menu items ─────────────────────────────────────────────── */
 
   const menuItems = [
-    { label: 'Notificaciones', icon: Bell, color: 'text-amber-400', action: () => toast.info('Configuración de notificaciones próximamente') },
-    { label: 'Términos y Condiciones', icon: FileText, color: 'text-cyan-400', action: () => toast.info('Mostrando términos...') },
+    { label: 'Notificaciones', icon: Bell, color: 'text-amber-400', action: () => setActivePanel('notifications') },
+    { label: 'Términos y Condiciones', icon: FileText, color: 'text-cyan-400', action: () => setActivePanel('terms') },
     { label: 'Soporte', icon: Headphones, color: 'text-emerald-400', action: () => router.push('/marketplace/support') },
-    { label: 'Privacidad', icon: Shield, color: 'text-purple-400', action: () => toast.info('Configuración de privacidad próximamente') },
-    { label: 'Cerrar Sesión', icon: LogOut, color: 'text-red-400', action: () => { toast.success('Sesión cerrada'); logout(); router.replace('/marketplace/login'); } },
+    { label: 'Privacidad', icon: Shield, color: 'text-purple-400', action: () => setActivePanel('privacy') },
+    { label: 'Cerrar Sesión', icon: LogOut, color: 'text-red-400', action: () => setActivePanel('logout') },
   ];
 
   /* ── Loading / Error ────────────────────────────────────────── */
@@ -1015,6 +1026,330 @@ export default function ProfilePage() {
           </motion.button>
         ))}
       </motion.div>
+
+      {/* ── Notifications Modal ──────────────────────────────────── */}
+      <AnimatePresence>
+        {activePanel === 'notifications' && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setActivePanel(null)} />
+            <motion.div
+              className="relative w-full max-w-lg glass-strong rounded-2xl p-6 z-10 max-h-[90vh] overflow-y-auto"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                    <Bell className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Notificaciones</h3>
+                    <p className="text-xs text-gray-500">Configura tus alertas</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActivePanel(null)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Toggles */}
+              <div className="space-y-3">
+                {([
+                  { key: 'newOrders' as const, label: 'Nuevos pedidos', desc: 'Recibe alertas cuando lleguen nuevos pedidos' },
+                  { key: 'orderStatus' as const, label: 'Estado de pedidos', desc: 'Actualizaciones sobre el estado de tus entregas' },
+                  { key: 'earnings' as const, label: 'Ganancias', desc: 'Notificaciones sobre pagos y retiros' },
+                  { key: 'support' as const, label: 'Mensajes del soporte', desc: 'Comunicados y respuestas del equipo de soporte' },
+                ]).map((pref) => (
+                  <div key={pref.key} className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
+                    <div className="flex-1 mr-4">
+                      <p className="text-sm font-medium text-white">{pref.label}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{pref.desc}</p>
+                    </div>
+                    <button
+                      onClick={() => setNotifPrefs((prev) => ({ ...prev, [pref.key]: !prev[pref.key] }))}
+                      className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${
+                        notifPrefs[pref.key] ? 'bg-cyan-500' : 'bg-white/10'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                          notifPrefs[pref.key] ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Save button */}
+              <div className="mt-6">
+                <motion.button
+                  onClick={() => {
+                    toast.success('Preferencias de notificaciones guardadas');
+                    setActivePanel(null);
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium text-white btn-neon"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Guardar Preferencias
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Terms & Conditions Modal ─────────────────────────────── */}
+      <AnimatePresence>
+        {activePanel === 'terms' && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setActivePanel(null)} />
+            <motion.div
+              className="relative w-full max-w-lg glass-strong rounded-2xl p-6 z-10 max-h-[90vh] overflow-y-auto"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/15 flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-cyan-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Términos y Condiciones</h3>
+                    <p className="text-xs text-gray-500">RIDA SUPREME SYSTEM</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActivePanel(null)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="space-y-5 text-sm text-gray-300 leading-relaxed">
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">1. Uso del Servicio</h4>
+                  <p className="text-xs text-gray-400">
+                    RIDA SUPREME SYSTEM es una plataforma de entrega y comercio electrónico que conecta vendedores con compradores en Costa Rica. Al registrarte como vendedor, aceptas utilizar la plataforma de manera responsable, cumpliendo con todas las leyes y regulaciones aplicables en la República de Costa Rica. Queda prohibido el uso de la plataforma para actividades ilegales, fraudulentas o que violen derechos de terceros.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">2. Registro de Vendedor</h4>
+                  <p className="text-xs text-gray-400">
+                    Para vender en RIDA SUPREME SYSTEM, debes proporcionar información veraz y completa: nombre del negocio, número de teléfono, dirección física, categoría de productos y documentación legal requerida. La plataforma se reserva el derecho de aprobar o rechazar solicitudes de registro a su discreción. Es responsabilidad del vendedor mantener su información actualizada.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">3. Comisiones</h4>
+                  <p className="text-xs text-gray-400">
+                    RIDA SUPREME SYSTEM aplica una comisión del <span className="text-amber-400 font-medium">15%</span> sobre el monto total de cada venta realizada a través de la plataforma. Esta comisión cubre los costos de mantenimiento, desarrollo tecnológico, soporte al vendedor y procesamiento de pagos. La comisión se deduce automáticamente antes de acreditar las ganancias al vendedor.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">4. Pagos</h4>
+                  <p className="text-xs text-gray-400">
+                    Los pagos a vendedores se procesan en colones costarricenses (₡). Los retiros están sujetos a un período mínimo de procesamiento de 48 horas hábiles. El saldo disponible para retiro se muestra en el panel de ganancias. RIDA SUPREME SYSTEM no se responsabiliza por demoras causadas por entidades bancarias o procesadores de pago externos. El monto mínimo de retiro es de ₡5,000.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">5. Responsabilidad</h4>
+                  <p className="text-xs text-gray-400">
+                    El vendedor es responsable de la calidad de sus productos, tiempos de entrega y atención al cliente. RIDA SUPREME SYSTEM actúa como intermediario tecnológico y no se hace responsable por defectos en los productos, incumplimientos de entrega por parte del vendedor, ni disputas entre vendedor y comprador. Sin embargo, nos comprometemos a mediar en caso de controversias.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">6. Modificaciones</h4>
+                  <p className="text-xs text-gray-400">
+                    RIDA SUPREME SYSTEM se reserva el derecho de modificar estos términos en cualquier momento. Los cambios entrarán en vigencia a partir de su publicación en la plataforma. Se notificará a los vendedores sobre cambios significativos mediante correo electrónico o notificación dentro de la plataforma. El uso continuado del servicio después de modificaciones constituye aceptación de los nuevos términos.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-cyan-400 mb-1.5">7. Contacto</h4>
+                  <p className="text-xs text-gray-400">
+                    Para consultas sobre estos Términos y Condiciones, puedes contactarnos a través de la sección de Soporte dentro de la plataforma o escribirnos a <span className="text-cyan-400">soporte@ridasupremesystem.com</span>. Nuestro equipo de soporte está disponible de lunes a viernes de 8:00 a.m. a 6:00 p.m., horario de Costa Rica.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-white/5">
+                  <p className="text-[10px] text-gray-600">Última actualización: Enero 2025 · San José, Costa Rica</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Privacy Policy Modal ─────────────────────────────────── */}
+      <AnimatePresence>
+        {activePanel === 'privacy' && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setActivePanel(null)} />
+            <motion.div
+              className="relative w-full max-w-lg glass-strong rounded-2xl p-6 z-10 max-h-[90vh] overflow-y-auto"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 flex items-center justify-center">
+                    <Shield className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Política de Privacidad</h3>
+                    <p className="text-xs text-gray-500">RIDA SUPREME SYSTEM</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActivePanel(null)}
+                  className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="space-y-5 text-sm text-gray-300 leading-relaxed">
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400 mb-1.5">1. Datos que se Recopilan</h4>
+                  <p className="text-xs text-gray-400">
+                    Recopilamos la información necesaria para operar la plataforma: nombre del negocio, información de contacto (teléfono, correo electrónico, dirección), datos bancarios para procesamiento de pagos, catálogo de productos, historial de transacciones y datos de uso de la plataforma. Toda la información se almacena de forma segura en servidores encriptados.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400 mb-1.5">2. Uso de Datos</h4>
+                  <p className="text-xs text-gray-400">
+                    Sus datos se utilizan exclusivamente para: procesar transacciones y pagos, gestionar su cuenta de vendedor, mejorar la experiencia del usuario en la plataforma, enviar notificaciones relevantes sobre su cuenta y pedidos, cumplir con obligaciones legales y regulatorias en Costa Rica, y generar reportes estadísticos anónimos para mejorar nuestros servicios.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400 mb-1.5">3. Protección de Datos</h4>
+                  <p className="text-xs text-gray-400">
+                    Implementamos medidas de seguridad de nivel empresarial que incluyen: encriptación SSL/TLS para todas las comunicaciones, almacenamiento en bases de datos encriptadas, controles de acceso basados en roles, auditorías de seguridad periódicas y cumplimiento con las leyes de protección de datos de Costa Rica. Nunca compartimos su información personal con terceros sin su consentimiento explícito.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400 mb-1.5">4. Cookies</h4>
+                  <p className="text-xs text-gray-400">
+                    Utilizamos cookies y tecnologías similares para: mantener su sesión activa, recordar sus preferencias, analizar el uso de la plataforma y mostrar contenido relevante. Puede configurar su navegador para bloquear cookies, aunque esto podría afectar la funcionalidad de ciertas características de la plataforma.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400 mb-1.5">5. Derechos del Usuario</h4>
+                  <p className="text-xs text-gray-400">
+                    Como usuario de RIDA SUPREME SYSTEM, usted tiene derecho a: acceder a sus datos personales en cualquier momento, solicitar la corrección de datos inexactos, solicitar la eliminación de su cuenta y datos asociados, exportar su información en formato legible, y retirar su consentimiento para el procesamiento de datos. Para ejercer estos derechos, contacte a nuestro equipo de soporte.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400 mb-1.5">6. Contacto</h4>
+                  <p className="text-xs text-gray-400">
+                    Para cualquier consulta relacionada con esta Política de Privacidad, puede contactarnos a través de la sección de Soporte en la plataforma o escribir a <span className="text-purple-400">privacidad@ridasupremesystem.com</span>. Responderemos su solicitud en un plazo máximo de 15 días hábiles conforme a la legislación costarricense.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-white/5">
+                  <p className="text-[10px] text-gray-600">Última actualización: Enero 2025 · San José, Costa Rica</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Logout Confirmation Modal ────────────────────────────── */}
+      <AnimatePresence>
+        {activePanel === 'logout' && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setActivePanel(null)} />
+            <motion.div
+              className="relative w-full max-w-sm glass-strong rounded-2xl p-6 z-10"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            >
+              {/* Header */}
+              <div className="flex flex-col items-center text-center mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mb-4">
+                  <LogOut className="w-6 h-6 text-red-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white">¿Estás seguro?</h3>
+                <p className="text-sm text-gray-400 mt-1">¿Estás seguro de que deseas cerrar sesión?</p>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <motion.button
+                  onClick={() => setActivePanel(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Cancelar
+                </motion.button>
+                <motion.button
+                  onClick={() => {
+                    setActivePanel(null);
+                    toast.success('Sesión cerrada');
+                    logout();
+                    router.replace('/marketplace/login');
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 transition-colors"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Cerrar Sesión
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
