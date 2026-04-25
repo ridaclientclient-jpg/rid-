@@ -9,6 +9,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { useVendorId } from '@/hooks/useVendorId';
 
 /* ─── Types ──────────────────────────────────────────────────────────────────── */
 
@@ -58,7 +59,7 @@ function getCategoryMeta(name: string): { icon: React.ReactNode; color: string; 
 
 export default function CategoriesPage() {
   const { user } = useAuthStore();
-  const [vendorId, setVendorId] = useState<string | null>(null);
+  const { vendorId, loading: vendorLoading, error: vendorError } = useVendorId();
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,23 +75,7 @@ export default function CategoriesPage() {
   // Delete confirmation
   const [deletingName, setDeletingName] = useState<string | null>(null);
 
-  /* ── Load vendor_id ──────────────────────────────────── */
-  useEffect(() => {
-    if (!user?.id) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-      if (error || !data) {
-        toast.error('No se encontró la tienda asociada a tu cuenta');
-        setLoading(false);
-        return;
-      }
-      setVendorId(data.id);
-    })();
-  }, [user?.id]);
+  /* ── vendorId provided by useVendorId hook ──────── */
 
   /* ── Load categories from products ───────────────────── */
   const loadCategories = useCallback(async () => {

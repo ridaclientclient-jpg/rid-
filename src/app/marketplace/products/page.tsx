@@ -9,6 +9,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { useVendorId } from '@/hooks/useVendorId';
 
 /* ── Types ──────────────────────────────────────────────────── */
 
@@ -82,8 +83,8 @@ const FALLBACK_BADGE = 'bg-gray-500/15 text-gray-400 border-gray-500/30';
 
 export default function ProductsPage() {
   const { user } = useAuthStore();
+  const { vendorId, loading: vendorLoading, error: vendorError } = useVendorId();
   const [products, setProducts] = useState<ProductRow[]>([]);
-  const [vendorId, setVendorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('Todos');
@@ -98,23 +99,7 @@ export default function ProductsPage() {
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
 
-  /* ── Load vendor_id ──────────────────────────────────── */
-  useEffect(() => {
-    if (!user?.id) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-      if (error || !data) {
-        toast.error('No se encontró la tienda asociada a tu cuenta');
-        setLoading(false);
-        return;
-      }
-      setVendorId(data.id);
-    })();
-  }, [user?.id]);
+  /* ── vendorId provided by useVendorId hook ──────── */
 
   /* ── Load products ───────────────────────────────────── */
   useEffect(() => {

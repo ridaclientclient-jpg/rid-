@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 import { supabase, type Vendor, type Delivery, type Product } from '@/lib/supabase';
+import { useVendorId } from '@/hooks/useVendorId';
 
 /* ── Helpers ──────────────────────────────────────────────────── */
 
@@ -205,6 +206,7 @@ function Skeleton() {
 export default function MarketplaceDashboard() {
   const { user } = useAuthStore();
   const router = useRouter();
+  const { vendorId, loading: vendorLoading, error: vendorError } = useVendorId();
 
   const [loading, setLoading] = useState(true);
   const [vendor, setVendor] = useState<Vendor | null>(null);
@@ -221,7 +223,7 @@ export default function MarketplaceDashboard() {
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!vendorId) return;
 
     let cancelled = false;
 
@@ -230,29 +232,21 @@ export default function MarketplaceDashboard() {
         setLoading(true);
 
         // 1. Get vendor info
-        if (!user?.id) return;
-        const { data: vendorData, error: vendorError } = await supabase
+        const { data: vendorData, error: vendorFetchErr } = await supabase
           .from('vendors')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('id', vendorId)
           .single();
 
-        if (vendorError && vendorError.code !== 'PGRST116') {
-          console.error('Error fetching vendor:', vendorError);
-          toast.error('Error al cargar datos del vendedor');
-          return;
+        if (vendorFetchErr) {
+          console.error('Error fetching vendor details:', vendorFetchErr);
         }
 
-        if (!vendorData) {
-          toast.error('No se encontró la tienda asociada');
-          router.push('/marketplace/profile');
-          return;
+        if (vendorData) {
+          setVendor(vendorData as Vendor);
         }
 
         if (cancelled) return;
-        setVendor(vendorData as Vendor);
-
-        const vendorId = vendorData.id;
 
         // 2. Count total products
         const { count: totalProducts } = await supabase
@@ -408,7 +402,7 @@ export default function MarketplaceDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, router]);
+  }, [vendorId, router]);
 
   /* ── Stat cards config ──────────────────────────────────────── */
   const statCards = useMemo(() => [
@@ -450,7 +444,16 @@ export default function MarketplaceDashboard() {
     },
   ], [stats]);
 
-  if (loading) return <Skeleton />;
+  if (vendorLoading || loading) return <Skeleton />;
+
+  if (vendorError) {
+    return (
+      <div className="text-center py-16">
+        <Store className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+        <p className="text-gray-500 text-sm">{vendorError}</p>
+      </div>
+    );
+  }
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">

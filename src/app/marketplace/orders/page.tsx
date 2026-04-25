@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { supabase, type Delivery, type Vendor, type Courier, type Profile } from '@/lib/supabase';
 import { type RealtimeChannel } from '@supabase/supabase-js';
+import { useVendorId } from '@/hooks/useVendorId';
 
 /* ── Helpers ──────────────────────────────────────────────────── */
 
@@ -152,10 +153,10 @@ function LoadingSkeleton() {
 
 export default function OrdersPage() {
   const { user } = useAuthStore();
+  const { vendorId, loading: vendorLoading, error: vendorError } = useVendorId();
 
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderWithDetails[]>([]);
-  const [vendorId, setVendorId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
@@ -246,38 +247,7 @@ export default function OrdersPage() {
     }
   }, [user?.id, vendorId]);
 
-  /* ── Initial load: find vendor then fetch orders ──────────── */
-  useEffect(() => {
-    if (!user?.id) return;
-
-    let cancelled = false;
-
-    async function init() {
-      if (!user?.id) return;
-      const { data: vendorData, error: vendorError } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (vendorError || !vendorData) {
-        console.error('Error fetching vendor:', vendorError);
-        toast.error('No se encontró la tienda asociada');
-        setLoading(false);
-        return;
-      }
-
-      if (cancelled) return;
-
-      setVendorId(vendorData.id);
-    }
-
-    init();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
+  /* ── vendorId is now provided by useVendorId hook ──────────── */
 
   /* ── Fetch orders when vendorId is set ─────────────────────── */
   useEffect(() => {
@@ -427,7 +397,16 @@ export default function OrdersPage() {
     toast.success('Pedidos actualizados');
   };
 
-  if (loading) return <LoadingSkeleton />;
+  if (vendorLoading || loading) return <LoadingSkeleton />;
+
+  if (vendorError) {
+    return (
+      <div className="text-center py-16">
+        <ShoppingCart className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+        <p className="text-gray-500 text-sm">{vendorError}</p>
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">

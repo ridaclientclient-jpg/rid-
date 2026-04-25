@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { useVendorId } from '@/hooks/useVendorId';
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -179,6 +180,7 @@ function validateRows(
 
 export default function ImportPage() {
   const { user } = useAuthStore();
+  const { vendorId, loading: vendorLoading } = useVendorId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef(false);
 
@@ -195,17 +197,7 @@ export default function ImportPage() {
   const [validCount, setValidCount] = useState(0);
   const [invalidCount, setInvalidCount] = useState(0);
 
-  /* ── Get vendor_id ────────────────────────────────────── */
-  const getVendorId = useCallback(async (): Promise<string | null> => {
-    if (!user?.id) return null;
-    const { data, error } = await supabase
-      .from('vendors')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-    if (error || !data) return null;
-    return data.id;
-  }, [user?.id]);
+  /* ── vendorId provided by useVendorId hook ──────── */
 
   /* ── Handle file selection ────────────────────────────── */
   const handleFile = useCallback(
@@ -290,7 +282,6 @@ export default function ImportPage() {
 
   /* ── Execute import ───────────────────────────────────── */
   const executeImport = async () => {
-    const vendorId = await getVendorId();
     if (!vendorId) {
       toast.error('No se encontró la tienda asociada. Asegúrate de estar registrado como vendedor.');
       return;
