@@ -27,6 +27,7 @@ interface DriverData {
   rating: number;
   totalRides: number;
   totalEarnings: number;
+  earnings: string;
   status: DriverStatus;
   joined: string;
   avatar: string;
@@ -533,7 +534,7 @@ export default function DriversPage() {
           console.error('Error updating doc', docType, ':', error.message);
         }
 
-        if (action === 'rejected') {
+        if (action === 'reject') {
           allApproved = false;
           const label = DOCUMENT_TYPES.find((dt) => dt.type === docType)?.label || docType;
           rejectedDocs.push(label + (reason ? ` (${reason})` : ''));
