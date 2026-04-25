@@ -309,7 +309,7 @@ export default function AntiFraudPage() {
           </motion.div>
 
           {/* ═══ FILTERS + SEARCH ═══ */}
-          <motion.div className="glass rounded-2xl p-4"
+          <motion.div className="glass rounded-2xl p-4 relative z-50"
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
             <div className="flex flex-wrap gap-3">
               {/* Search */}
