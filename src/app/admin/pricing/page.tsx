@@ -706,10 +706,10 @@ export default function PricingPage() {
           </motion.div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2 space-y-4">
+            <div className="xl:col-span-2 space-y-4 relative z-10">
 
               {/* ═══ MARKETPLACE COMMISSION SLIDER ═══ */}
-              <motion.div className="glass rounded-2xl p-6 border border-orange-500/20" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="glass rounded-2xl p-6 border border-orange-500/20">
                 <div className="flex items-center gap-2 mb-2">
                   <ShoppingCart className="w-5 h-5 text-orange-400" />
                   <h3 className="text-lg font-semibold text-white">Comision de Marketplace</h3>
@@ -729,7 +729,7 @@ export default function PricingPage() {
                   </div>
                   <input type="range" min={0} max={100} step={1} value={marketComm}
                     onChange={(e) => setMarketComm(Number(e.target.value))}
-                    className="w-full h-3 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-500" />
+                    className="w-full h-3 bg-white/10 rounded-full cursor-pointer accent-orange-500" />
                   <div className="flex justify-between mt-2 text-xs text-gray-500">
                     <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
                   </div>
@@ -778,10 +778,10 @@ export default function PricingPage() {
                     </p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
 
               {/* ═══ WITHDRAWAL QUEUE CONFIG ═══ */}
-              <motion.div className="glass rounded-2xl p-6 border border-purple-500/20" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+              <div className="glass rounded-2xl p-6 border border-purple-500/20">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Timer className="w-5 h-5 text-purple-400" />
@@ -814,7 +814,7 @@ export default function PricingPage() {
                   </div>
                   <input type="range" min={1000} max={100000} step={1000} value={minWithdrawal}
                     onChange={(e) => setMinWithdrawal(Number(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500" />
+                    className="w-full h-2 bg-white/10 rounded-full cursor-pointer accent-purple-500" />
                   <div className="flex justify-between mt-2 text-xs text-gray-500">
                     <span>₡1,000</span><span>₡100,000</span>
                   </div>
@@ -831,7 +831,7 @@ export default function PricingPage() {
                   </div>
                   <input type="range" min={1000} max={50000} step={1000} value={withdrawalStep}
                     onChange={(e) => setWithdrawalStep(Number(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500" />
+                    className="w-full h-2 bg-white/10 rounded-full cursor-pointer accent-purple-500" />
                   <div className="flex justify-between mt-2 text-xs text-gray-500">
                     <span>₡1,000</span><span>₡50,000</span>
                   </div>
@@ -848,7 +848,7 @@ export default function PricingPage() {
                   </div>
                   <input type="range" min={1} max={168} step={1} value={withdrawalDelay}
                     onChange={(e) => setWithdrawalDelay(Number(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500" />
+                    className="w-full h-2 bg-white/10 rounded-full cursor-pointer accent-purple-500" />
                   <div className="flex justify-between mt-2 text-xs text-gray-500">
                     <span>1h</span><span>72h</span><span>168h (7d)</span>
                   </div>
@@ -865,7 +865,7 @@ export default function PricingPage() {
                   </div>
                   <input type="range" min={1} max={20} step={1} value={batchSize}
                     onChange={(e) => setBatchSize(Number(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500" />
+                    className="w-full h-2 bg-white/10 rounded-full cursor-pointer accent-purple-500" />
                   <div className="flex justify-between mt-2 text-xs text-gray-500">
                     <span>1</span><span>20</span>
                   </div>
@@ -901,7 +901,7 @@ export default function PricingPage() {
                     <><ArrowDownCircle className="w-4 h-4" /> Procesar Siguiente Lote ({batchSize} retiros)</>
                   )}
                 </button>
-              </motion.div>
+              </div>
 
               {/* ═══ WITHDRAWAL QUEUE TABLE ═══ */}
               <AnimatePresence>
@@ -1007,7 +1007,7 @@ export default function PricingPage() {
             {/* Right Panel - Marketplace */}
             <div className="space-y-4">
               {/* How It Works */}
-              <motion.div className="glass rounded-2xl p-5" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              <div className="glass rounded-2xl p-5">
                 <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
                   <Info className="w-4 h-4 text-cyan-400" />
                   Como Funciona
@@ -1031,10 +1031,10 @@ export default function PricingPage() {
                     </div>
                   ))}
                 </div>
-              </motion.div>
+              </div>
 
               {/* Commission Visual */}
-              <motion.div className="glass rounded-2xl p-5" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+              <div className="glass rounded-2xl p-5">
                 <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
                   <Percent className="w-4 h-4 text-orange-400" />
                   Distribucion del Pago
@@ -1062,10 +1062,10 @@ export default function PricingPage() {
                     <p className="text-sm font-bold text-emerald-400">₡{(10000 * (100 - marketComm) / 100).toLocaleString()}</p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
 
               {/* Withdrawal Rules */}
-              <motion.div className="glass rounded-2xl p-5" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+              <div className="glass rounded-2xl p-5">
                 <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-purple-400" />
                   Reglas de Retiro
@@ -1083,7 +1083,7 @@ export default function PricingPage() {
                     </div>
                   ))}
                 </div>
-              </motion.div>
+              </div>
 
               {/* Refresh Stats */}
               <motion.button type="button" onClick={() => { loadMarketStats(); loadWithdrawals(); }}
