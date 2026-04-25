@@ -1,160 +1,433 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Search, Eye, Clock, ChevronDown, Check,
-  Package, User, Calendar, Filter
+  Package, User, MapPin, RefreshCw, Phone, Truck, X, DollarSign
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/authStore';
+import { supabase, type Delivery, type Vendor, type Courier, type Profile } from '@/lib/supabase';
+import { type RealtimeChannel } from '@supabase/supabase-js';
 
-interface OrderItem {
-  name: string;
-  quantity: number;
-  price: number;
-}
+/* ── Helpers ──────────────────────────────────────────────────── */
 
-interface Order {
-  id: string;
-  customer: string;
-  customerPhone: string;
-  items: OrderItem[];
-  total: number;
-  status: 'Pending' | 'Processing' | 'Completed' | 'Cancelled';
-  date: string;
-  address: string;
-}
-
-const initialOrders: Order[] = [
-  {
-    id: 'ORD-2847',
-    customer: 'Ana García',
-    customerPhone: '+506 8888 1001',
-    items: [{ name: 'Ibuprofeno 600mg', quantity: 2, price: 3500 }, { name: 'Vitamina C', quantity: 1, price: 5100 }],
-    total: 12100,
-    status: 'Completed',
-    date: '2024-01-15 14:32',
-    address: 'San José, Costa Rica',
-  },
-  {
-    id: 'ORD-2846',
-    customer: 'Luis Rojas',
-    customerPhone: '+506 8888 1002',
-    items: [{ name: 'Casado Tradicional', quantity: 1, price: 4500 }],
-    total: 4500,
-    status: 'Processing',
-    date: '2024-01-15 14:18',
-    address: 'Heredia, Costa Rica',
-  },
-  {
-    id: 'ORD-2845',
-    customer: 'María López',
-    customerPhone: '+506 8888 1003',
-    items: [
-      { name: 'Arroz Integral', quantity: 2, price: 2800 },
-      { name: 'Aceite de Oliva', quantity: 1, price: 7500 },
-      { name: 'Café Molido', quantity: 2, price: 3200 },
-      { name: 'Jabón de Avena', quantity: 3, price: 1800 },
-      { name: 'Crema Hidratante', quantity: 1, price: 4500 },
-    ],
-    total: 28900,
-    status: 'Pending',
-    date: '2024-01-15 13:55',
-    address: 'Cartago, Costa Rica',
-  },
-  {
-    id: 'ORD-2844',
-    customer: 'Pedro Sánchez',
-    customerPhone: '+506 8888 1004',
-    items: [{ name: 'Paracetamol 500mg', quantity: 2, price: 2200 }, { name: 'Omeprazol 20mg', quantity: 1, price: 4200 }],
-    total: 8600,
-    status: 'Completed',
-    date: '2024-01-15 12:40',
-    address: 'Alajuela, Costa Rica',
-  },
-  {
-    id: 'ORD-2843',
-    customer: 'Laura Martínez',
-    customerPhone: '+506 8888 1005',
-    items: [{ name: 'Sopa de Mariscos', quantity: 1, price: 6500 }],
-    total: 6500,
-    status: 'Cancelled',
-    date: '2024-01-15 11:22',
-    address: 'San José, Costa Rica',
-  },
-  {
-    id: 'ORD-2842',
-    customer: 'Carlos Vega',
-    customerPhone: '+506 8888 1006',
-    items: [
-      { name: 'Ibuprofeno 600mg', quantity: 3, price: 3500 },
-      { name: 'Ensalada César', quantity: 1, price: 3800 },
-    ],
-    total: 14300,
-    status: 'Completed',
-    date: '2024-01-15 10:15',
-    address: 'Limón, Costa Rica',
-  },
-  {
-    id: 'ORD-2841',
-    customer: 'Sofia Herrera',
-    customerPhone: '+506 8888 1007',
-    items: [{ name: 'Casado Tradicional', quantity: 2, price: 4500 }, { name: 'Café Molido', quantity: 1, price: 3200 }],
-    total: 12200,
-    status: 'Processing',
-    date: '2024-01-15 09:45',
-    address: 'Puntarenas, Costa Rica',
-  },
-  {
-    id: 'ORD-2840',
-    customer: 'Diego Morales',
-    customerPhone: '+506 8888 1008',
-    items: [{ name: 'Vitamina C 1000mg', quantity: 1, price: 5100 }],
-    total: 5100,
-    status: 'Pending',
-    date: '2024-01-15 09:10',
-    address: 'Guanacaste, Costa Rica',
-  },
-];
-
-const statusConfig: Record<string, { color: string; dotColor: string; next?: string }> = {
-  Pending: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', dotColor: 'bg-amber-400', next: 'Processing' },
-  Processing: { color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', dotColor: 'bg-blue-400', next: 'Completed' },
-  Completed: { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dotColor: 'bg-emerald-400' },
-  Cancelled: { color: 'bg-red-500/15 text-red-400 border-red-500/30', dotColor: 'bg-red-400' },
+const statusLabel: Record<string, string> = {
+  pending: 'Pendiente',
+  assigned: 'Asignado',
+  picked_up: 'Recogido',
+  in_transit: 'En camino',
+  delivered: 'Entregado',
+  cancelled: 'Cancelado',
 };
 
-const filters = ['All', 'Pending', 'Processing', 'Completed', 'Cancelled'];
+const statusConfig: Record<string, { color: string; dotColor: string }> = {
+  pending: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', dotColor: 'bg-amber-400' },
+  assigned: { color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', dotColor: 'bg-blue-400' },
+  picked_up: { color: 'bg-purple-500/15 text-purple-400 border-purple-500/30', dotColor: 'bg-purple-400' },
+  in_transit: { color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30', dotColor: 'bg-cyan-400' },
+  delivered: { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dotColor: 'bg-emerald-400' },
+  cancelled: { color: 'bg-red-500/15 text-red-400 border-red-500/30', dotColor: 'bg-red-400' },
+};
+
+function formatCRC(amount: number): string {
+  return `₡${Math.round(amount).toLocaleString('es-CR')}`;
+}
+
+function formatDateTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('es-CR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function relativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  if (diffMin < 1) return 'Ahora mismo';
+  if (diffMin < 60) return `Hace ${diffMin} min`;
+  if (diffHr < 24) return `Hace ${diffHr} hora${diffHr > 1 ? 's' : ''}`;
+  if (diffDay < 7) return `Hace ${diffDay} día${diffDay > 1 ? 's' : ''}`;
+  return formatDateTime(dateStr);
+}
+
+/* ── Types ────────────────────────────────────────────────────── */
+
+interface OrderItem {
+  id?: string;
+  name: string;
+  price: number;
+  qty: number;
+  category?: string;
+}
+
+interface OrderWithDetails {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  items: OrderItem[];
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  status: string;
+  createdAt: string;
+  deliveryAddress: string;
+  pickupAddress?: string;
+  paymentMethod: string;
+  notes?: string;
+  courierId?: string;
+  courierName?: string;
+  courierPhone?: string;
+  courierVehicle?: string;
+}
+
+type FilterTab = 'all' | 'pending' | 'assigned' | 'in_transit' | 'delivered' | 'cancelled';
+
+interface FilterTabConfig {
+  key: FilterTab;
+  label: string;
+  statusValue?: string;
+}
+
+const filterTabs: FilterTabConfig[] = [
+  { key: 'all', label: 'Todos' },
+  { key: 'pending', label: 'Pendiente', statusValue: 'pending' },
+  { key: 'assigned', label: 'Asignado', statusValue: 'assigned' },
+  { key: 'in_transit', label: 'En Camino', statusValue: 'in_transit' },
+  { key: 'delivered', label: 'Entregado', statusValue: 'delivered' },
+  { key: 'cancelled', label: 'Cancelado', statusValue: 'cancelled' },
+];
+
+/* ── Skeleton ─────────────────────────────────────────────────── */
+
+function LoadingSkeleton() {
+  return (
+    <div className="animate-pulse space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div className="h-8 w-48 bg-white/5 rounded-lg" />
+          <div className="h-4 w-32 bg-white/5 rounded-lg mt-2" />
+        </div>
+        <div className="h-10 w-36 bg-white/5 rounded-xl" />
+      </div>
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="h-10 flex-1 bg-white/5 rounded-xl" />
+        <div className="flex gap-2">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-9 w-24 bg-white/5 rounded-xl" />
+          ))}
+        </div>
+      </div>
+      {/* Table skeleton */}
+      <div className="glass rounded-2xl p-6">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="flex items-center gap-4 py-4 border-b border-white/5">
+            <div className="h-4 w-24 bg-white/5 rounded" />
+            <div className="h-4 w-20 bg-white/5 rounded" />
+            <div className="h-4 w-8 bg-white/5 rounded" />
+            <div className="h-4 w-16 bg-white/5 rounded" />
+            <div className="h-5 w-20 bg-white/5 rounded-full" />
+            <div className="h-4 w-20 bg-white/5 rounded" />
+            <div className="h-4 w-12 bg-white/5 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Component ───────────────────────────────────────────── */
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [search, setSearch] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const { user } = useAuthStore();
 
+  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<OrderWithDetails[]>([]);
+  const [vendorId, setVendorId] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const [search, setSearch] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<string | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  /* ── Fetch orders ──────────────────────────────────────────── */
+  const fetchOrders = useCallback(async (showLoading = false) => {
+    if (!user?.id || !vendorId) return;
+
+    if (showLoading) setLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select(`
+          id,
+          courier_id,
+          customer_id,
+          vendor_id,
+          status,
+          pickup_address,
+          delivery_address,
+          items,
+          subtotal,
+          delivery_fee,
+          total,
+          payment_method,
+          notes,
+          created_at,
+          updated_at,
+          profiles!deliveries_customer_id_fkey(name, phone),
+          couriers(
+            id,
+            user_id,
+            vehicle_type,
+            rating,
+            profiles:courier_profiles(name, phone)
+          )
+        `)
+        .eq('vendor_id', vendorId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching orders:', error);
+        toast.error('Error al cargar pedidos');
+        return;
+      }
+
+      const mapped: OrderWithDetails[] = (data || []).map((d: any) => {
+        const customerProfile = d.profiles as { name?: string; phone?: string } | null;
+        const courierData = d.couriers as {
+          id?: string;
+          user_id?: string;
+          vehicle_type?: string;
+          rating?: number;
+          profiles?: { name?: string; phone?: string };
+        } | null;
+
+        return {
+          id: d.id,
+          customerName: customerProfile?.name || 'Cliente',
+          customerPhone: customerProfile?.phone || '',
+          items: (d.items || []) as OrderItem[],
+          subtotal: Number(d.subtotal) || 0,
+          deliveryFee: Number(d.delivery_fee) || 0,
+          total: Number(d.total) || 0,
+          status: d.status,
+          createdAt: d.created_at,
+          deliveryAddress: d.delivery_address || '',
+          pickupAddress: d.pickup_address || '',
+          paymentMethod: d.payment_method || 'efectivo',
+          notes: d.notes || '',
+          courierId: courierData?.user_id || courierData?.id || undefined,
+          courierName: courierData?.profiles?.name || undefined,
+          courierPhone: courierData?.profiles?.phone || undefined,
+          courierVehicle: courierData?.vehicle_type || undefined,
+        };
+      });
+
+      setOrders(mapped);
+    } catch (err) {
+      console.error('Orders fetch error:', err);
+      toast.error('Error al cargar pedidos');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [user?.id, vendorId]);
+
+  /* ── Initial load: find vendor then fetch orders ──────────── */
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let cancelled = false;
+
+    async function init() {
+      if (!user?.id) return;
+      const { data: vendorData, error: vendorError } = await supabase
+        .from('vendors')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (vendorError || !vendorData) {
+        console.error('Error fetching vendor:', vendorError);
+        toast.error('No se encontró la tienda asociada');
+        setLoading(false);
+        return;
+      }
+
+      if (cancelled) return;
+
+      setVendorId(vendorData.id);
+    }
+
+    init();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  /* ── Fetch orders when vendorId is set ─────────────────────── */
+  useEffect(() => {
+    if (!vendorId) return;
+
+    setLoading(true);
+    fetchOrders(true);
+  }, [vendorId, fetchOrders]);
+
+  /* ── Realtime subscription ────────────────────────────────── */
+  useEffect(() => {
+    if (!vendorId) return;
+
+    const channel = supabase
+      .channel(`vendor-deliveries-${vendorId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'deliveries',
+          filter: `vendor_id=eq.${vendorId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+            fetchOrders(false);
+          }
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [vendorId, fetchOrders]);
+
+  /* ── Auto-refresh every 30 seconds ───────────────────────── */
+  useEffect(() => {
+    if (!vendorId) return;
+
+    const interval = setInterval(() => {
+      fetchOrders(false);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [vendorId, fetchOrders]);
+
+  /* ── Update status ────────────────────────────────────────── */
+  const updateStatus = async (orderId: string, newStatus: string) => {
+    setUpdating(orderId);
+    try {
+      const { error } = await supabase
+        .from('deliveries')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      if (error) {
+        console.error('Error updating order:', error);
+        toast.error('Error al actualizar el pedido');
+        return;
+      }
+
+      toast.success(`Pedido actualizado a ${statusLabel[newStatus] || newStatus}`);
+
+      // Update local state optimistically
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+      );
+
+      // Update selected order if it's the same
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) => prev ? { ...prev, status: newStatus } : null);
+      }
+
+      setOpenDropdown(null);
+    } catch (err) {
+      console.error('Update status error:', err);
+      toast.error('Error al actualizar el pedido');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  /* ── Available transitions for vendor ─────────────────────── */
+  const getVendorTransitions = (status: string): Array<{ value: string; label: string }> => {
+    const transitions: Array<{ value: string; label: string }> = [];
+    switch (status) {
+      case 'pending':
+        transitions.push({ value: 'assigned', label: 'Preparar para recojo' });
+        transitions.push({ value: 'cancelled', label: 'Cancelar' });
+        break;
+      case 'assigned':
+        transitions.push({ value: 'picked_up', label: 'Marcar como recogido' });
+        transitions.push({ value: 'cancelled', label: 'Cancelar' });
+        break;
+      case 'picked_up':
+        transitions.push({ value: 'cancelled', label: 'Cancelar' });
+        break;
+      case 'in_transit':
+        // Courier-only, vendor cannot change
+        break;
+      case 'delivered':
+        // Final state
+        break;
+      case 'cancelled':
+        // Final state
+        break;
+    }
+    return transitions;
+  };
+
+  const canCancel = (status: string) => status !== 'delivered' && status !== 'cancelled';
+
+  /* ── Filtered orders ──────────────────────────────────────── */
   const filtered = useMemo(() => {
     return orders.filter((o) => {
-      const matchStatus = activeFilter === 'All' || o.status === activeFilter;
-      const matchSearch = o.id.toLowerCase().includes(search.toLowerCase()) ||
-        o.customer.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = activeFilter === 'all' || o.status === activeFilter;
+      const matchSearch =
+        search === '' ||
+        o.id.toLowerCase().includes(search.toLowerCase()) ||
+        o.customerName.toLowerCase().includes(search.toLowerCase());
       return matchStatus && matchSearch;
     });
   }, [orders, activeFilter, search]);
 
-  const updateStatus = (orderId: string, newStatus: string) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus as Order['status'] } : o))
-    );
-    setOpenDropdown(null);
-    toast.success(`Pedido ${orderId} actualizado a ${newStatus}`);
-  };
-
+  /* ── Status counts ────────────────────────────────────────── */
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: orders.length };
-    filters.forEach((f) => { if (f !== 'All') counts[f] = orders.filter((o) => o.status === f).length; });
+    const counts: Record<string, number> = { all: orders.length };
+    for (const o of orders) {
+      counts[o.status] = (counts[o.status] || 0) + 1;
+    }
     return counts;
   }, [orders]);
+
+  /* ── Handle refresh ───────────────────────────────────────── */
+  const handleRefresh = async () => {
+    toast.info('Actualizando pedidos...');
+    await fetchOrders(false);
+    toast.success('Pedidos actualizados');
+  };
+
+  if (loading) return <LoadingSkeleton />;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -164,6 +437,15 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold text-white">Pedidos</h1>
           <p className="text-gray-400 text-sm mt-1">{orders.length} pedidos en total</p>
         </div>
+        <motion.button
+          onClick={handleRefresh}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors"
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+        >
+          <RefreshCw className="w-4 h-4" />
+          Actualizar
+        </motion.button>
       </div>
 
       {/* Filters */}
@@ -179,18 +461,20 @@ export default function OrdersPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {filters.map((f) => (
+          {filterTabs.map((tab) => (
             <button
-              key={f}
-              onClick={() => setActiveFilter(f)}
+              key={tab.key}
+              onClick={() => setActiveFilter(tab.key)}
               className={`px-4 py-2 rounded-xl text-xs font-medium transition-all duration-200 flex items-center gap-1.5 ${
-                activeFilter === f
+                activeFilter === tab.key
                   ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
                   : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
               }`}
             >
-              {f}
-              <span className="text-[10px] bg-white/10 rounded-full px-1.5 py-0.5">{statusCounts[f] || 0}</span>
+              {tab.label}
+              <span className="text-[10px] bg-white/10 rounded-full px-1.5 py-0.5">
+                {statusCounts[tab.key] || 0}
+              </span>
             </button>
           ))}
         </div>
@@ -220,12 +504,12 @@ export default function OrdersPage() {
                 transition={{ delay: i * 0.03 }}
               >
                 <td className="py-4 px-6">
-                  <span className="text-sm font-mono text-cyan-400">#{order.id}</span>
+                  <span className="text-sm font-mono text-cyan-400">#{order.id.slice(0, 8)}</span>
                 </td>
                 <td className="py-4 px-6">
                   <div>
-                    <p className="text-sm text-white font-medium">{order.customer}</p>
-                    <p className="text-[11px] text-gray-600">{order.customerPhone}</p>
+                    <p className="text-sm text-white font-medium">{order.customerName}</p>
+                    <p className="text-[11px] text-gray-600">{order.customerPhone || '—'}</p>
                   </div>
                 </td>
                 <td className="py-4 px-6">
@@ -235,16 +519,21 @@ export default function OrdersPage() {
                   </div>
                 </td>
                 <td className="py-4 px-6">
-                  <span className="text-sm font-semibold text-white">₡{order.total.toLocaleString()}</span>
+                  <span className="text-sm font-semibold text-white">{formatCRC(order.total)}</span>
                 </td>
                 <td className="py-4 px-6">
                   <div className="relative">
                     <button
-                      onClick={() => setOpenDropdown(openDropdown === order.id ? null : order.id)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${statusConfig[order.status].color}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenDropdown(openDropdown === order.id ? null : order.id);
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        statusConfig[order.status]?.color || 'bg-gray-500/15 text-gray-400 border-gray-500/30'
+                      }`}
                     >
-                      <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[order.status].dotColor}`} />
-                      {order.status}
+                      <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[order.status]?.dotColor || 'bg-gray-400'}`} />
+                      {statusLabel[order.status] || order.status}
                       <ChevronDown className="w-3 h-3" />
                     </button>
                     <AnimatePresence>
@@ -253,19 +542,20 @@ export default function OrdersPage() {
                           initial={{ opacity: 0, y: -5 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -5 }}
-                          className="absolute top-full mt-1 left-0 z-20 glass-strong rounded-xl py-1 min-w-[140px]"
+                          className="absolute top-full mt-1 left-0 z-20 glass-strong rounded-xl py-1 min-w-[180px] shadow-xl"
                         >
-                          {['Pending', 'Processing', 'Completed', 'Cancelled'].map((s) => (
+                          {getVendorTransitions(order.status).map((t) => (
                             <button
-                              key={s}
-                              onClick={() => updateStatus(order.id, s)}
-                              className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors ${
-                                s === order.status ? 'text-cyan-400' : 'text-gray-400'
-                              }`}
+                              key={t.value}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateStatus(order.id, t.value);
+                              }}
+                              disabled={updating === order.id}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors text-gray-400 disabled:opacity-50"
                             >
-                              <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[s].dotColor}`} />
-                              {s}
-                              {s === order.status && <Check className="w-3 h-3 ml-auto" />}
+                              <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[t.value]?.dotColor || 'bg-gray-400'}`} />
+                              {t.label}
                             </button>
                           ))}
                         </motion.div>
@@ -276,7 +566,7 @@ export default function OrdersPage() {
                 <td className="py-4 px-6">
                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
                     <Clock className="w-3 h-3" />
-                    {order.date}
+                    {relativeTime(order.createdAt)}
                   </div>
                 </td>
                 <td className="py-4 px-6">
@@ -308,48 +598,69 @@ export default function OrdersPage() {
               onClick={() => setSelectedOrder(order)}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-mono text-cyan-400">#{order.id}</span>
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${statusConfig[order.status].color}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[order.status].dotColor}`} />
-                  {order.status}
+                <span className="text-sm font-mono text-cyan-400">#{order.id.slice(0, 8)}</span>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
+                    statusConfig[order.status]?.color || 'bg-gray-500/15 text-gray-400 border-gray-500/30'
+                  }`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[order.status]?.dotColor || 'bg-gray-400'}`} />
+                  {statusLabel[order.status] || order.status}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white font-medium">{order.customer}</p>
-                  <p className="text-xs text-gray-500">{order.items.length} items · {order.date}</p>
+                  <p className="text-sm text-white font-medium">{order.customerName}</p>
+                  <p className="text-xs text-gray-500">
+                    {order.items.length} items · {relativeTime(order.createdAt)}
+                  </p>
                 </div>
-                <p className="text-base font-bold text-white">₡{order.total.toLocaleString()}</p>
+                <p className="text-base font-bold text-white">{formatCRC(order.total)}</p>
               </div>
 
               {/* Quick action buttons */}
               <div className="flex gap-2 mt-3 pt-3 border-t border-white/10">
-                {order.status === 'Pending' && (
+                {order.status === 'pending' && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'Processing'); }}
-                    className="flex-1 py-2 rounded-lg text-xs font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateStatus(order.id, 'assigned');
+                    }}
+                    disabled={updating === order.id}
+                    className="flex-1 py-2 rounded-lg text-xs font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
                   >
-                    Procesar
+                    Preparar
                   </button>
                 )}
-                {order.status === 'Processing' && (
+                {order.status === 'assigned' && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'Completed'); }}
-                    className="flex-1 py-2 rounded-lg text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateStatus(order.id, 'picked_up');
+                    }}
+                    disabled={updating === order.id}
+                    className="flex-1 py-2 rounded-lg text-xs font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-50"
                   >
-                    Completar
+                    Recogido
                   </button>
                 )}
-                {order.status !== 'Completed' && order.status !== 'Cancelled' && (
+                {canCancel(order.status) && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); updateStatus(order.id, 'Cancelled'); }}
-                    className="flex-1 py-2 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateStatus(order.id, 'cancelled');
+                    }}
+                    disabled={updating === order.id}
+                    className="flex-1 py-2 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                 )}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedOrder(order);
+                  }}
                   className="flex-1 py-2 rounded-lg text-xs font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors flex items-center justify-center gap-1"
                 >
                   <Eye className="w-3 h-3" /> Detalles
@@ -360,7 +671,7 @@ export default function OrdersPage() {
         </AnimatePresence>
       </div>
 
-      {filtered.length === 0 && (
+      {filtered.length === 0 && !loading && (
         <div className="text-center py-16">
           <ShoppingCart className="w-12 h-12 text-gray-600 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">No se encontraron pedidos</p>
@@ -378,73 +689,181 @@ export default function OrdersPage() {
           >
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedOrder(null)} />
             <motion.div
-              className="relative w-full max-w-lg glass-strong rounded-2xl p-6 z-10"
+              className="relative w-full max-w-lg glass-strong rounded-2xl p-6 z-10 max-h-[90vh] overflow-y-auto"
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
             >
+              {/* Modal Header */}
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Pedido #{selectedOrder.id}</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">{selectedOrder.date}</p>
+                  <h2 className="text-lg font-bold text-white">Pedido #{selectedOrder.id.slice(0, 8)}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{formatDateTime(selectedOrder.createdAt)}</p>
                 </div>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${statusConfig[selectedOrder.status].color}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[selectedOrder.status].dotColor}`} />
-                  {selectedOrder.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+                      statusConfig[selectedOrder.status]?.color || 'bg-gray-500/15 text-gray-400 border-gray-500/30'
+                    }`}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[selectedOrder.status]?.dotColor || 'bg-gray-400'}`} />
+                    {statusLabel[selectedOrder.status] || selectedOrder.status}
+                  </span>
+                  <button
+                    onClick={() => setSelectedOrder(null)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Customer info */}
               <div className="bg-white/[0.03] rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <User className="w-4 h-4 text-gray-500" />
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                    <User className="w-4 h-4 text-cyan-400" />
+                  </div>
                   <div>
-                    <p className="text-sm text-white font-medium">{selectedOrder.customer}</p>
-                    <p className="text-xs text-gray-500">{selectedOrder.customerPhone}</p>
+                    <p className="text-sm text-white font-medium">{selectedOrder.customerName}</p>
+                    {selectedOrder.customerPhone && (
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {selectedOrder.customerPhone}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <Calendar className="w-3 h-3" />
-                  {selectedOrder.address}
+                <div className="flex items-center gap-3 text-xs text-gray-500 mb-1">
+                  <MapPin className="w-3 h-3 flex-shrink-0" />
+                  <span className="break-all">{selectedOrder.deliveryAddress || 'Dirección no proporcionada'}</span>
                 </div>
+                {selectedOrder.pickupAddress && (
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <Package className="w-3 h-3 flex-shrink-0" />
+                    <span className="break-all">Recojo: {selectedOrder.pickupAddress}</span>
+                  </div>
+                )}
+                {selectedOrder.paymentMethod && (
+                  <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                    <DollarSign className="w-3 h-3 flex-shrink-0" />
+                    <span>Pago: {selectedOrder.paymentMethod === 'efectivo' ? 'Efectivo' : selectedOrder.paymentMethod}</span>
+                  </div>
+                )}
               </div>
+
+              {/* Courier info (if assigned) */}
+              {selectedOrder.courierName && (
+                <div className="bg-white/[0.03] rounded-xl p-4 mb-4">
+                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-2">Mensajero</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                      <Truck className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-white font-medium">{selectedOrder.courierName}</p>
+                      {selectedOrder.courierPhone && (
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {selectedOrder.courierPhone}
+                        </p>
+                      )}
+                      {selectedOrder.courierVehicle && (
+                        <p className="text-xs text-gray-500">
+                          {selectedOrder.courierVehicle === 'moto' ? '🏍️ Moto' :
+                           selectedOrder.courierVehicle === 'bici' ? '🚲 Bicicleta' : '🚗 Carro'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Items */}
               <div className="space-y-2 mb-4">
                 <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Productos</p>
-                {selectedOrder.items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/[0.03]">
-                    <div>
-                      <p className="text-sm text-white">{item.name}</p>
-                      <p className="text-xs text-gray-500">x{item.quantity} · ₡{item.price.toLocaleString()} c/u</p>
+                {selectedOrder.items.length === 0 ? (
+                  <p className="text-sm text-gray-500">Sin productos</p>
+                ) : (
+                  selectedOrder.items.map((itm, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/[0.03]"
+                    >
+                      <div>
+                        <p className="text-sm text-white">{itm.name}</p>
+                        <p className="text-xs text-gray-500">
+                          x{itm.qty || 1} · {formatCRC(itm.price || 0)} c/u
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-white">
+                        {formatCRC((itm.qty || 1) * (itm.price || 0))}
+                      </p>
                     </div>
-                    <p className="text-sm font-semibold text-white">₡{(item.quantity * item.price).toLocaleString()}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
 
-              {/* Total */}
-              <div className="flex items-center justify-between py-3 border-t border-white/10 mb-4">
-                <p className="text-sm text-gray-400 font-medium">Total</p>
-                <p className="text-xl font-bold text-white">₡{selectedOrder.total.toLocaleString()}</p>
+              {/* Totals */}
+              <div className="bg-white/[0.03] rounded-xl p-4 mb-4 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Subtotal</span>
+                  <span className="text-white">{formatCRC(selectedOrder.subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Envío</span>
+                  <span className="text-white">{formatCRC(selectedOrder.deliveryFee)}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-t border-white/10">
+                  <p className="text-sm text-gray-300 font-medium">Total</p>
+                  <p className="text-xl font-bold text-white">{formatCRC(selectedOrder.total)}</p>
+                </div>
               </div>
+
+              {/* Notes */}
+              {selectedOrder.notes && (
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 mb-4">
+                  <p className="text-[10px] text-amber-400 font-medium uppercase tracking-wider mb-1">Notas</p>
+                  <p className="text-sm text-gray-300">{selectedOrder.notes}</p>
+                </div>
+              )}
 
               {/* Status update buttons */}
               <div className="flex gap-2">
-                {selectedOrder.status === 'Pending' && (
+                {selectedOrder.status === 'pending' && (
                   <button
-                    onClick={() => { updateStatus(selectedOrder.id, 'Processing'); setSelectedOrder(null); }}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      updateStatus(selectedOrder.id, 'assigned');
+                      setSelectedOrder(null);
+                    }}
+                    disabled={updating === selectedOrder.id}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
-                    Marcar En Proceso
+                    Preparar para Recojo
                   </button>
                 )}
-                {selectedOrder.status === 'Processing' && (
+                {selectedOrder.status === 'assigned' && (
                   <button
-                    onClick={() => { updateStatus(selectedOrder.id, 'Completed'); setSelectedOrder(null); }}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-emerald-600 to-green-500 hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      updateStatus(selectedOrder.id, 'picked_up');
+                      setSelectedOrder(null);
+                    }}
+                    disabled={updating === selectedOrder.id}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-500 hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
-                    Marcar Completado
+                    Marcar como Recogido
+                  </button>
+                )}
+                {canCancel(selectedOrder.status) && (
+                  <button
+                    onClick={() => {
+                      updateStatus(selectedOrder.id, 'cancelled');
+                      setSelectedOrder(null);
+                    }}
+                    disabled={updating === selectedOrder.id}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                  >
+                    Cancelar Pedido
                   </button>
                 )}
                 <button

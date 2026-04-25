@@ -126,9 +126,30 @@ export default function UsersPage() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [userDocuments, setUserDocuments] = useState<Array<{id: string; type: string; url: string; status: string}>>([]);
   const [docImages, setDocImages] = useState<Record<string, string>>({});
   const [loadingDocs, setLoadingDocs] = useState(false);
+
+  /* Fetch signed avatar URLs for users who have an avatar path */
+  const fetchAvatarUrls = useCallback(async (profiles: Profile[]) => {
+    const urls: Record<string, string> = {};
+    const withAvatar = profiles.filter(p => p.avatar);
+    if (withAvatar.length === 0) return urls;
+    for (const p of withAvatar) {
+      try {
+        const { data, error } = await supabase.storage
+          .from('avatars')
+          .createSignedUrl(p.avatar!, 3600);
+        if (!error && data?.signedUrl) {
+          urls[p.id] = data.signedUrl;
+        }
+      } catch {
+        // Avatar file may not exist — ignore silently
+      }
+    }
+    return urls;
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -146,14 +167,19 @@ export default function UsersPage() {
         return;
       }
 
-      setUsers((data || []).map(profileToUserData));
+      const profiles = data || [];
+      setUsers(profiles.map(profileToUserData));
+
+      // Fetch signed avatar URLs for profiles with avatars
+      const urls = await fetchAvatarUrls(profiles);
+      setAvatarUrls(urls);
     } catch (err) {
       console.error('Error fetching users:', err);
       toast.error('Error al cargar usuarios');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchAvatarUrls]);
 
   useEffect(() => {
     fetchUsers();
@@ -316,7 +342,7 @@ export default function UsersPage() {
     fetchUserDocuments(user.id);
   }, [fetchUserDocuments]);
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isAdmin = currentUser?.role === 'admin' || (currentUser?.role as string) === 'super_admin';
 
   if (loading) return <UsersSkeleton />;
 
@@ -404,10 +430,12 @@ export default function UsersPage() {
             >
               <div className="flex items-center gap-4">
                 {/* Avatar */}
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden ${
                   !user.isActive ? 'bg-red-500/20 text-red-400' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
                 }`}>
-                  {user.avatar}
+                  {avatarUrls[user.id]
+                    ? <img src={avatarUrls[user.id]} alt={user.name} className="w-full h-full object-cover" />
+                    : user.avatar}
                 </div>
 
                 {/* Info */}
@@ -555,10 +583,12 @@ export default function UsersPage() {
               <div className="p-5 space-y-5">
                 {/* User Info */}
                 <div className="flex items-center gap-4">
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold ${
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold overflow-hidden ${
                     !selectedUser.isActive ? 'bg-red-500/20 text-red-400' : 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
                   }`}>
-                    {selectedUser.avatar}
+                    {avatarUrls[selectedUser.id]
+                      ? <img src={avatarUrls[selectedUser.id]} alt={selectedUser.name} className="w-full h-full object-cover" />
+                      : selectedUser.avatar}
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white">{selectedUser.name}</h3>

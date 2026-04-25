@@ -95,11 +95,18 @@ function MapEditor({
   const drawingMode = useRef(true);
   const tempPolylineRef = useRef<google.maps.Polyline | null>(null);
 
-  // Ref to always have latest coords in the click listener (stale closure fix)
+  // Ref to always have latest coords in click/drag listeners (stale closure fix)
   const coordsRef = useRef(existingCoords);
+  // Ref for onCoordsChange so the initial useEffect always calls the latest version
+  const onCoordsChangeRef = useRef(onCoordsChange);
+  // Ref for colors so drawPolygon always uses current area type colors
+  const colorsRef = useRef(areaTypeColors[areaType] || areaTypeColors.service_area);
+
   useEffect(() => {
     coordsRef.current = existingCoords;
-  }, [existingCoords]);
+    onCoordsChangeRef.current = onCoordsChange;
+    colorsRef.current = areaTypeColors[areaType] || areaTypeColors.service_area;
+  }, [existingCoords, onCoordsChange, areaType]);
 
   const colors = areaTypeColors[areaType] || areaTypeColors.service_area;
 
@@ -130,13 +137,14 @@ function MapEditor({
 
       mapInstanceRef.current = map;
 
-      // Click on map to add point
+      // Click on map to add point — use refs to avoid stale closures
       map.addListener('click', (e: google.maps.MapMouseEvent) => {
         if (!drawingMode.current || !mapInstanceRef.current) return;
         const lat = e.latLng!.lat();
         const lng = e.latLng!.lng();
         const newCoords = [...coordsRef.current, { lat: String(lat), lng: String(lng) }];
-        onCoordsChange(newCoords);
+        coordsRef.current = newCoords; // update ref immediately so rapid clicks work
+        onCoordsChangeRef.current(newCoords);
       });
 
       // Draw existing markers and polygon
@@ -161,11 +169,17 @@ function MapEditor({
   }, []);
 
   const drawPolygon = (google: any, map: google.maps.Map, coords: CoordPair[]) => {
+    // Always read the latest colors from ref to avoid stale closure
+    const currentColors = colorsRef.current;
+
     // Clear previous
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
     if (polygonRef.current) { polygonRef.current.setMap(null); polygonRef.current = null; }
     if (tempPolylineRef.current) { tempPolylineRef.current.setMap(null); tempPolylineRef.current = null; }
+
+    // Sync ref with latest coords
+    coordsRef.current = coords;
 
     const path = coords.map(c => ({ lat: Number(c.lat), lng: Number(c.lng) }));
 
@@ -178,7 +192,7 @@ function MapEditor({
         icon: {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
             `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" fill="${colors.stroke}" stroke="#fff" stroke-width="2"/>
+              <circle cx="12" cy="12" r="10" fill="${currentColors.stroke}" stroke="#fff" stroke-width="2"/>
               <text x="12" y="16" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">${idx + 1}</text>
             </svg>`
           ),
@@ -190,15 +204,17 @@ function MapEditor({
       });
 
       marker.addListener('drag', (e: any) => {
-        const newCoords = [...coords];
+        const newCoords = [...coordsRef.current];
         newCoords[idx] = { lat: String(e.latLng.lat()), lng: String(e.latLng.lng()) };
-        onCoordsChange(newCoords);
+        coordsRef.current = newCoords; // update ref immediately during drag
+        onCoordsChangeRef.current(newCoords);
       });
 
       marker.addListener('dragend', (e: any) => {
-        const newCoords = [...coords];
+        const newCoords = [...coordsRef.current];
         newCoords[idx] = { lat: String(e.latLng.lat()), lng: String(e.latLng.lng()) };
-        onCoordsChange(newCoords);
+        coordsRef.current = newCoords;
+        onCoordsChangeRef.current(newCoords);
         drawPolygon(google, map, newCoords);
       });
 
@@ -209,9 +225,9 @@ function MapEditor({
     if (coords.length >= 3) {
       polygonRef.current = new google.maps.Polygon({
         paths: path,
-        fillColor: colors.stroke,
+        fillColor: currentColors.stroke,
         fillOpacity: 0.2,
-        strokeColor: colors.stroke,
+        strokeColor: currentColors.stroke,
         strokeOpacity: 0.8,
         strokeWeight: 2,
         map: map,
@@ -219,7 +235,7 @@ function MapEditor({
     } else if (coords.length >= 2) {
       tempPolylineRef.current = new google.maps.Polyline({
         path: path,
-        strokeColor: colors.stroke,
+        strokeColor: currentColors.stroke,
         strokeOpacity: 0.6,
         strokeWeight: 2,
         icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '16px' }],
@@ -228,7 +244,7 @@ function MapEditor({
     }
   };
 
-  // Redraw when coords change from outside
+  // Redraw when coords or areaType change from outside
   useEffect(() => {
     if (mapReady && mapInstanceRef.current) {
       const google = window as any;
@@ -237,11 +253,12 @@ function MapEditor({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existingCoords, mapReady]);
+  }, [existingCoords, mapReady, areaType]);
 
   const removeLastPoint = () => {
     if (existingCoords.length === 0) return;
     const newCoords = existingCoords.slice(0, -1);
+    coordsRef.current = newCoords; // update ref immediately
     onCoordsChange(newCoords);
     if (mapInstanceRef.current && newCoords.length > 0) {
       mapInstanceRef.current.panTo({ lat: Number(newCoords[newCoords.length - 1].lat), lng: Number(newCoords[newCoords.length - 1].lng) });
@@ -249,6 +266,7 @@ function MapEditor({
   };
 
   const clearAll = () => {
+    coordsRef.current = []; // update ref immediately
     onCoordsChange([]);
   };
 

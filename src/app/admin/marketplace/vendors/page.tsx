@@ -89,19 +89,50 @@ export default function AdminVendorsPage() {
 
       if (vendorError) throw vendorError;
 
+      // Build product_id → vendor_id mapping for deriving vendor from delivery items
+      const { data: allProducts } = await supabase
+        .from('products')
+        .select('id, vendor_id');
+      const productToVendor: Record<string, string> = {};
+      if (allProducts) {
+        allProducts.forEach((p) => {
+          if (p.id && p.vendor_id) {
+            productToVendor[p.id] = p.vendor_id;
+          }
+        });
+      }
+
       // Batch-fetch earnings for all vendors (delivered orders)
       const vendorIds = (vendorData || []).map((v) => v.id);
       const earningsMap: Record<string, number> = {};
       if (vendorIds.length > 0) {
-        const { data: deliveredOrders } = await supabase
+        const { data: deliveredOrders, error: earningsError } = await supabase
           .from('deliveries')
-          .select('vendor_id, total')
-          .eq('status', 'delivered')
-          .in('vendor_id', vendorIds);
+          .select('vendor_id, total, items')
+          .eq('status', 'delivered');
+
+        if (earningsError) {
+          console.error('Error fetching vendor earnings:', earningsError);
+        }
 
         for (const order of deliveredOrders || []) {
-          if (order.vendor_id) {
-            earningsMap[order.vendor_id] = (earningsMap[order.vendor_id] || 0) + (order.total || 0);
+          // Try direct vendor_id first
+          let vid = order.vendor_id;
+
+          // If no direct vendor_id, derive from items (item.id = product.id)
+          if (!vid && order.items && Array.isArray(order.items)) {
+            for (const item of order.items) {
+              const derivedVendor = productToVendor[item.id];
+              if (derivedVendor) {
+                vid = derivedVendor;
+                break;
+              }
+            }
+          }
+
+          if (vid && vendorIds.includes(vid)) {
+            const amount = order.total || 0;
+            earningsMap[vid] = (earningsMap[vid] || 0) + amount;
           }
         }
       }

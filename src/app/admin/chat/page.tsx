@@ -622,7 +622,9 @@ export default function AdminChatPage() {
           },
           (payload) => {
             const newMsg = payload.new as ChatMessage;
-            if (newMsg.sender_type !== 'admin' && soundEnabled) {
+            // Skip messages sent by this admin — handleSendMessage already refetches
+            if (newMsg.sender_type === 'admin') return;
+            if (soundEnabled) {
               playMessageSound();
             }
             fetchMessages(selectedChatId);

@@ -307,6 +307,33 @@ export default function RewardsPage() {
                             />
                           </div>
 
+                          {/* Level Type */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-400">Tipo de Nivel</label>
+                            <select
+                              value={level.level_type}
+                              onChange={e => updateLevel(level.id, 'level_type', e.target.value)}
+                              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500/50 transition-colors appearance-none"
+                            >
+                              <option value="silver" className="bg-[#111827] text-white">Silver</option>
+                              <option value="gold" className="bg-[#111827] text-white">Gold</option>
+                              <option value="platinum" className="bg-[#111827] text-white">Platinum</option>
+                              <option value="diamond" className="bg-[#111827] text-white">Diamond</option>
+                            </select>
+                          </div>
+
+                          {/* Description */}
+                          <div className="space-y-1.5 sm:col-span-2">
+                            <label className="text-xs font-medium text-gray-400">Descripcion</label>
+                            <input
+                              type="text"
+                              value={level.description}
+                              onChange={e => updateLevel(level.id, 'description', e.target.value)}
+                              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                              placeholder="Descripcion del nivel"
+                            />
+                          </div>
+
                           {/* Status */}
                           <div className="space-y-1.5">
                             <label className="text-xs font-medium text-gray-400">Estado</label>
@@ -417,7 +444,7 @@ export default function RewardsPage() {
                             </div>
                             <div>
                               <span className="text-gray-500">Rating:</span>{' '}
-                              <span className="text-white font-medium">{level.min_rating}+</span>
+                              <span className="text-white font-medium">{Number(level.min_rating).toFixed(1)}+</span>
                             </div>
                             <div>
                               <span className="text-gray-500">Bonus:</span>{' '}

@@ -115,7 +115,7 @@ export default function ReviewsPage() {
         rideId: r.ride_id || '',
         reviewerName: profileMap[r.reviewer_id] || 'Desconocido',
         revieweeName: profileMap[r.reviewee_id] || 'Desconocido',
-        rating: r.rating || 0,
+        rating: Number(r.rating) || 0,
         comment: r.comment || '',
         createdAt: formatCreatedAt(r.created_at),
       }));
@@ -189,7 +189,7 @@ export default function ReviewsPage() {
 
   const statCards = [
     { label: 'Total Resenas', value: stats.totalReviews.toLocaleString(), color: 'text-cyan-400', icon: MessageSquare },
-    { label: 'Promedio General', value: stats.averageRating.toString(), color: 'text-amber-400', icon: TrendingUp },
+    { label: 'Promedio General', value: stats.averageRating.toFixed(1), color: 'text-amber-400', icon: TrendingUp },
     { label: '5 Estrellas', value: stats.fiveStars.toLocaleString(), color: 'text-emerald-400', icon: ThumbsUp },
     { label: '1 Estrella', value: stats.oneStar.toLocaleString(), color: 'text-red-400', icon: AlertTriangle },
   ];
@@ -305,7 +305,7 @@ export default function ReviewsPage() {
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2">
                             <StarRating rating={r.rating} />
-                            <span className="text-xs text-gray-500">{r.rating.toFixed(1)}</span>
+                            <span className="text-xs text-gray-500">{Number(r.rating).toFixed(1)}</span>
                           </div>
                         </td>
                         <td className="px-5 py-3 text-sm text-gray-400 hidden lg:table-cell max-w-[200px] truncate">{r.comment || 'Sin comentario'}</td>
@@ -418,7 +418,7 @@ export default function ReviewsPage() {
               {/* Rating + Stars */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-amber-400">{selectedReview.rating.toFixed(1)}</span>
+                  <span className="text-2xl font-bold text-amber-400">{Number(selectedReview.rating).toFixed(1)}</span>
                 </div>
                 <div className="flex-1">
                   <StarRating rating={selectedReview.rating} size="lg" />

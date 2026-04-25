@@ -8,7 +8,7 @@ import {
   User, CreditCard, FileCheck, X, ShieldCheck, ShieldX,
   ChevronRight, ShieldOff, Wallet, RefreshCw, Users,
 } from 'lucide-react';
-import { supabase, type Driver, type Profile, type Vehicle, type Document } from '@/lib/supabase';
+import { supabase, type Profile, type Vehicle, type Document } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -200,14 +200,18 @@ export default function DriversPage() {
         return;
       }
 
-      if (!driverRecords || driverRecords.length === 0) {
+      // Cast to any[] — DB schema has more status values (pending, verified, rejected)
+      // than the TS Driver type union ('offline' | 'online' | 'busy' | 'suspended')
+      const records = (driverRecords || []) as any[];
+
+      if (records.length === 0) {
         setDrivers([]);
         setLoading(false);
         return;
       }
 
-      const userIds = driverRecords.map((d) => d.user_id).filter(Boolean);
-      const driverIds = driverRecords.map((d) => d.id).filter(Boolean);
+      const userIds = records.map((d: any) => d.user_id).filter(Boolean);
+      const driverIds = records.map((d: any) => d.id).filter(Boolean);
 
       /* Batch fetch profiles */
       const profileMap: Record<string, Profile> = {};
@@ -245,7 +249,7 @@ export default function DriversPage() {
       }
 
       /* Map to DriverData */
-      const mapped: DriverData[] = driverRecords.map((d) => {
+      const mapped: DriverData[] = records.map((d: any) => {
         const profile = profileMap[d.user_id || ''];
         const vehicle = vehicleMap[d.id || ''];
         const userDocs = docsMap[d.user_id || ''] || [];

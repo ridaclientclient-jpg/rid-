@@ -299,7 +299,7 @@ export default function AdminCouriersPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Star className="w-3 h-3 text-amber-400" />
-                          {courier.rating > 0 ? courier.rating.toFixed(1) : '5.0'}
+                          {Number(courier.rating) > 0 ? Number(courier.rating).toFixed(1) : '5.0'}
                         </span>
                       </div>
 

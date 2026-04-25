@@ -269,7 +269,7 @@ export default function PaymentReportPage() {
         .from('transactions')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(5000);
 
       if (!txErr && txData) {
         // Get user names for transactions
@@ -516,8 +516,8 @@ export default function PaymentReportPage() {
         formatDate(r.created_at), `"${r.rider_name}"`, `"${r.driver_name}"`,
         r.price.toString(), `${(r.commission_rate * 100).toFixed(1)}%`,
         Math.round(r.price * r.commission_rate).toString(),
-        Math.round(r.driver_earnings).toString(),
-        PAYMENT_METHOD_LABELS[r.payment_method] || r.payment_method,
+        Math.round(r.driver_earnings ?? 0).toString(),
+        PAYMENT_METHOD_LABELS[r.payment_method || 'cash'] || r.payment_method || 'cash',
         r.payment_status || 'paid',
       ]);
 
@@ -748,7 +748,7 @@ export default function PaymentReportPage() {
                   <tbody>
                     <AnimatePresence>
                       {paginatedRides.map((r, i) => {
-                        const MethodIcon = PAYMENT_METHOD_ICONS[r.payment_method] || DollarSign;
+                        const MethodIcon = PAYMENT_METHOD_ICONS[r.payment_method || 'cash'] || DollarSign;
                         const commission = Math.round(r.price * r.commission_rate);
                         return (
                           <motion.tr
@@ -767,12 +767,12 @@ export default function PaymentReportPage() {
                               <div className="text-[10px] text-gray-500">{(r.commission_rate * 100).toFixed(1)}%</div>
                             </td>
                             <td className="px-5 py-3 text-sm text-emerald-400 text-right hidden lg:table-cell">
-                              {formatCurrency(r.driver_earnings)}
+                              {formatCurrency(r.driver_earnings ?? 0)}
                             </td>
                             <td className="px-5 py-3">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${PAYMENT_METHOD_COLORS[r.payment_method] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${PAYMENT_METHOD_COLORS[r.payment_method || 'cash'] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
                                 <MethodIcon className="w-3 h-3" />
-                                {PAYMENT_METHOD_LABELS[r.payment_method] || r.payment_method}
+                                {PAYMENT_METHOD_LABELS[r.payment_method || 'cash'] || r.payment_method || 'cash'}
                               </span>
                             </td>
                           </motion.tr>

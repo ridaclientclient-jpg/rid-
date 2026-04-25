@@ -212,7 +212,7 @@ export default function RidesPage() {
       const mapped: RideRow[] = (rideData || []).map(r => {
         const uiStatus: RideStatus = validStatuses.includes(r.status) ? r.status as RideStatus : 'pending';
 
-        const dur = r.duration ? `${Math.round(r.duration)} min` : (uiStatus === 'in_progress' ? 'En curso' : '-');
+        const dur = r.duration ? `${Math.round(r.duration)} min` : (['in_progress', 'started'].includes(uiStatus) ? 'En curso' : '-');
         const dist = r.distance ? `${r.distance.toFixed(1)} km` : '-';
 
         const paymentLabels: Record<string, string> = {
@@ -263,6 +263,9 @@ export default function RidesPage() {
     if (statusFilter !== 'all') {
       if (statusFilter === 'searching') {
         matchStatus = r.status === 'searching' || r.status === 'pending';
+      } else if (statusFilter === 'started') {
+        // "En curso" tab matches both started and in_progress
+        matchStatus = r.status === 'started' || r.status === 'in_progress';
       } else {
         matchStatus = r.status === statusFilter;
       }
@@ -274,7 +277,7 @@ export default function RidesPage() {
   const completedToday = rides.filter(r => r.status === 'completed').length;
   const cancelledCount = rides.filter(r => r.status === 'cancelled').length;
   const scheduledCount = rides.filter(r => r.status === 'scheduled').length;
-  const activeNow = rides.filter(r => ['assigned', 'arriving', 'started', 'searching', 'pending'].includes(r.status)).length;
+  const activeNow = rides.filter(r => ['assigned', 'arriving', 'started', 'in_progress', 'searching', 'pending'].includes(r.status)).length;
 
   const stats = [
     { label: 'Total Viajes', value: rides.length, color: 'text-white' },
@@ -497,7 +500,7 @@ export default function RidesPage() {
               {paginatedRides.map((ride, i) => {
                 const cfg = statusConfig[ride.status] || statusConfig.pending;
                 const StatusIcon = cfg.icon;
-                const canCancel = ['pending', 'searching', 'assigned', 'arriving', 'started'].includes(ride.status);
+                const canCancel = ['pending', 'searching', 'assigned', 'arriving', 'started', 'in_progress'].includes(ride.status);
                 const canReassign = canCancel;
 
                 return (
@@ -711,7 +714,7 @@ export default function RidesPage() {
                 </div>
 
                 {/* Actions */}
-                {(['pending', 'searching', 'assigned', 'arriving', 'started'].includes(selectedRide.status)) && (
+                {(['pending', 'searching', 'assigned', 'arriving', 'started', 'in_progress'].includes(selectedRide.status)) && (
                   <div className="flex gap-3 pt-2">
                     <button
                       onClick={() => {
