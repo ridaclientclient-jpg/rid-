@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DollarSign, TrendingUp, Zap, Save, Info, Percent,
@@ -94,10 +94,18 @@ export default function PricingPage() {
   const [statsLoading, setStatsLoading] = useState(true);
 
   // Marketplace stats
-  const [totalMarketCommission, setTotalMarketCommission] = useState(0);
+  const [rawVendorEarnings, setRawVendorEarnings] = useState(0);
   const [totalVendorEarnings, setTotalVendorEarnings] = useState(0);
   const [totalMarketDeliveries, setTotalMarketDeliveries] = useState(0);
   const [marketStatsLoading, setMarketStatsLoading] = useState(true);
+
+  // Derive totalMarketCommission from rawVendorEarnings + marketComm (no useEffect re-trigger)
+  const totalMarketCommission = useMemo(() => {
+    if (rawVendorEarnings > 0 && marketComm > 0 && marketComm < 100) {
+      return Math.round(rawVendorEarnings * marketComm / (100 - marketComm));
+    }
+    return 0;
+  }, [rawVendorEarnings, marketComm]);
 
   // Real zone ride data
   const [zoneRideCounts, setZoneRideCounts] = useState<ZoneRideCount[]>([]);
@@ -173,19 +181,16 @@ export default function PricingPage() {
 
       if (!error && txns) {
         const earnings = txns.filter((t: any) => t.type === 'earning');
-        setTotalVendorEarnings(earnings.reduce((sum, t: any) => sum + (Number(t.amount) || 0), 0));
+        const total = earnings.reduce((sum, t: any) => sum + (Number(t.amount) || 0), 0);
+        setRawVendorEarnings(total);
+        setTotalVendorEarnings(total);
         setTotalMarketDeliveries(earnings.length);
-        // Commission is marketComm% of the gross = earnings / (1 - marketComm/100) * marketComm/100
-        if (earnings.length > 0 && marketComm > 0 && marketComm < 100) {
-          const gross = earnings.reduce((sum, t: any) => sum + (Number(t.amount) || 0), 0);
-          setTotalMarketCommission(Math.round(gross * marketComm / (100 - marketComm)));
-        }
       }
     } catch (err) {
       console.error('Error loading market stats:', err);
     }
     setMarketStatsLoading(false);
-  }, [marketComm]);
+  }, []);
 
   const loadWithdrawals = useCallback(async () => {
     setWithdrawalsLoading(true);
