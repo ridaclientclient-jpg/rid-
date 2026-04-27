@@ -392,11 +392,16 @@ export default function DriverAlertsPage() {
 
       setActiveAlerts(events);
     } catch (err: unknown) {
-      const message = err instanceof Error
-        ? err.message
-        : (err && typeof err === 'object' && 'message' in err)
-          ? String((err as any).message)
-          : 'Error desconocido';
+      let message = 'Error desconocido';
+      if (err instanceof Error) {
+        message = (err as any).message || (err as any).msg || (err as any).code || err.message;
+      } else if (err && typeof err === 'object') {
+        const obj = err as Record<string, any>;
+        message = obj.message || obj.msg || obj.error_description || obj.code || '';
+        if (!message) { try { message = JSON.stringify(obj); } catch { message = 'Error'; } }
+      } else if (typeof err === 'string') {
+        message = err;
+      }
       console.error('Error cargando alertas activas:', err);
       toast.error(`Error al cargar alertas activas: ${message}`);
     } finally {
@@ -429,11 +434,16 @@ export default function DriverAlertsPage() {
       if (error) throw error;
       setResolvedAlerts((data || []) as unknown as SOSEvent[]);
     } catch (err: unknown) {
-      const message = err instanceof Error
-        ? err.message
-        : (err && typeof err === 'object' && 'message' in err)
-          ? String((err as any).message)
-          : 'Error desconocido';
+      let message = 'Error desconocido';
+      if (err instanceof Error) {
+        message = (err as any).message || (err as any).msg || (err as any).code || err.message;
+      } else if (err && typeof err === 'object') {
+        const obj = err as Record<string, any>;
+        message = obj.message || obj.msg || obj.error_description || obj.code || '';
+        if (!message) { try { message = JSON.stringify(obj); } catch { message = 'Error'; } }
+      } else if (typeof err === 'string') {
+        message = err;
+      }
       console.error('Error cargando alertas resueltas:', err);
       toast.error(`Error al cargar alertas resueltas: ${message}`);
     } finally {
@@ -464,11 +474,16 @@ export default function DriverAlertsPage() {
       toast.success('SOS resuelto exitosamente');
       await Promise.all([fetchActiveAlerts(), fetchResolvedAlerts()]);
     } catch (err: unknown) {
-      const message = err instanceof Error
-        ? err.message
-        : (err && typeof err === 'object' && 'message' in err)
-          ? String((err as any).message)
-          : 'Error';
+      let message = 'Error desconocido';
+      if (err instanceof Error) {
+        message = (err as any).message || (err as any).msg || (err as any).code || err.message;
+      } else if (err && typeof err === 'object') {
+        const obj = err as Record<string, any>;
+        message = obj.message || obj.msg || obj.error_description || obj.code || '';
+        if (!message) { try { message = JSON.stringify(obj); } catch { message = 'Error'; } }
+      } else if (typeof err === 'string') {
+        message = err;
+      }
       console.error('Error resolviendo SOS:', err);
       toast.error(`Error al resolver SOS: ${message}`);
     } finally {
