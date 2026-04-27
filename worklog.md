@@ -238,3 +238,28 @@ Stage Summary:
 - Created: 1 new page (courier/reset-password/page.tsx)
 - No SQL changes needed — pure frontend fix
 - User must add Redirect URLs in Supabase Dashboard (Authentication > URL Configuration)
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Improve marketplace products panel for vendors
+
+Work Log:
+- Rewrote /src/app/marketplace/products/page.tsx with major UX improvements
+- Added view mode toggle: Grid (cards) vs Table (list) view
+- Added Quick View modal: click on product image/name to see full details (image, stats, revenue, timestamps) without opening edit modal
+- Added 6th stat card: "Ingresos Est." showing total estimated revenue across all products
+- Added revenue per product visible in both grid and table views
+- Added "Nombre A-Z" sort option
+- Products out of stock now appear grayed out (opacity-60) for visual distinction
+- Stock quantity bar now changes color: red (<=5), amber (<=15), cyan (>15)
+- Added search by category name (not just product name/description)
+- Table view shows: thumbnail, name, category, price, stock, sold count, revenue, status, actions
+- Better empty state with larger icon
+- Count of visible products when filters are active
+- Fixed framer-motion Variants type errors with `as const`
+
+Stage Summary:
+- Modified: src/app/marketplace/products/page.tsx (complete rewrite, ~1400 lines)
+- No SQL changes needed
+- New features: view toggle, quick view modal, revenue tracking, better stock indicators
