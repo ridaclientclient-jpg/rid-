@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   LayoutDashboard, Users, Car, MapPin, DollarSign,
   BarChart3, FileText, Settings, Store, Package,
@@ -795,14 +796,14 @@ export default function AyudaPage() {
 
                         {/* Link to panel */}
                         <div className="mt-4">
-                          <a
+                          <Link
                             href={guide.href}
                             onClick={(e) => e.stopPropagation()}
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-sm font-medium hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20"
                           >
                             Ir al panel de {guide.label}
                             <ChevronRight className="w-4 h-4" />
-                          </a>
+                          </Link>
                         </div>
                       </div>
                     </motion.div>
