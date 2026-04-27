@@ -9,7 +9,7 @@ import {
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
   Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare,
   Receipt, Star, AlertTriangle, Trophy, Building2, MapPinned,
-  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren, ShieldAlert
+  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren, ShieldAlert, BookOpen, HelpCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -46,6 +46,7 @@ const navItems = [
   { href: '/admin/leaderboard', label: 'Leaderboard', icon: Trophy },
   { href: '/admin/settings', label: 'Configuración', icon: Settings },
   { href: '/admin/admins', label: 'Admins', icon: UserCog, superAdminOnly: true },
+  { href: '/admin/ayuda', label: 'Ayuda', icon: BookOpen, isHelp: true },
 ];
 
 function useHydrated() {
@@ -145,43 +146,51 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Navigation */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item: any) => {
+          {navItems.map((item: any, idx: number) => {
             // Hide super_admin-only items if user is not super_admin
             if (item.superAdminOnly && user?.role !== 'super_admin') return null;
 
             const active = isActive(item.href);
             const isSuperBadge = item.superAdminOnly;
+            const isHelp = item.isHelp;
+
+            // Add separator before help item
+            const showSeparator = isHelp && idx > 0 && !navItems[idx - 1]?.isHelp;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
-                  active
-                    ? 'text-cyan-400'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {active && (
-                  <motion.div
-                    layoutId="admin-nav-active"
-                    className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl"
-                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-                <item.icon className={`w-5 h-5 flex-shrink-0 relative z-10 ${active ? 'text-cyan-400' : ''}`} />
-                {!collapsed && (
-                  <span className="relative z-10 whitespace-nowrap">{item.label}</span>
-                )}
-                {!collapsed && isSuperBadge && (
-                  <span className="relative z-10 ml-auto px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
-                    Super
-                  </span>
-                )}
-                {active && !collapsed && !isSuperBadge && (
-                  <div className="relative z-10 ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                )}
-              </Link>
+              <div key={item.href}>
+                {showSeparator && <div className="!my-3 border-t border-white/5" />}
+                <Link
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                    active
+                      ? 'text-cyan-400'
+                      : isHelp
+                        ? 'text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/5'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {active && (
+                    <motion.div
+                      layoutId="admin-nav-active"
+                      className={`absolute inset-0 border rounded-xl ${isHelp ? 'bg-amber-500/10 border-amber-500/20' : 'bg-cyan-500/10 border-cyan-500/20'}`}
+                      transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
+                  <item.icon className={`w-5 h-5 flex-shrink-0 relative z-10 ${active ? (isHelp ? 'text-amber-400' : 'text-cyan-400') : ''}`} />
+                  {!collapsed && (
+                    <span className="relative z-10 whitespace-nowrap">{item.label}</span>
+                  )}
+                  {!collapsed && isSuperBadge && (
+                    <span className="relative z-10 ml-auto px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                      Super
+                    </span>
+                  )}
+                  {active && !collapsed && !isSuperBadge && !isHelp && (
+                    <div className="relative z-10 ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                  )}
+                </Link>
+              </div>
             );
           })}
         </nav>
