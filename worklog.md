@@ -209,3 +209,32 @@ Stage Summary:
 - AuthGuard: /components/AuthGuard.tsx (blocked check added)
 - All actions logged in admin_activity_log
 - Only super_admin (role) can manage admins
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Fix "Forgot my password" flow for ALL 5 apps
+
+Work Log:
+- Investigated the full auth flow: recovery pages → API → Supabase email → redirect → reset-password page
+- Found 3 bugs:
+  1. Admin recovery sent redirectTo to /admin/login instead of /admin/reset-password
+  2. Client, Driver, Marketplace, Courier recovery pages did NOT pass redirectTo at all — API defaulted to /client/login
+  3. Courier app was MISSING reset-password/page.tsx entirely
+- Fixed all 5 recovery pages to send redirectTo to their respective /reset-password page:
+  - admin/recovery: → /admin/reset-password
+  - client/recovery: → /client/reset-password
+  - driver/recovery: → /driver/reset-password
+  - marketplace/recovery: → /marketplace/reset-password
+  - courier/recovery: → /courier/reset-password
+- Fixed API /api/auth/reset-password/route.ts: removed default /client/login fallback, now requires redirectTo
+- Created courier/reset-password/page.tsx (matching courier's purple/orange theme style)
+- Verified all existing reset-password pages properly handle hash fragment via supabase.auth.getSession() + retry + hash check
+- TypeScript check: 0 errors in modified files
+
+Stage Summary:
+- Modified: 5 recovery pages (redirectTo fix)
+- Modified: 1 API route (removed bad default)
+- Created: 1 new page (courier/reset-password/page.tsx)
+- No SQL changes needed — pure frontend fix
+- User must add Redirect URLs in Supabase Dashboard (Authentication > URL Configuration)

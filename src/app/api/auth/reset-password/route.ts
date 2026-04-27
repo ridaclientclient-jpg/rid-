@@ -9,7 +9,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email es requerido' }, { status: 400 });
     }
 
-    const redirectPath = redirectTo || '/client/login';
+    if (!redirectTo) {
+      return NextResponse.json({ error: 'redirectTo es requerido' }, { status: 400 });
+    }
+
+    const redirectPath = redirectTo;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {

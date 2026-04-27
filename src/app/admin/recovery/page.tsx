@@ -23,7 +23,7 @@ export default function AdminRecoveryPage() {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, redirectTo: '/admin/login' }),
+        body: JSON.stringify({ email, redirectTo: '/admin/reset-password' }),
       });
       const data = await res.json();
       if (!res.ok) {
