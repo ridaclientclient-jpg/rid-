@@ -32,12 +32,6 @@ interface SOSEvent {
     destination?: string;
     driver_id?: string;
     status?: string;
-    drivers?: {
-      id: string;
-      user_id?: string;
-      profiles?: { name: string; phone?: string };
-      vehicles?: { plate: string; model: string; color: string };
-    };
   };
 }
 
@@ -139,14 +133,8 @@ function SOSCard({
   const isActive = sos.status === 'active';
   const userName = sos.profiles?.name || 'Desconocido';
   const userPhone = sos.profiles?.phone || '';
+  const userEmail = sos.profiles?.email || '';
   const ride = sos.rides;
-  const driver = ride?.drivers;
-  const driverName = driver?.profiles?.name || '';
-  const driverPhone = driver?.profiles?.phone || '';
-  const vehicle = driver?.vehicles;
-  const vehicleInfo = vehicle
-    ? `${vehicle.color} ${vehicle.model} (${vehicle.plate})`
-    : '';
   const mapsUrl = getGoogleMapsLink(sos.latitude, sos.longitude);
 
   return (
@@ -260,25 +248,6 @@ function SOSCard({
         </div>
       )}
 
-      {/* Driver info */}
-      {driver && (
-        <div className="bg-white/[0.03] rounded-lg px-3 py-2 mb-3 text-xs space-y-1">
-          <div className="flex items-center gap-1.5">
-            <Car className="w-3 h-3 text-purple-400" />
-            <span className="text-gray-300 font-medium">Conductor: {driverName}</span>
-          </div>
-          {driverPhone && (
-            <a href={`tel:${driverPhone}`} className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300">
-              <Phone className="w-3 h-3" />
-              {driverPhone}
-            </a>
-          )}
-          {vehicleInfo && (
-            <div className="text-gray-400">{vehicleInfo}</div>
-          )}
-        </div>
-      )}
-
       {/* Actions */}
       {isActive && (
         <div className="flex items-center gap-2 pt-2 border-t border-white/5">
@@ -363,14 +332,7 @@ export default function DriverAlertsPage() {
         .select(`
           *,
           profiles:user_id(name, phone, email),
-          rides:ride_id(
-            id, origin, destination, driver_id, status,
-            drivers:driver_id(
-              id, user_id,
-              profiles:user_id(name, phone),
-              vehicles:driver_id(plate, model, color)
-            )
-          )
+          rides:ride_id(id, origin, destination, driver_id, status)
         `)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
@@ -414,14 +376,7 @@ export default function DriverAlertsPage() {
         .select(`
           *,
           profiles:user_id(name, phone, email),
-          rides:ride_id(
-            id, origin, destination, driver_id, status,
-            drivers:driver_id(
-              id, user_id,
-              profiles:user_id(name, phone),
-              vehicles:driver_id(plate, model, color)
-            )
-          )
+          rides:ride_id(id, origin, destination, driver_id, status)
         `)
         .eq('status', 'resolved')
         .order('created_at', { ascending: false })
@@ -557,8 +512,7 @@ export default function DriverAlertsPage() {
     return activeAlerts.filter(a =>
       a.profiles?.name?.toLowerCase().includes(q) ||
       a.profiles?.phone?.includes(q) ||
-      a.id.toLowerCase().includes(q) ||
-      a.rides?.drivers?.profiles?.name?.toLowerCase().includes(q)
+      a.id.toLowerCase().includes(q)
     );
   }, [activeAlerts, search]);
 
@@ -568,8 +522,7 @@ export default function DriverAlertsPage() {
     return resolvedAlerts.filter(a =>
       a.profiles?.name?.toLowerCase().includes(q) ||
       a.profiles?.phone?.includes(q) ||
-      a.id.toLowerCase().includes(q) ||
-      a.rides?.drivers?.profiles?.name?.toLowerCase().includes(q)
+      a.id.toLowerCase().includes(q)
     );
   }, [resolvedAlerts, search]);
 
