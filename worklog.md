@@ -263,3 +263,40 @@ Stage Summary:
 - Modified: src/app/marketplace/products/page.tsx (complete rewrite, ~1400 lines)
 - No SQL changes needed
 - New features: view toggle, quick view modal, revenue tracking, better stock indicators
+---
+Task ID: 1
+Agent: Main Agent
+Task: Mejorar panel de productos del marketplace para que vendors puedan ver y gestionar productos
+
+Work Log:
+- Explorado la estructura completa del marketplace (layout, products, import, dashboard, categories, orders)
+- Identificado que el problema principal era RLS bloqueando las consultas directas a la tabla `products`
+- Creado SQL con 9 funciones RPC SECURITY DEFINER para bypass de RLS:
+  - get_vendor_products: Obtener todos los productos de un vendor
+  - insert_vendor_product: Insertar un producto individual
+  - update_vendor_product: Actualizar un producto (todos los campos)
+  - toggle_vendor_product_stock: Toggle rápido de stock
+  - toggle_vendor_product_featured: Toggle rápido de destacado
+  - delete_vendor_product: Eliminar producto
+  - bulk_insert_vendor_products: Importación masiva desde CSV (JSONB array)
+  - bulk_vendor_product_action: Acciones masivas (enable_stock, delete, featured)
+- Reescrito completamente `src/app/marketplace/products/page.tsx`:
+  - Ahora usa RPCs SECURITY DEFINER en vez de consultas directas
+  - Agregado tab toggle: "Mis Productos" | "Importar CSV" en la misma página
+  - Vista grid y table funcionales con todos los filtros
+  - Subida individual de productos con imagen
+  - Subida CSV con preview modal y validación
+  - Acciones bulk (seleccionar, habilitar stock, destacar, eliminar)
+  - Sin datos demo - todo real y funcional
+- Actualizado `src/app/marketplace/import/page.tsx`:
+  - Cambiado de insert uno por uno a bulk_insert_vendor_products RPC
+  - Eliminado cancelImport (RPC corre en una sola llamada)
+- Verificado con TypeScript que no hay errores nuevos
+
+Stage Summary:
+- Archivos modificados:
+  - `src/app/marketplace/products/page.tsx` (completa reescritura con RPCs + CSV integrado)
+  - `src/app/marketplace/import/page.tsx` (actualizado a RPC bulk insert)
+- Archivo SQL creado:
+  - `/home/z/my-project/download/vendor-products-rpcs.sql` (9 funciones SECURITY DEFINER)
+- TODO CRÍTICO: El usuario debe ejecutar `vendor-products-rpcs.sql` en el SQL Editor de Supabase antes de que los cambios funcionen

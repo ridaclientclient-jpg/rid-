@@ -182,7 +182,6 @@ export default function ImportPage() {
   const { user } = useAuthStore();
   const { vendorId, loading: vendorLoading } = useVendorId();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef(false);
 
   const [history, setHistory] = useState<ImportRecord[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -280,7 +279,7 @@ export default function ImportPage() {
   };
   const handleDragLeave = () => setIsDragging(false);
 
-  /* ── Execute import ───────────────────────────────────── */
+  /* ── Execute import via SECURITY DEFINER RPC ─────────── */
   const executeImport = async () => {
     if (!vendorId) {
       toast.error('No se encontró la tienda asociada. Asegúrate de estar registrado como vendedor.');
@@ -290,73 +289,89 @@ export default function ImportPage() {
     setShowPreview(false);
     setImporting(true);
     setImportingFile(previewFileName);
-    setImportProgress(0);
-    abortRef.current = false;
+    setImportProgress(10);
 
     const validRows = parsedRows.filter((r) => r.valid);
-    const total = validRows.length;
-    let imported = 0;
-    let errors = 0;
+    if (validRows.length === 0) {
+      toast.error('No hay filas validas para importar');
+      setImporting(false);
+      return;
+    }
 
-    for (let i = 0; i < total; i++) {
-      if (abortRef.current) break;
+    // Build JSONB array for the RPC
+    const productsJSON = validRows.map((r) => ({
+      nombre: r.nombre,
+      descripcion: r.descripcion || '',
+      precio: Number(r.precio),
+      categoria: r.categoria || 'General',
+      en_stock: ['true', '1', 'si', 'yes'].includes(r.en_stock.toLowerCase()),
+    }));
 
-      const r = validRows[i];
-      const enStock = ['true', '1', 'si', 'yes'].includes(r.en_stock.toLowerCase());
+    try {
+      setImportProgress(40);
+      const { data, error } = await supabase.rpc('bulk_insert_vendor_products', {
+        p_vendor_id: vendorId,
+        p_products: productsJSON,
+      });
 
-      try {
-        const { error } = await supabase.from('products').insert({
-          vendor_id: vendorId,
-          name: r.nombre,
-          description: r.descripcion || null,
-          price: Number(r.precio),
-          category: r.categoria || 'General',
-          in_stock: enStock,
-        });
-        if (error) {
-          console.warn(`Error importing row ${r.row}:`, error.message);
-          errors++;
-        } else {
-          imported++;
-        }
-      } catch {
-        errors++;
+      setImportProgress(90);
+
+      if (error) {
+        console.error('[CSV Import] RPC error:', error);
+        throw error;
       }
 
-      setImportProgress(Math.round(((i + 1) / total) * 100));
-      // Small delay to avoid rate limiting
-      if (i % 10 === 9) await new Promise((res) => setTimeout(res, 100));
-    }
+      const results = data || [];
+      const imported = results.filter((r: { success: boolean }) => r.success).length;
+      const errors = results.filter((r: { success: boolean }) => !r.success).length;
 
-    const status: ImportRecord['status'] = errors === 0 ? 'success' : imported > 0 ? 'partial' : 'error';
-    const record: ImportRecord = {
-      id: Date.now().toString(),
-      fileName: previewFileName,
-      date: new Date().toISOString().split('T')[0],
-      totalRows: parsedRows.length,
-      productsImported: imported,
-      errors,
-      status,
-    };
+      if (errors > 0) {
+        const errorRows = results.filter((r: { success: boolean; name: string; error: string }) => !r.success);
+        console.warn('[CSV Import] Errors:', errorRows);
+      }
 
-    setHistory((prev) => [record, ...prev]);
-    setImporting(false);
-    setImportProgress(0);
-    setImportingFile('');
+      const status: ImportRecord['status'] = errors === 0 ? 'success' : imported > 0 ? 'partial' : 'error';
+      const record: ImportRecord = {
+        id: Date.now().toString(),
+        fileName: previewFileName,
+        date: new Date().toISOString().split('T')[0],
+        totalRows: parsedRows.length,
+        productsImported: imported,
+        errors,
+        status,
+      };
 
-    if (status === 'success') {
-      toast.success(`Importación exitosa: ${imported} productos importados`);
-    } else if (status === 'partial') {
-      toast.warning(`Importación parcial: ${imported} exitosos, ${errors} con error`);
-    } else {
-      toast.error(`Importación fallida: ${errors} errores`);
+      setHistory((prev) => [record, ...prev]);
+      setImportProgress(100);
+
+      if (status === 'success') {
+        toast.success(`Importación exitosa: ${imported} productos importados`);
+      } else if (status === 'partial') {
+        toast.warning(`Importación parcial: ${imported} exitosos, ${errors} con error`);
+      } else {
+        toast.error(`Importación fallida: ${errors} errores`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al importar';
+      toast.error(msg);
+      const record: ImportRecord = {
+        id: Date.now().toString(),
+        fileName: previewFileName,
+        date: new Date().toISOString().split('T')[0],
+        totalRows: parsedRows.length,
+        productsImported: 0,
+        errors: parsedRows.length,
+        status: 'error',
+      };
+      setHistory((prev) => [record, ...prev]);
+    } finally {
+      setImporting(false);
+      setImportProgress(0);
+      setImportingFile('');
     }
   };
 
-  const cancelImport = () => {
-    abortRef.current = true;
-    toast.info('Cancelando importación...');
-  };
+  /* cancelImport removed — RPC runs as a single call */
 
   /* ── Download template ────────────────────────────────── */
   const handleDownloadTemplate = () => {
@@ -464,15 +479,6 @@ export default function ImportPage() {
               <Progress value={importProgress} className="h-2 mb-2" />
               <div className="flex items-center justify-between">
                 <p className="text-sm text-cyan-400">Importando... {importProgress}%</p>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    cancelImport();
-                  }}
-                  className="text-xs text-red-400 hover:text-red-300 font-medium"
-                >
-                  Cancelar
-                </button>
               </div>
             </motion.div>
           ) : (
