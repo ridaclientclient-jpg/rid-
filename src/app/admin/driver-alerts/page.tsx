@@ -376,14 +376,19 @@ export default function DriverAlertsPage() {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
+      if (error) {
+        const errMsg = error.message || error.code || String(error);
+        console.error('Supabase SOS error:', errMsg, 'Code:', error.code, 'Hint:', error.hint);
+        toast.error(`Error al cargar alertas: ${errMsg}`);
+        return;
+      }
 
       const events = (data || []) as unknown as SOSEvent[];
 
       // Sound notification for new alerts
       if (events.length > lastAlertCountRef.current && lastAlertCountRef.current > 0 && soundEnabled) {
         playAlertSound();
-        toast.error('🚨 Nueva alerta SOS recibida', {
+        toast.error('Nueva alerta SOS recibida', {
           description: `Hay ${events.length - lastAlertCountRef.current} alerta(s) nueva(s)`,
           duration: 5000,
         });
@@ -391,19 +396,10 @@ export default function DriverAlertsPage() {
       lastAlertCountRef.current = events.length;
 
       setActiveAlerts(events);
-    } catch (err: unknown) {
-      let message = 'Error desconocido';
-      if (err instanceof Error) {
-        message = (err as any).message || (err as any).msg || (err as any).code || err.message;
-      } else if (err && typeof err === 'object') {
-        const obj = err as Record<string, any>;
-        message = obj.message || obj.msg || obj.error_description || obj.code || '';
-        if (!message) { try { message = JSON.stringify(obj); } catch { message = 'Error'; } }
-      } else if (typeof err === 'string') {
-        message = err;
-      }
-      console.error('Error cargando alertas activas:', err);
-      toast.error(`Error al cargar alertas activas: ${message}`);
+    } catch (err: any) {
+      const raw = JSON.parse(JSON.stringify(err || {}));
+      console.error('Error inesperado cargando alertas:', raw);
+      toast.error('Error inesperado al cargar alertas SOS');
     } finally {
       setLoading(false);
     }
@@ -431,21 +427,17 @@ export default function DriverAlertsPage() {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
-      setResolvedAlerts((data || []) as unknown as SOSEvent[]);
-    } catch (err: unknown) {
-      let message = 'Error desconocido';
-      if (err instanceof Error) {
-        message = (err as any).message || (err as any).msg || (err as any).code || err.message;
-      } else if (err && typeof err === 'object') {
-        const obj = err as Record<string, any>;
-        message = obj.message || obj.msg || obj.error_description || obj.code || '';
-        if (!message) { try { message = JSON.stringify(obj); } catch { message = 'Error'; } }
-      } else if (typeof err === 'string') {
-        message = err;
+      if (error) {
+        const errMsg = error.message || error.code || String(error);
+        console.error('Supabase SOS resolved error:', errMsg, 'Code:', error.code);
+        toast.error(`Error al cargar resueltas: ${errMsg}`);
+        return;
       }
-      console.error('Error cargando alertas resueltas:', err);
-      toast.error(`Error al cargar alertas resueltas: ${message}`);
+      setResolvedAlerts((data || []) as unknown as SOSEvent[]);
+    } catch (err: any) {
+      const raw = JSON.parse(JSON.stringify(err || {}));
+      console.error('Error inesperado cargando resueltas:', raw);
+      toast.error('Error inesperado al cargar alertas resueltas');
     } finally {
       setLoadingResolved(false);
     }
