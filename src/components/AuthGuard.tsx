@@ -3,6 +3,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { Ban } from 'lucide-react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface AuthGuardProps {
@@ -17,6 +20,8 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
   const { user, isAuthenticated, initAuth } = useAuthStore();
   const [checked, setChecked] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockedReason, setBlockedReason] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -42,10 +47,34 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
     return () => { cancelled = true; clearTimeout(safetyTimeout); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Check if user is blocked (after auth is verified)
+  useEffect(() => {
+    if (!checked || !isAuthenticated || !user?.id) return;
+
+    const checkBlocked = async () => {
+      try {
+        const { data } = await supabase.rpc('check_user_blocked', { p_user_id: user.id });
+        if (data?.blocked) {
+          setIsBlocked(true);
+          setBlockedReason(data.reason || 'Tu cuenta ha sido bloqueada');
+          // Force logout after showing message
+          setTimeout(async () => {
+            await useAuthStore.getState().logout();
+            if (authPage) router.replace(authPage);
+          }, 3000);
+        }
+      } catch {
+        // If RPC doesn't exist yet, skip
+      }
+    };
+
+    checkBlocked();
+  }, [checked, isAuthenticated, user?.id, authPage, router]);
+
   // Redirect unauthenticated users to login (only once)
   const redirectAttemptedRef = useRef(false);
   useEffect(() => {
-    if (!checked) return;
+    if (!checked || isBlocked) return;
     if (redirectAttemptedRef.current) return;
 
     if (!isAuthenticated && authPage) {
@@ -53,7 +82,23 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
       redirectAttemptedRef.current = true;
       router.replace(authPage);
     }
-  }, [checked, isAuthenticated, router, authPage, pathname]);
+  }, [checked, isAuthenticated, isBlocked, router, authPage, pathname]);
+
+  // Show blocked screen
+  if (isBlocked) {
+    return (
+      <div className="min-h-screen bg-rida-dark flex items-center justify-center">
+        <div className="text-center max-w-sm mx-auto px-4">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+            <Ban className="w-8 h-8 text-red-400" />
+          </div>
+          <p className="text-lg text-red-400 font-semibold">Cuenta Bloqueada</p>
+          <p className="text-sm text-gray-400 mt-2">{blockedReason}</p>
+          <p className="text-xs text-gray-600 mt-1">Seras redirigido al inicio de sesion...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading spinner only while checking auth
   if (!checked) {

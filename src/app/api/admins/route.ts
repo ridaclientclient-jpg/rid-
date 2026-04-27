@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPER_ADMIN_EMAIL = 'kardellridclient@outlook.com';
 
-// Non-persisting client for API routes (avoids session conflicts)
 function getSupabase() {
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false }
@@ -22,7 +22,7 @@ async function verifySuperAdmin(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, email')
     .eq('id', user.id)
     .single();
 
@@ -30,7 +30,7 @@ async function verifySuperAdmin(request: NextRequest) {
   return { user, profile };
 }
 
-// GET: List all admins
+// GET: Listar admins + estado bloqueado + log de actividades
 export async function GET(request: NextRequest) {
   const auth = await verifySuperAdmin(request);
   if (!auth) {
@@ -38,6 +38,22 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getSupabase();
+  const { searchParams } = new URL(request.url);
+  const view = searchParams.get('view');
+
+  // Si piden log de actividades
+  if (view === 'activity-log') {
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const { data, error } = await supabase.rpc('get_admin_activity_log', { p_limit: limit });
+
+    if (error) {
+      return NextResponse.json({ error: 'Error al cargar log: ' + error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ log: data });
+  }
+
+  // Listar admins
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -48,18 +64,56 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Error al consultar administradores' }, { status: 500 });
   }
 
-  return NextResponse.json({ admins: data });
+  return NextResponse.json({
+    admins: data,
+    super_admin_email: SUPER_ADMIN_EMAIL,
+    current_email: auth.user.email
+  });
 }
 
-// POST: Create new admin
+// POST: Crear nuevo admin (solo super admin)
 export async function POST(request: NextRequest) {
   const auth = await verifySuperAdmin(request);
   if (!auth) {
     return NextResponse.json({ error: 'Acceso denegado - Solo Super Admin' }, { status: 403 });
   }
 
-  const { name, email, password } = await request.json();
+  const { name, email, password, action } = await request.json();
 
+  const supabase = getSupabase();
+
+  // Accion de bloquear
+  if (action === 'block') {
+    const { userId, reason } = await request.json();
+    if (!userId) return NextResponse.json({ error: 'ID de usuario requerido' }, { status: 400 });
+
+    const { data, error } = await supabase.rpc('block_admin_user', {
+      p_target_user_id: userId,
+      p_reason: reason || 'Bloqueado por Super Admin'
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json(data);
+  }
+
+  // Accion de desbloquear
+  if (action === 'unblock') {
+    const { userId } = await request.json();
+    if (!userId) return NextResponse.json({ error: 'ID de usuario requerido' }, { status: 400 });
+
+    const { data, error } = await supabase.rpc('unblock_admin_user', {
+      p_target_user_id: userId
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json(data);
+  }
+
+  // Crear nuevo admin
   if (!name || !email || !password) {
     return NextResponse.json({ error: 'Nombre, correo y contraseña son requeridos' }, { status: 400 });
   }
@@ -68,12 +122,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'La contraseña debe tener al menos 6 caracteres' }, { status: 400 });
   }
 
-  const supabase = getSupabase();
-
   // Check if email already exists
   const { data: existing } = await supabase
     .from('profiles')
-    .select('id, email')
+    .select('id, email, role')
     .eq('email', email.toLowerCase().trim())
     .single();
 
@@ -81,7 +133,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Este correo ya está registrado en el sistema' }, { status: 400 });
   }
 
-  // Create user via Supabase Auth (trigger handle_new_user creates profile with role='admin')
+  // Log de actividad antes de crear
+  await supabase.rpc('create_new_admin', {
+    p_name: name.trim(),
+    p_email: email.toLowerCase().trim()
+  });
+
+  // Create user via Supabase Auth
   const { error } = await supabase.auth.signUp({
     email: email.toLowerCase().trim(),
     password,
@@ -100,7 +158,7 @@ export async function POST(request: NextRequest) {
   });
 }
 
-// DELETE: Remove admin access (change role to 'client')
+// DELETE: Eliminar admin (solo super admin puede)
 export async function DELETE(request: NextRequest) {
   const auth = await verifySuperAdmin(request);
   if (!auth) {
@@ -113,31 +171,15 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'ID de usuario requerido' }, { status: 400 });
   }
 
-  if (userId === auth.user.id) {
-    return NextResponse.json({ error: 'No puedes remover tu propio acceso' }, { status: 400 });
-  }
-
   const supabase = getSupabase();
 
-  // Change role from 'admin' to 'client' (soft remove - keeps account alive)
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({ role: 'client' })
-    .eq('id', userId)
-    .eq('role', 'admin')
-    .select('email')
-    .single();
+  const { data, error } = await supabase.rpc('remove_admin_access', {
+    p_target_user_id: userId
+  });
 
   if (error) {
-    return NextResponse.json({ error: 'Error al actualizar: ' + error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  if (!data) {
-    return NextResponse.json({ error: 'No se encontró un administrador con ese ID' }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    success: true,
-    message: `Acceso de administrador removido para ${data.email}`
-  });
+  return NextResponse.json(data);
 }

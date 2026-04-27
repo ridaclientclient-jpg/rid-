@@ -177,3 +177,35 @@ Stage Summary:
 - Types: Added to /home/z/my-project/src/lib/supabase.ts
 - Sidebar: Added to /home/z/my-project/src/app/admin/layout.tsx
 - All real data via Supabase RPC, no demo data
+
+---
+Task ID: 8
+Agent: Main Agent
+Task: Super Admin System - Block/Unblock/Activity Log
+
+Work Log:
+- Created SQL file: /download/super-admin-system.sql
+- Added columns to profiles: is_blocked, blocked_at, blocked_reason, blocked_by
+- Created table: admin_activity_log (with RLS, indexes)
+- Created 8 RPCs: is_super_admin, block_admin_user, unblock_admin_user, remove_admin_access, create_new_admin, get_admin_activity_log, check_user_blocked, ensure_super_admin
+- Rewrote /api/admins/route.ts with block/unblock endpoints
+- Rewrote /admin/admins/page.tsx with full super admin management UI:
+  - Stats cards (Total, Active, Blocked, Super Admins)
+  - Tab navigation (Admins / Activity Log)
+  - Block/Unblock buttons per admin
+  - Block modal with reason field
+  - Remove confirmation modal
+  - Activity log with action icons and timestamps
+  - Non-super-admin access blocked with "Acceso Restringido" screen
+- Updated AuthGuard.tsx with blocked user detection:
+  - Checks is_blocked on every protected page load
+  - Shows "Cuenta Bloqueada" screen if blocked
+  - Auto-logout after 3 seconds
+
+Stage Summary:
+- SQL: /download/super-admin-system.sql
+- API: /api/admins/route.ts (enhanced with block/unblock)
+- Page: /admin/admins/page.tsx (complete rewrite)
+- AuthGuard: /components/AuthGuard.tsx (blocked check added)
+- All actions logged in admin_activity_log
+- Only super_admin (role) can manage admins
