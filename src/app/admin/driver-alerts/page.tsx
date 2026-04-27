@@ -392,7 +392,12 @@ export default function DriverAlertsPage() {
 
       setActiveAlerts(events);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
+      const message = err instanceof Error
+        ? err.message
+        : (err && typeof err === 'object' && 'message' in err)
+          ? String((err as any).message)
+          : 'Error desconocido';
+      console.error('Error cargando alertas activas:', err);
       toast.error(`Error al cargar alertas activas: ${message}`);
     } finally {
       setLoading(false);
@@ -424,7 +429,12 @@ export default function DriverAlertsPage() {
       if (error) throw error;
       setResolvedAlerts((data || []) as unknown as SOSEvent[]);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
+      const message = err instanceof Error
+        ? err.message
+        : (err && typeof err === 'object' && 'message' in err)
+          ? String((err as any).message)
+          : 'Error desconocido';
+      console.error('Error cargando alertas resueltas:', err);
       toast.error(`Error al cargar alertas resueltas: ${message}`);
     } finally {
       setLoadingResolved(false);
@@ -454,7 +464,12 @@ export default function DriverAlertsPage() {
       toast.success('SOS resuelto exitosamente');
       await Promise.all([fetchActiveAlerts(), fetchResolvedAlerts()]);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error';
+      const message = err instanceof Error
+        ? err.message
+        : (err && typeof err === 'object' && 'message' in err)
+          ? String((err as any).message)
+          : 'Error';
+      console.error('Error resolviendo SOS:', err);
       toast.error(`Error al resolver SOS: ${message}`);
     } finally {
       setResolvingId(null);
