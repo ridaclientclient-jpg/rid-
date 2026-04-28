@@ -456,8 +456,11 @@ export default function ProductsPage() {
     if (vendorId) {
       loadProducts();
       loadCategories();
+    } else if (!vendorLoading) {
+      // vendorId es null y ya terminó de cargar — evitar loading infinito
+      setLoading(false);
     }
-  }, [vendorId, loadProducts, loadCategories]);
+  }, [vendorId, vendorLoading, loadProducts, loadCategories]);
 
   /* ── Stats ──────────────────────────────────────────────── */
   const stats = useMemo(() => {

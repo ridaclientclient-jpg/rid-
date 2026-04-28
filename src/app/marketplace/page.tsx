@@ -481,7 +481,10 @@ export default function MarketplaceDashboard() {
 
   /* ── Initial load + auto-refresh ────────────────────────────── */
   useEffect(() => {
-    if (!vendorId) return;
+    if (!vendorId) {
+      if (!vendorLoading) setLoading(false);
+      return;
+    }
 
     fetchDashboard();
 
@@ -495,7 +498,7 @@ export default function MarketplaceDashboard() {
         clearInterval(refreshTimerRef.current);
       }
     };
-  }, [vendorId, fetchDashboard]);
+  }, [vendorId, vendorLoading, fetchDashboard]);
 
   /* ── Realtime subscription ──────────────────────────────────── */
   useEffect(() => {

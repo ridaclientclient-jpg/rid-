@@ -1046,6 +1046,17 @@ export default function ClientMarketPage() {
   const [products, setProducts] = useState<
     (Product & { vendor_name: string })[]
   >([]);
+  const [banners, setBanners] = useState<{
+    id: string;
+    title: string;
+    description: string;
+    image_url: string;
+    link_url: string;
+    position: number;
+    is_active: boolean;
+    start_date: string;
+    end_date: string;
+  }[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1148,6 +1159,27 @@ export default function ClientMarketPage() {
           .select(
             'id, vendor_id, name, description, price, category, image_url, in_stock, stock_quantity, is_featured, avg_rating, vendors(store_name)'
           );
+
+        // Fetch active banners for the client app
+        try {
+          const { data: bannerData } = await supabase
+            .from('banners')
+            .select('id, title, description, image_url, link_url, position, is_active, start_date, end_date')
+            .eq('is_active', true)
+            .or('target.eq.app,target.eq.all')
+            .order('position', { ascending: true });
+          if (bannerData && bannerData.length > 0) {
+            const now = new Date();
+            const active = bannerData.filter((b: Record<string, unknown>) => {
+              if (b.start_date && new Date(b.start_date as string) > now) return false;
+              if (b.end_date && new Date(b.end_date as string) < now) return false;
+              return true;
+            });
+            setBanners(active);
+          }
+        } catch {
+          // Banners are non-critical — fail silently
+        }
 
         if (!prodErr && prodData) {
           const mapped: (Product & { vendor_name: string })[] = prodData.map(
@@ -1419,6 +1451,26 @@ export default function ClientMarketPage() {
     );
   }, [selectedCategoryId, categories]);
 
+  /* ── Featured products ────────────────────────────────── */
+  const featuredProducts = useMemo(() => {
+    return products
+      .filter((p) => p.is_featured && p.in_stock)
+      .sort((a, b) => (b.avg_rating || 0) - (a.avg_rating || 0))
+      .slice(0, 10);
+  }, [products]);
+
+  /* ── Top rated vendors ─────────────────────────────── */
+  const topVendors = useMemo(() => {
+    return [...vendors]
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .filter((v) => v.rating > 0);
+  }, [vendors]);
+
+  /* ── Vendors with most products ────────────────────── */
+  const activeVendors = useMemo(() => {
+    return vendors.filter((v) => v.product_count > 0);
+  }, [vendors]);
+
   const cartCount = itemCount();
 
   /* ═════════════════════════════════════════════════════════════════════════════
@@ -1590,6 +1642,165 @@ export default function ClientMarketPage() {
         </motion.div>
       )}
 
+      {/* ── Promotional Banners Carousel (DidiFood style) ────────────── */}
+      {banners.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.09 }}
+          className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {banners.map((banner, idx) => (
+            <motion.a
+              key={banner.id}
+              href={banner.link_url || '#'}
+              target={banner.link_url ? '_blank' : undefined}
+              rel={banner.link_url ? 'noopener noreferrer' : undefined}
+              whileTap={{ scale: 0.98 }}
+              className="flex-shrink-0 w-[85vw] max-w-[380px] snap-center rounded-2xl overflow-hidden relative group"
+            >
+              {/* Gradient fallback */}
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-600/40 via-amber-600/30 to-orange-500/20 z-0" />
+              <img
+                src={banner.image_url}
+                alt={banner.title}
+                className="relative w-full aspect-[16/7] object-cover z-[1] group-hover:scale-[1.02] transition-transform duration-300"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              {/* Overlay text */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-[2]" />
+              <div className="absolute bottom-0 left-0 right-0 p-4 z-[3]">
+                <h3 className="text-sm font-bold text-white line-clamp-1">
+                  {banner.title}
+                </h3>
+                {banner.description && (
+                  <p className="text-[10px] text-white/70 line-clamp-1 mt-0.5">
+                    {banner.description}
+                  </p>
+                )}
+              </div>
+              {/* Dots indicator */}
+              <div className="absolute bottom-2 right-3 z-[3] flex items-center gap-1">
+                {banners.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                      i === idx ? 'bg-white' : 'bg-white/30'
+                    }`}
+                  />
+                ))}
+              </div>
+            </motion.a>
+          ))}
+        </motion.div>
+      )}
+
+      {/* ── Featured Products Horizontal Section (DidiFood style) ────── */}
+      {!loading && isBrowsingVendors && featuredProducts.length > 0 && !search && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <h2 className="text-base font-bold text-white">Productos destacados</h2>
+            </div>
+            <span className="text-[11px] text-gray-500">
+              {featuredProducts.length} producto{featuredProducts.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div
+            className="flex gap-3 overflow-x-auto pb-2"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {featuredProducts.map((product, i) => (
+              <motion.div
+                key={product.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.04 }}
+                className="flex-shrink-0 w-[150px] glass rounded-2xl overflow-hidden group hover:shadow-lg hover:shadow-orange-500/5 transition-all duration-300"
+              >
+                {/* Product image */}
+                <div
+                  className="aspect-square relative overflow-hidden cursor-pointer"
+                  onClick={() => {
+                    setSelectedProduct(product);
+                    setSelectedQty(1);
+                  }}
+                >
+                  <SignedProductImage
+                    imagePath={product.image_url}
+                    alt={product.name}
+                    fill
+                    sizes="150px"
+                  />
+                  {product.is_featured && (
+                    <div className="absolute top-1.5 left-1.5 z-10">
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-amber-500/90 text-black backdrop-blur-sm">
+                        <Sparkles className="w-2 h-2" />
+                        Top
+                      </span>
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/40 to-transparent" />
+                </div>
+                {/* Product info */}
+                <div className="p-2.5">
+                  <p className="text-[9px] text-gray-500 truncate flex items-center gap-0.5">
+                    <Store className="w-2 h-2 flex-shrink-0" />
+                    {product.vendor_name}
+                  </p>
+                  <h3
+                    className="text-[11px] font-semibold text-white truncate mt-0.5 cursor-pointer group-hover:text-orange-400 transition-colors"
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      setSelectedQty(1);
+                    }}
+                  >
+                    {product.name}
+                  </h3>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs font-bold text-white">
+                      {formatCRC(product.price)}
+                    </span>
+                    <motion.button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!product.in_stock) {
+                          toast.error('Producto agotado');
+                          return;
+                        }
+                        handleAddToCart(product);
+                      }}
+                      disabled={!product.in_stock}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                        getCartQty(product.id) > 0
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-orange-500/15 text-orange-400 border border-orange-500/20 hover:bg-orange-500/25'
+                      }`}
+                      whileTap={product.in_stock ? { scale: 0.9 } : {}}
+                    >
+                      {getCartQty(product.id) > 0 ? (
+                        <Plus className="w-3 h-3" />
+                      ) : (
+                        <ShoppingCart className="w-3 h-3" />
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       {/* ── Breadcrumb: Selected Vendor / Category ──────────────────── */}
       <AnimatePresence>
         {(selectedVendor || selectedCategory) && (
@@ -1663,29 +1874,87 @@ export default function ClientMarketPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              className="space-y-6"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-bold text-white">
-                  Tiendas disponibles
-                </h2>
-                <span className="text-[11px] text-gray-500">
-                  {vendors.length} tienda{vendors.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <AnimatePresence>
-                  {vendors.map((vendor) => (
-                    <VendorCard
-                      key={vendor.id}
-                      vendor={vendor}
-                      productCount={vendor.product_count}
-                      onClick={() => {
-                        setSelectedVendorId(vendor.id);
-                        setSelectedCategoryId(null);
-                      }}
-                    />
-                  ))}
-                </AnimatePresence>
+              {/* ── Top Rated Vendors Section ──────────────────────── */}
+              {topVendors.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                        <Star className="w-3 h-3 text-amber-400" />
+                      </div>
+                      <h2 className="text-base font-bold text-white">
+                        Populares
+                      </h2>
+                    </div>
+                    <span className="text-[11px] text-gray-500">
+                      Mejor valoradas
+                    </span>
+                  </div>
+                  <div
+                    className="flex gap-3 overflow-x-auto pb-1"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    {topVendors.slice(0, 5).map((vendor) => (
+                      <motion.div
+                        key={vendor.id}
+                        whileTap={{ scale: 0.98 }}
+                        className="flex-shrink-0 w-[260px]"
+                        onClick={() => {
+                          setSelectedVendorId(vendor.id);
+                          setSelectedCategoryId(null);
+                        }}
+                      >
+                        <VendorCard
+                          vendor={vendor}
+                          productCount={vendor.product_count}
+                          onClick={() => {
+                            setSelectedVendorId(vendor.id);
+                            setSelectedCategoryId(null);
+                          }}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── All Stores Section ─────────────────────────────── */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-orange-500/15 flex items-center justify-center">
+                      <Store className="w-3 h-3 text-orange-400" />
+                    </div>
+                    <h2 className="text-base font-bold text-white">
+                      Todas las tiendas
+                    </h2>
+                  </div>
+                  <span className="text-[11px] text-gray-500">
+                    {vendors.length} tienda{vendors.length !== 1 ? 's' : ''}
+                    {activeVendors.length > 0 && (
+                      <span className="text-emerald-400/70 ml-1">
+                        ({activeVendors.length} con productos)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <AnimatePresence>
+                    {vendors.map((vendor) => (
+                      <VendorCard
+                        key={vendor.id}
+                        vendor={vendor}
+                        productCount={vendor.product_count}
+                        onClick={() => {
+                          setSelectedVendorId(vendor.id);
+                          setSelectedCategoryId(null);
+                        }}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
               </div>
 
               {/* Trust badges */}
@@ -1693,7 +1962,7 @@ export default function ClientMarketPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="glass rounded-2xl p-4 mt-6"
+                className="glass rounded-2xl p-4"
               >
                 <div className="grid grid-cols-3 gap-3">
                   <div className="text-center">
