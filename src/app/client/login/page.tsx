@@ -323,53 +323,6 @@ export default function ClientLogin() {
                   )}
                 </button>
 
-                {/* Divider */}
-                <div className="relative my-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-white/10" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-[#0f1729] px-3 text-xs text-gray-500">o continua con</span>
-                  </div>
-                </div>
-
-                {/* Google Button */}
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={googleLoading}
-                  className="w-full bg-white/10 border border-white/20 backdrop-blur-md text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-white/15 transition-colors disabled:opacity-50"
-                >
-                  {googleLoading ? (
-                    <div className="w-5 h-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Chrome className="w-5 h-5 text-white" />
-                      Continuar con Google
-                    </>
-                  )}
-                </button>
-
-                {/* Phone Button */}
-                <button
-                  type="button"
-                  onClick={() => setAuthView('phone')}
-                  className="w-full bg-white/5 border border-white/10 text-cyan-400 font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
-                >
-                  <Phone className="w-4 h-4" />
-                  Iniciar sesion con telefono
-                </button>
-
-                {/* Divider */}
-                <div className="relative my-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-white/10" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-[#0f1729] px-3 text-xs text-gray-500">o</span>
-                  </div>
-                </div>
-
                 <button
                   type="button"
                   onClick={() => router.push('/client/register')}
