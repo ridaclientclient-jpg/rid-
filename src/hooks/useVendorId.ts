@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 /**
  * Hook que obtiene o crea automáticamente el registro `vendors` para el usuario actual.
+ * Usa RPC SECURITY DEFINER para bypass de RLS.
  * Retorna:
  *   - vendorId: string | null  → ID del vendor (null mientras carga o si falla)
  *   - loading: boolean         → true mientras carga
@@ -29,67 +30,25 @@ export function useVendorId() {
     setError(null);
 
     try {
-      // 1. Intentar obtener el vendor existente
-      const { data: existing, error: fetchErr } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      // Usar RPC SECURITY DEFINER — bypass RLS completamente
+      const { data: rows, error: rpcErr } = await supabase.rpc('get_or_create_vendor', {
+        p_user_id: user.id,
+      });
 
-      // Si existe, usarlo
-      if (existing) {
-        setVendorId(existing.id);
+      if (rpcErr) {
+        console.error('[useVendorId] RPC error:', rpcErr);
+        setError('Error al obtener tienda');
+        toast.error('Error al cargar tu tienda. Recarga la página.');
         setLoading(false);
         return;
       }
 
-      // 2. Si el error NO es "no rows found", reportarlo pero intentar crear de todas formas
-      if (fetchErr && fetchErr.code !== 'PGRST116') {
-        console.warn('[useVendorId] Fetch error (attempting auto-create):', fetchErr);
-      }
-
-      // 3. Auto-crear el registro vendor
-      const storeName = user.name || user.email?.split('@')[0] || 'Mi Tienda';
-
-      const { data: created, error: createErr } = await supabase
-        .from('vendors')
-        .insert({
-          user_id: user.id,
-          store_name: storeName,
-          category: 'other',
-          is_approved: true,
-          rating: 5.00,
-        })
-        .select('id')
-        .single();
-
-      if (createErr) {
-        console.error('[useVendorId] Auto-create vendor failed:', createErr);
-
-        // Si falla por UNIQUE (ya existe de una carrera), re-intentar select
-        if (createErr.code === '23505') {
-          const { data: retry } = await supabase
-            .from('vendors')
-            .select('id')
-            .eq('user_id', user.id)
-            .single();
-
-          if (retry) {
-            setVendorId(retry.id);
-            setLoading(false);
-            return;
-          }
-        }
-
-        setError('No se pudo crear la tienda. Contacta soporte.');
-        toast.error('Error al crear tu tienda. Intenta recargar la página.');
-        setLoading(false);
-        return;
-      }
-
-      if (created) {
-        setVendorId(created.id);
-        toast.success('Tienda creada automáticamente');
+      // El RPC retorna un array de { id: uuid }
+      if (rows && rows.length > 0 && rows[0].id) {
+        setVendorId(rows[0].id);
+      } else {
+        console.warn('[useVendorId] RPC returned empty');
+        setError('No se encontró tienda');
       }
     } catch (err) {
       console.error('[useVendorId] Unexpected error:', err);
@@ -97,7 +56,7 @@ export function useVendorId() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, user?.name, user?.email]);
+  }, [user?.id]);
 
   useEffect(() => {
     ensureVendor();
