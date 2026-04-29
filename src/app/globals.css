@@ -272,3 +272,18 @@
   stroke-dasharray: 10 10;
   animation: dash-flow 1.5s linear infinite;
 }
+
+/* Shimmer effect for buttons */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

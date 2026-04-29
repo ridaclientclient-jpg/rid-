@@ -519,14 +519,14 @@ export default function DriverHome() {
   }, [surgeZones]);
 
   return (
-    <div className="space-y-4">
-      {/* Map Section */}
+    <div className="pb-24">
+      {/* ═══ DIDI-STYLE FULL MAP ═══ */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className="relative"
       >
-        <div className={`${showFullMap ? 'h-[85vh]' : 'h-52'} rounded-b-3xl overflow-hidden relative transition-all duration-500`}>
+        <div className={`${showFullMap ? 'h-[85vh]' : 'h-[340px]'} rounded-b-[28px] overflow-hidden relative transition-all duration-500`}>
           <GoogleMap
             center={userCoords || { lat: 9.9281, lng: -84.0907 }}
             zoom={14}
@@ -534,307 +534,347 @@ export default function DriverHome() {
             className="w-full h-full"
             onMapLoaded={handleMapLoaded}
           />
-          {/* Map overlay gradient */}
-          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-rida-dark to-transparent pointer-events-none" />
+          {/* Map bottom gradient - bigger for Didi feel */}
+          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-rida-dark via-rida-dark/60 to-transparent pointer-events-none" />
         </div>
-        {/* Expand/collapse map button */}
-        <button
-          onClick={() => setShowFullMap(!showFullMap)}
-          className="absolute top-3 right-3 w-9 h-9 rounded-xl glass-strong flex items-center justify-center z-10 hover:bg-white/10 transition-colors"
-        >
-          <Eye className="w-4 h-4 text-white" />
-        </button>
-      </motion.div>
 
-      {/* Surge Zones Banner - Didi style */}
-      <AnimatePresence>
-        {isOnline && surgeZones.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="px-4 overflow-hidden"
-          >
-            <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-orange-600/20 to-red-600/20 border border-orange-500/20 p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-4 h-4 text-orange-400" />
-                <span className="text-xs font-bold text-orange-300">Alta demanda en tu zona</span>
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                {surgeZones.map(zone => {
-                  const mult = parseFloat(zone.surge_multiplier) || 1;
-                  const gradient = mult >= 2.5 ? 'from-red-500 to-red-600' : mult >= 2.0 ? 'from-orange-500 to-orange-600' : mult >= 1.5 ? 'from-yellow-500 to-amber-600' : 'from-green-500 to-emerald-600';
-                  return (
-                    <div key={zone.id} className={`flex-shrink-0 bg-gradient-to-r ${gradient} rounded-xl px-3 py-2 text-center min-w-[80px]`} style={{ boxShadow: `0 4px 12px ${mult >= 2.5 ? '#ef444440' : mult >= 2.0 ? '#f9731640' : mult >= 1.5 ? '#eab30840' : '#22c55e40'}` }}>
-                      <p className="text-lg font-bold text-white">⚡{mult}X</p>
-                      <p className="text-[9px] text-white/80 truncate max-w-[70px]">{zone.name}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {/* ── Floating elements ON the map (Didi style) ── */}
 
-      {/* Searching Animation when online with no active ride */}
-      <AnimatePresence>
-        {isOnline && !currentRide && (
-          <motion.div
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -5 }}
-            className="px-4"
-          >
-            <div className="flex items-center justify-center gap-2 py-1.5">
-              <div className="flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse [animation-delay:0.2s]" />
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse [animation-delay:0.4s]" />
-              </div>
-              <span className="text-xs text-gray-400 font-medium">Buscando viajes cerca de ti...</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="px-4 space-y-4">
-        {/* Header with Level */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-white">
-                Hola, {user?.name?.split(' ')[0] || 'Conductor'}
-              </h1>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {isOnline ? 'Estas en linea y recibiendo viajes' : 'Conectate para recibir viajes'}
-              </p>
-            </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${level.bgColor}`}>
-              <level.icon className={`w-3.5 h-3.5 ${level.textColor}`} />
-              <span className={`text-xs font-bold ${level.textColor}`}>{level.name}</span>
-            </div>
+        {/* Online status badge top-left */}
+        <div className="absolute top-4 left-4 z-10">
+          <div className={`glass-strong rounded-full px-3 py-1.5 flex items-center gap-2 border ${isOnline ? 'border-emerald-500/30' : 'border-gray-500/20'}`}>
+            <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
+            <span className={`text-[11px] font-semibold ${isOnline ? 'text-emerald-400' : 'text-gray-400'}`}>
+              {isOnline ? 'En linea' : 'Desconectado'}
+            </span>
           </div>
+        </div>
 
-          {/* Level Progress Bar */}
-          {nextLevel && (
-            <div className="mt-3 glass rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-400">Tu nivel</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-white font-medium">{driver?.total_rides || 0}</span>
-                  <span className="text-xs text-gray-500">viajes a {nextLevel.name}</span>
-                </div>
-              </div>
-              <div className="w-full bg-white/10 rounded-full h-2">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(progressToNext, 100)}%` }}
-                  transition={{ duration: 1, delay: 0.3 }}
-                  className={`h-2 rounded-full bg-gradient-to-r ${nextLevel.color}`}
-                />
-              </div>
-              <p className="text-[10px] text-gray-500 mt-1.5">
-                Manten tu calificacion 4.85+ para subir de nivel
-              </p>
-              <button
-                onClick={() => router.push('/driver/rewards')}
-                className="mt-2 w-full py-1.5 rounded-lg bg-white/5 text-xs text-gray-300 font-medium hover:bg-white/10 transition-colors"
-              >
-                Ver beneficios
-              </button>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Today's Earnings Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="glass rounded-2xl p-4"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400">Ingresos de hoy</p>
-              <p className="text-2xl font-bold text-white mt-0.5">
-                ₡{Math.round(todayEarnings).toLocaleString()}
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span className="text-sm font-bold text-white">{rating > 0 ? rating.toFixed(2) : '5.00'}</span>
-              </div>
-              <p className="text-[10px] text-gray-500 mt-0.5">{driver?.total_rides || 0} viajes totales</p>
-            </div>
+        {/* Expand/collapse + Level badge top-right */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full glass-strong ${level.bgColor}`}>
+            <level.icon className={`w-3 h-3 ${level.textColor}`} />
+            <span className={`text-[10px] font-bold ${level.textColor}`}>{level.name}</span>
           </div>
-          {/* Daily Goal */}
-          <div className="mt-3 pt-3 border-t border-white/5">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-gray-500">Objetivo diario</span>
-              <span className="text-xs text-gray-400">
-                ₡{Math.round(todayEarnings).toLocaleString()} / ₡{Math.round(dailyGoal).toLocaleString()}
-              </span>
-            </div>
-            <div className="w-full bg-white/10 rounded-full h-2">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min((todayEarnings / dailyGoal) * 100, 100)}%` }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-                className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500"
-              />
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Stats Row */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="grid grid-cols-3 gap-2"
-        >
-          <div className="glass rounded-xl p-3 text-center">
-            <Car className="w-4 h-4 text-cyan-400 mx-auto mb-1" />
-            <p className="text-base font-bold text-white">{todayTrips}</p>
-            <p className="text-[10px] text-gray-500">Viajes hoy</p>
-          </div>
-          <div className="glass rounded-xl p-3 text-center">
-            <Wallet className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
-            <p className="text-base font-bold text-white">
-              ₡{(driver?.total_earnings || 0) >= 1000000
-                ? `${((driver?.total_earnings || 0) / 1000000).toFixed(1)}M`
-                : `${Math.round((driver?.total_earnings || 0) / 1000)}k`}
-            </p>
-            <p className="text-[10px] text-gray-500">Total ganado</p>
-          </div>
-          <div className="glass rounded-xl p-3 text-center">
-            <Clock className="w-4 h-4 text-amber-400 mx-auto mb-1" />
-            <p className="text-base font-bold text-white">{driver?.work_hours_today || 0}h</p>
-            <p className="text-[10px] text-gray-500">Horas hoy</p>
-          </div>
-        </motion.div>
-
-        {/* Connect/Disconnect Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
           <button
+            onClick={() => setShowFullMap(!showFullMap)}
+            className="w-8 h-8 rounded-full glass-strong flex items-center justify-center hover:bg-white/10 transition-colors"
+          >
+            <Eye className="w-3.5 h-3.5 text-white" />
+          </button>
+        </div>
+
+        {/* ═══ DIDI-STYLE BIG CONNECT BUTTON (floating on map) ═══ */}
+        <div className="absolute bottom-6 inset-x-4 z-10">
+          {/* Surge banner on map (only when online + surge active) */}
+          <AnimatePresence>
+            {isOnline && surgeZones.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="mb-3"
+              >
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  {surgeZones.map(zone => {
+                    const mult = parseFloat(zone.surge_multiplier) || 1;
+                    const bgColor = mult >= 2.5 ? 'bg-red-500' : mult >= 2.0 ? 'bg-orange-500' : mult >= 1.5 ? 'bg-amber-500' : 'bg-emerald-500';
+                    return (
+                      <div key={zone.id} className={`flex-shrink-0 ${bgColor} rounded-full px-3 py-1.5 flex items-center gap-1.5`} style={{ boxShadow: `0 4px 16px ${mult >= 2.5 ? '#ef444450' : mult >= 2.0 ? '#f9731650' : mult >= 1.5 ? '#eab30850' : '#22c55e50'}` }}>
+                        <Zap className="w-3 h-3 text-white" />
+                        <span className="text-xs font-bold text-white">{mult}X</span>
+                        <span className="text-[10px] text-white/80 hidden sm:inline">{zone.name}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Searching animation (online, no ride) */}
+          <AnimatePresence>
+            {isOnline && !currentRide && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="mb-3 flex items-center justify-center gap-2"
+              >
+                <div className="flex items-center gap-1">
+                  <motion.div className="w-1.5 h-1.5 rounded-full bg-cyan-400" animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0 }} />
+                  <motion.div className="w-1.5 h-1.5 rounded-full bg-cyan-400" animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }} />
+                  <motion.div className="w-1.5 h-1.5 rounded-full bg-cyan-400" animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }} />
+                </div>
+                <span className="text-[11px] text-gray-300 font-medium">Buscando viajes...</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* THE BIG CONNECT BUTTON */}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
             onClick={handleToggleOnline}
             disabled={isToggling}
-            className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`w-full py-5 rounded-2xl font-bold text-[17px] flex items-center justify-center gap-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden ${
               isOnline
-                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                : 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/20'
+                ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-[0_8px_32px_rgba(16,185,129,0.35)]'
+                : 'bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white shadow-[0_8px_32px_rgba(59,130,246,0.4)]'
             }`}
           >
+            {/* Shimmer effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-[shimmer_3s_infinite]" />
             {isToggling ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2.5 border-white/30 border-t-white rounded-full animate-spin" />
             ) : isOnline ? (
               <>
-                <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
+                <motion.div
+                  className="w-3.5 h-3.5 rounded-full bg-white"
+                  animate={{ scale: [1, 1.3, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
                 Desconectarse
               </>
             ) : (
               <>
-                <Navigation className="w-5 h-5" />
+                <Power className="w-5 h-5" />
                 Conectarse
               </>
             )}
-          </button>
-        </motion.div>
+          </motion.button>
+        </div>
+      </motion.div>
 
-        {/* Destination Mode */}
-        {(driver as any)?.destination_mode && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-3 border border-cyan-500/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                  <Target className="w-4 h-4 text-cyan-400" />
+      {/* ═══ CONTENT BELOW MAP ═══ */}
+      <div className="px-4 -mt-2 space-y-3">
+
+        {/* ── DIDI-STYLE EARNINGS CARD (big, gradient, prominent) ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
+          <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#0f2027] via-[#203a43] to-[#2c5364] p-5 border border-white/5">
+            {/* Decorative circles */}
+            <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-cyan-500/10 blur-2xl" />
+            <div className="absolute -bottom-6 -left-6 w-20 h-20 rounded-full bg-emerald-500/10 blur-2xl" />
+
+            {/* Top row: greeting + rating + level badge */}
+            <div className="relative flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  Hola, {user?.name?.split(' ')[0] || 'Conductor'}
+                </h2>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {isOnline ? 'Recibiendo viajes en tu zona' : 'Conectate para empezar a ganar'}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1 bg-amber-500/20 px-2 py-0.5 rounded-full">
+                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  <span className="text-[11px] font-bold text-amber-400">{rating > 0 ? rating.toFixed(2) : '5.00'}</span>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-cyan-300">Modo Destino Activo</p>
-                  <p className="text-[10px] text-gray-500 truncate max-w-[180px]">{(driver as any)?.destination_address || 'Destino configurado'}</p>
+                <span className="text-[10px] text-gray-500">{driver?.total_rides || 0} viajes</span>
+              </div>
+            </div>
+
+            {/* Big earnings number - Didi style */}
+            <div className="relative">
+              <p className="text-[11px] text-cyan-400/80 font-medium uppercase tracking-wider mb-1">Ganancias de hoy</p>
+              <p className="text-[32px] font-extrabold text-white leading-tight">
+                ₡{Math.round(todayEarnings).toLocaleString()}
+              </p>
+              {/* Daily goal progress bar */}
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-gray-400">Objetivo ₡{Math.round(dailyGoal).toLocaleString()}</span>
+                  <span className="text-[10px] text-cyan-400 font-semibold">{Math.round(Math.min((todayEarnings / dailyGoal) * 100, 100))}%</span>
+                </div>
+                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min((todayEarnings / dailyGoal) * 100, 100)}%` }}
+                    transition={{ duration: 1, delay: 0.4 }}
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400"
+                  />
                 </div>
               </div>
-              <button onClick={handleDisableDest} className="text-[10px] text-red-400 hover:underline shrink-0">
-                Desactivar
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── DIDI-STYLE STATS ROW (3 cards) ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="grid grid-cols-3 gap-2.5"
+        >
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3.5 text-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center mx-auto mb-2">
+              <Car className="w-4.5 h-4.5 text-cyan-400" />
+            </div>
+            <p className="text-[17px] font-bold text-white">{todayTrips}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Viajes hoy</p>
+          </div>
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3.5 text-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/20 flex items-center justify-center mx-auto mb-2">
+              <Wallet className="w-4.5 h-4.5 text-emerald-400" />
+            </div>
+            <p className="text-[17px] font-bold text-white">
+              ₡{(driver?.total_earnings || 0) >= 1000000
+                ? `${((driver?.total_earnings || 0) / 1000000).toFixed(1)}M`
+                : `${Math.round((driver?.total_earnings || 0) / 1000)}k`}
+            </p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Total ganado</p>
+          </div>
+          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3.5 text-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center mx-auto mb-2">
+              <Clock className="w-4.5 h-4.5 text-amber-400" />
+            </div>
+            <p className="text-[17px] font-bold text-white">{driver?.work_hours_today || 0}h</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Horas hoy</p>
+          </div>
+        </motion.div>
+
+        {/* ── DIDI-STYLE PROMOTIONAL BANNER ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          <div className="rounded-2xl overflow-hidden relative bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 p-4">
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIi8+PC9zdmc+')] opacity-50" />
+            <div className="relative flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-white/25 flex items-center justify-center flex-shrink-0">
+                <Zap className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">Gana mas en hora pico</p>
+                <p className="text-[11px] text-white/80 mt-0.5">Conectate en zonas con surge y multiplica tus ganancias</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-white/70 flex-shrink-0" />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── LEVEL PROGRESS (Didi style card) ── */}
+        {nextLevel && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${nextLevel.color} flex items-center justify-center`}>
+                    <nextLevel.icon className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-gray-400">Proximo nivel</p>
+                    <p className={`text-xs font-bold ${nextLevel.textColor}`}>{nextLevel.name}</p>
+                  </div>
+                </div>
+                <span className="text-xs text-white font-semibold">{driver?.total_rides || 0} / {nextLevel.minTrips}</span>
+              </div>
+              <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(progressToNext, 100)}%` }}
+                  transition={{ duration: 1, delay: 0.4 }}
+                  className={`h-full rounded-full bg-gradient-to-r ${nextLevel.color}`}
+                />
+              </div>
+              <button
+                onClick={() => router.push('/driver/rewards')}
+                className="mt-3 w-full py-2 rounded-xl bg-white/[0.05] text-[11px] text-gray-300 font-medium hover:bg-white/[0.08] transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                Ver beneficios del nivel
               </button>
             </div>
           </motion.div>
         )}
 
-        {/* Performance Metrics Card */}
+        {/* Destination Mode Active */}
+        <AnimatePresence>
+          {(driver as any)?.destination_mode && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 0 }} className="rounded-2xl bg-cyan-500/[0.08] border border-cyan-500/20 p-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                    <Target className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-cyan-300">Modo Destino Activo</p>
+                    <p className="text-[10px] text-gray-500 truncate max-w-[180px]">{(driver as any)?.destination_address || 'Destino configurado'}</p>
+                  </div>
+                </div>
+                <button onClick={handleDisableDest} className="text-[10px] text-red-400 hover:underline shrink-0 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-colors">
+                  Desactivar
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Performance Metrics Card - Didi style */}
         {metrics && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="glass rounded-2xl p-4">
+          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-semibold text-white">Rendimiento</span>
+              <span className="text-xs font-semibold text-white">Tu rendimiento</span>
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              <div className="text-center">
-                <p className="text-base font-bold text-white">{metrics.today.acceptance_rate}%</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              <div className="rounded-xl bg-white/[0.04] p-2.5 text-center">
+                <p className="text-sm font-bold text-white">{metrics.today.acceptance_rate}%</p>
                 <p className="text-[9px] text-gray-500">Aceptacion</p>
               </div>
-              <div className="text-center">
-                <p className="text-base font-bold text-amber-400">{metrics.today.rating}</p>
+              <div className="rounded-xl bg-white/[0.04] p-2.5 text-center">
+                <p className="text-sm font-bold text-amber-400">{metrics.today.rating}</p>
                 <p className="text-[9px] text-gray-500">Rating hoy</p>
               </div>
-              <div className="text-center">
-                <p className="text-base font-bold text-white">{metrics.today.avg_duration_min || 0}<span className="text-[10px] text-gray-500">m</span></p>
+              <div className="rounded-xl bg-white/[0.04] p-2.5 text-center">
+                <p className="text-sm font-bold text-white">{metrics.today.avg_duration_min || 0}<span className="text-[9px] text-gray-500">m</span></p>
                 <p className="text-[9px] text-gray-500">Prom. viaje</p>
               </div>
-              <div className="text-center">
-                <p className="text-base font-bold text-cyan-400">{metrics.weekly.active_days}</p>
+              <div className="rounded-xl bg-white/[0.04] p-2.5 text-center">
+                <p className="text-sm font-bold text-cyan-400">{metrics.weekly.active_days}</p>
                 <p className="text-[9px] text-gray-500">Dias activos</p>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* Quick Actions */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="grid grid-cols-2 gap-2">
-          <button onClick={() => router.push('/driver/earnings')} className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
-              <BarChart3 className="w-4 h-4 text-white" />
+        {/* ── DIDI-STYLE QUICK ACTIONS (bigger, more prominent) ── */}
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="grid grid-cols-4 gap-2">
+          <button onClick={() => router.push('/driver/earnings')} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3 flex flex-col items-center gap-2 hover:bg-white/[0.07] transition-all active:scale-95">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <BarChart3 className="w-5 h-5 text-white" />
             </div>
-            <div className="text-left">
-              <p className="text-xs font-medium text-white">Ganancias</p>
-              <p className="text-[10px] text-gray-500">Ver detalle</p>
-            </div>
+            <span className="text-[10px] text-gray-300 font-medium">Ganancias</span>
           </button>
-          <button onClick={() => router.push('/driver/rides')} className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center">
-              <Car className="w-4 h-4 text-white" />
+          <button onClick={() => router.push('/driver/rides')} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3 flex flex-col items-center gap-2 hover:bg-white/[0.07] transition-all active:scale-95">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Car className="w-5 h-5 text-white" />
             </div>
-            <div className="text-left">
-              <p className="text-xs font-medium text-white">Viajes</p>
-              <p className="text-[10px] text-gray-500">Historial</p>
-            </div>
+            <span className="text-[10px] text-gray-300 font-medium">Viajes</span>
           </button>
-          <button onClick={openNavigation} className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
-              <Navigation className="w-4 h-4 text-white" />
+          <button onClick={openNavigation} className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3 flex flex-col items-center gap-2 hover:bg-white/[0.07] transition-all active:scale-95">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <Navigation className="w-5 h-5 text-white" />
             </div>
-            <div className="text-left">
-              <p className="text-xs font-medium text-white">GPS</p>
-              <p className="text-[10px] text-gray-500">Navegar</p>
-            </div>
+            <span className="text-[10px] text-gray-300 font-medium">Navegar</span>
           </button>
           <button
             onClick={() => setShowDestMode(!showDestMode)}
-            className={`glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors ${showDestMode ? 'ring-1 ring-cyan-500/40' : ''}`}
+            className={`rounded-2xl bg-white/[0.04] border border-white/[0.06] p-3 flex flex-col items-center gap-2 hover:bg-white/[0.07] transition-all active:scale-95 ${showDestMode ? 'ring-1 ring-cyan-500/40 bg-cyan-500/[0.06]' : ''}`}
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-              <Target className="w-4 h-4 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+              <Target className="w-5 h-5 text-white" />
             </div>
-            <div className="text-left">
-              <p className="text-xs font-medium text-white">Destino</p>
-              <p className="text-[10px] text-gray-500">Modo destino</p>
-            </div>
+            <span className="text-[10px] text-gray-300 font-medium">Destino</span>
           </button>
         </motion.div>
 
@@ -842,7 +882,7 @@ export default function DriverHome() {
         <AnimatePresence>
           {showDestMode && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-              <div className="glass rounded-2xl p-4 space-y-3">
+              <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Target className="w-4 h-4 text-cyan-400" />
                   <span className="text-xs font-semibold text-white">Configurar destino</span>
@@ -857,7 +897,7 @@ export default function DriverHome() {
                   searchRadius={30000}
                 />
                 <div className="flex gap-2">
-                  <button onClick={() => setShowDestMode(false)} className="flex-1 py-2.5 rounded-xl glass text-gray-300 text-xs font-medium hover:bg-white/10">
+                  <button onClick={() => setShowDestMode(false)} className="flex-1 py-2.5 rounded-xl bg-white/[0.05] text-gray-300 text-xs font-medium hover:bg-white/[0.08] transition-colors">
                     Cancelar
                   </button>
                   <button onClick={handleSetDestination} disabled={!destAddress || !destCoords || destSetting} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-medium disabled:opacity-40">
@@ -869,17 +909,19 @@ export default function DriverHome() {
           )}
         </AnimatePresence>
 
-        {/* Safety Banner */}
+        {/* ── SAFETY BANNER (Didi style) ── */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="glass rounded-xl p-3 border border-emerald-500/20"
+          className="rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/15 p-3.5"
         >
-          <div className="flex items-center gap-2.5">
-            <Shield className="w-6 h-6 text-emerald-400 flex-shrink-0" />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5 text-emerald-400" />
+            </div>
             <div>
-              <p className="text-xs font-semibold text-white">Tu seguridad es primero</p>
+              <p className="text-[11px] font-semibold text-white">Tu seguridad es primero</p>
               <p className="text-[10px] text-gray-400">Boton SOS disponible en cada viaje activo</p>
             </div>
           </div>
@@ -906,7 +948,7 @@ export default function DriverHome() {
           <button
             type="button"
             onClick={() => setShowPinVerify(true)}
-            className="w-full flex items-center justify-center gap-2 glass rounded-xl p-3 text-emerald-400 hover:text-white hover:bg-white/10 transition-all"
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-emerald-500/[0.08] border border-emerald-500/20 p-3.5 text-emerald-400 hover:text-white hover:bg-white/[0.06] transition-all"
           >
             <Shield className="w-4 h-4" />
             <span className="text-xs font-medium">Verificar PIN del pasajero</span>
