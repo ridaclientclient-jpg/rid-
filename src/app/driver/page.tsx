@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { supabase, type Driver, type Ride } from '@/lib/supabase';
 import { toast } from 'sonner';
 import GoogleMap from '@/components/GoogleMap';
+import { loadGoogleMaps } from '@/lib/googleMaps';
 import PlacesAutocomplete from '@/components/PlacesAutocomplete';
 import { PinVerification } from '@/components/PinVerification';
 import {
@@ -103,6 +104,13 @@ export default function DriverHome() {
   const [metrics, setMetrics] = useState<any>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
+  // ─── Surge Zones on Map ────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapInstanceRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const surgeOverlaysRef = useRef<any[]>([]);
+  const [surgeZones, setSurgeZones] = useState<any[]>([]);
 
   // ─── Break Enforcement ─────────────────────────────
   const [showBreakModal, setShowBreakModal] = useState(false);
@@ -255,6 +263,28 @@ export default function DriverHome() {
       }
     };
   }, [isOnline, getUserLocation, sendLocation, userCoords]);
+
+  // ─── Fetch Surge Zones ──────────────────────────────
+  useEffect(() => {
+    if (!isOnline) {
+      setSurgeZones([]);
+      return;
+    }
+    const fetchZones = async () => {
+      try {
+        const { data } = await supabase
+          .from('location_areas')
+          .select('id, name, coordinates, surge_multiplier')
+          .eq('area_type', 'surge_zone')
+          .eq('is_active', true)
+          .gt('surge_multiplier', 1);
+        setSurgeZones(data || []);
+      } catch { /* ignore */ }
+    };
+    fetchZones();
+    const iv = setInterval(fetchZones, 30000);
+    return () => clearInterval(iv);
+  }, [isOnline]);
 
   // ─── Break Enforcement Check ────────────────────────
   const checkBreakStatus = useCallback(async () => {
@@ -416,6 +446,78 @@ export default function DriverHome() {
     } catch { /* ignore */ }
   }, [session?.access_token, driver]);
 
+  // ─── Map Loaded Callback ────────────────────────────
+  const handleMapLoaded = useCallback((map: any) => {
+    mapInstanceRef.current = map;
+  }, []);
+
+  // ─── Draw Surge Zones on Map ────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || surgeZones.length === 0) return;
+
+    const cleanup = () => {
+      surgeOverlaysRef.current.forEach(o => { try { o.setMap(null); } catch {} });
+      surgeOverlaysRef.current = [];
+    };
+    cleanup();
+
+    loadGoogleMaps().then(() => {
+      if (!mapInstanceRef.current) return;
+
+      surgeZones.forEach(zone => {
+        const mult = parseFloat(zone.surge_multiplier) || 1;
+        if (mult <= 1) return;
+
+        let coords: number[][] = [];
+        try {
+          const parsed = typeof zone.coordinates === 'string' ? JSON.parse(zone.coordinates) : zone.coordinates;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          coords = parsed.map((c: any) => Array.isArray(c) ? [Number(c[0]), Number(c[1])] : [Number(c.lat), Number(c.lng)]);
+        } catch { return; }
+        if (coords.length < 3) return;
+
+        const center = {
+          lat: coords.reduce((s, c) => s + c[0], 0) / coords.length,
+          lng: coords.reduce((s, c) => s + c[1], 0) / coords.length,
+        };
+
+        // Color by multiplier intensity (Didi style)
+        const color = mult >= 2.5 ? '#ef4444' : mult >= 2.0 ? '#f97316' : mult >= 1.5 ? '#eab308' : '#22c55e';
+
+        // Draw semi-transparent polygon
+        const polygon = new google.maps.Polygon({
+          paths: coords.map(c => ({ lat: c[0], lng: c[1] })),
+          strokeColor: color,
+          strokeOpacity: 0.5,
+          strokeWeight: 2,
+          fillColor: color,
+          fillOpacity: 0.12,
+          map: mapInstanceRef.current,
+          zIndex: 50,
+        });
+        surgeOverlaysRef.current.push(polygon);
+
+        // Add multiplier label badge
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="28" viewBox="0 0 64 28"><defs><filter id="ds"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.4"/></filter></defs><rect rx="14" width="64" height="28" fill="${color}" fill-opacity="0.92" filter="url(#ds)"/><text x="32" y="19" text-anchor="middle" font-size="13" font-weight="bold" fill="#fff" font-family="system-ui,sans-serif">⚡${mult}X</text></svg>`;
+
+        const label = new google.maps.Marker({
+          position: center,
+          map: mapInstanceRef.current,
+          icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(64, 28),
+          },
+          zIndex: 100,
+          clickable: false,
+        });
+        surgeOverlaysRef.current.push(label);
+      });
+    });
+
+    return cleanup;
+  }, [surgeZones]);
+
   return (
     <div className="space-y-4">
       {/* Map Section */}
@@ -430,6 +532,7 @@ export default function DriverHome() {
             zoom={14}
             showUserLocation={true}
             className="w-full h-full"
+            onMapLoaded={handleMapLoaded}
           />
           {/* Map overlay gradient */}
           <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-rida-dark to-transparent pointer-events-none" />
@@ -442,6 +545,58 @@ export default function DriverHome() {
           <Eye className="w-4 h-4 text-white" />
         </button>
       </motion.div>
+
+      {/* Surge Zones Banner - Didi style */}
+      <AnimatePresence>
+        {isOnline && surgeZones.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="px-4 overflow-hidden"
+          >
+            <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-orange-600/20 to-red-600/20 border border-orange-500/20 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-4 h-4 text-orange-400" />
+                <span className="text-xs font-bold text-orange-300">Alta demanda en tu zona</span>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                {surgeZones.map(zone => {
+                  const mult = parseFloat(zone.surge_multiplier) || 1;
+                  const gradient = mult >= 2.5 ? 'from-red-500 to-red-600' : mult >= 2.0 ? 'from-orange-500 to-orange-600' : mult >= 1.5 ? 'from-yellow-500 to-amber-600' : 'from-green-500 to-emerald-600';
+                  return (
+                    <div key={zone.id} className={`flex-shrink-0 bg-gradient-to-r ${gradient} rounded-xl px-3 py-2 text-center min-w-[80px]`} style={{ boxShadow: `0 4px 12px ${mult >= 2.5 ? '#ef444440' : mult >= 2.0 ? '#f9731640' : mult >= 1.5 ? '#eab30840' : '#22c55e40'}` }}>
+                      <p className="text-lg font-bold text-white">⚡{mult}X</p>
+                      <p className="text-[9px] text-white/80 truncate max-w-[70px]">{zone.name}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Searching Animation when online with no active ride */}
+      <AnimatePresence>
+        {isOnline && !currentRide && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            className="px-4"
+          >
+            <div className="flex items-center justify-center gap-2 py-1.5">
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse [animation-delay:0.2s]" />
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse [animation-delay:0.4s]" />
+              </div>
+              <span className="text-xs text-gray-400 font-medium">Buscando viajes cerca de ti...</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="px-4 space-y-4">
         {/* Header with Level */}
