@@ -22,6 +22,7 @@ export default function ClientProfile() {
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProfileStats = useCallback(async (userId: string) => {
     try {
@@ -136,6 +137,12 @@ export default function ClientProfile() {
 
   const openCamera = async () => {
     setShowAvatarModal(false);
+    // Best approach: use hidden input with capture attribute (works on mobile & desktop)
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
+      return;
+    }
+    // Fallback: getUserMedia API
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 640 } });
       const video = document.createElement('video');
@@ -156,9 +163,15 @@ export default function ClientProfile() {
       const u8arr = new Uint8Array(n);
       while (n--) u8arr[n] = bstr.charCodeAt(n);
       const blob = new Blob([u8arr], { type: mime });
+      if (blob.size === 0) {
+        toast.error('No se pudo capturar la foto. Intenta subir desde la galeria.');
+        fileInputRef.current?.click();
+        return;
+      }
       const file = new File([blob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
       await handleAvatarUpload(file);
-    } catch {
+    } catch (err) {
+      console.error('Camera error:', err);
       toast.error('No se pudo acceder a la camara. Se abrira la galeria.');
       fileInputRef.current?.click();
     }
@@ -185,6 +198,19 @@ export default function ClientProfile() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleAvatarUpload(file);
+              e.target.value = '';
+            }}
+          />
+          {/* Hidden camera input — mobile-friendly fallback */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="user"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];

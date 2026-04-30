@@ -221,10 +221,11 @@ export function EmergencyContacts({ session }: EmergencyContactsProps) {
 
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/${editingId}`, {
+      const res = await fetch(API_BASE, {
         method: 'PUT',
         headers: authHeaders(session.access_token),
         body: JSON.stringify({
+          contact_id: editingId,
           name: editForm.name.trim(),
           phone: editForm.phone.replace(/\D/g, ''),
           relation: editForm.relation,
@@ -249,9 +250,10 @@ export function EmergencyContacts({ session }: EmergencyContactsProps) {
 
     setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE}/${deleteTarget.id}`, {
+      const res = await fetch(API_BASE, {
         method: 'DELETE',
         headers: authHeaders(session.access_token),
+        body: JSON.stringify({ contact_id: deleteTarget.id }),
       });
       if (!res.ok) throw new Error('Error al eliminar contacto');
       toast.success('Contacto eliminado', {
@@ -271,10 +273,13 @@ export function EmergencyContacts({ session }: EmergencyContactsProps) {
   const handleTogglePrimary = async (contact: EmergencyContact) => {
     if (!session?.access_token) return;
     try {
-      const res = await fetch(`${API_BASE}/${contact.id}`, {
+      const res = await fetch(API_BASE, {
         method: 'PUT',
         headers: authHeaders(session.access_token),
-        body: JSON.stringify({ is_primary: !contact.is_primary }),
+        body: JSON.stringify({
+          contact_id: contact.id,
+          is_primary: !contact.is_primary,
+        }),
       });
       if (!res.ok) throw new Error('Error al marcar como principal');
       toast.success(

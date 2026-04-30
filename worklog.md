@@ -85,3 +85,24 @@ Stage Summary:
 - Fix 2: Added onProductSelect prop to ProductDetailModal (fixes crash when clicking "More from vendor")
 - Server running at localhost:3000 — HTTP 200
 
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix emergency contacts error and camera issue in client profile
+
+Work Log:
+- Investigated EmergencyContacts.tsx: PUT/DELETE were calling /api/emergency-contacts/${id} but no [id] route exists
+- Investigated API route: used shared supabase client without user JWT, causing RLS failures
+- Fix 1: API route - replaced shared supabase client with createUserClient(token) that injects user JWT for all DB operations (GET/POST/PUT/DELETE)
+- Fix 2: EmergencyContacts.tsx - PUT now sends contact_id in body to /api/emergency-contacts (not URL path)
+- Fix 3: EmergencyContacts.tsx - DELETE now sends contact_id in body to /api/emergency-contacts (not URL path)
+- Fix 4: EmergencyContacts.tsx - handleTogglePrimary also fixed to send contact_id in body
+- Fix 5: Camera - changed primary method to use hidden input with capture="user" attribute (works on mobile natively)
+- Fix 6: Camera - added blob.size === 0 check and better error logging
+- Built and restarted server (HTTP 200)
+
+Stage Summary:
+- 3 files modified: route.ts, EmergencyContacts.tsx, profile/page.tsx
+- Emergency contacts CRUD should now work (RLS bypass via JWT user client)
+- Camera uses native capture input as primary method (mobile-friendly)
+
