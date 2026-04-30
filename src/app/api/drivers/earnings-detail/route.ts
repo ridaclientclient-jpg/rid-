@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 /** Accepted period values */
@@ -34,6 +35,20 @@ export async function GET(request: Request) {
       );
     }
 
+    // ── Create authenticated Supabase client with user JWT ─────
+    // This is critical: the default supabase client uses the anon key,
+    // so RLS policies evaluating auth.uid() would return null.
+    // By creating a client with the user's JWT, auth.uid() resolves correctly.
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+
     // ── Parse period param ──────────────────────────────────────
     const { searchParams } = new URL(request.url);
     const rawPeriod = searchParams.get('period') ?? 'week';
@@ -51,7 +66,7 @@ export async function GET(request: Request) {
     const period = rawPeriod as Period;
 
     // ── Get driver record ───────────────────────────────────────
-    const { data: driver, error: driverError } = await supabase
+    const { data: driver, error: driverError } = await authClient
       .from('drivers')
       .select('id, user_id, status')
       .eq('user_id', user.id)
@@ -65,7 +80,7 @@ export async function GET(request: Request) {
     }
 
     // ── Call RPC ────────────────────────────────────────────────
-    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    const { data: rpcResult, error: rpcError } = await authClient.rpc(
       'get_driver_earnings_detail',
       {
         p_driver_id: driver.id,

@@ -28,3 +28,24 @@ Stage Summary:
 - **Build**: Successful, no errors
 - **Server**: Running on localhost:3000, all pages return 200 OK
 - **Note**: External proxy returning 403/412 — infrastructure issue, not code related
+
+---
+Task ID: 2
+Agent: Super Z (Main)
+Task: Fix "Perfil de conductor no encontrado" error in driver earnings period details
+
+Work Log:
+- Analyzed user's screenshot showing red error in "Detalles del Periodo" section
+- Error: "Error al cargar detalles" / "Perfil de conductor no encontrado"
+- Investigated `/api/drivers/earnings-detail/route.ts` API endpoint
+- Traced the issue to RLS policy mismatch: the API uses the default `supabase` client (anon key) for DB queries after authenticating with `getUser(token)`. On server-side API routes, the anon client has no user JWT context, so `auth.uid()` in RLS policies evaluates to `null`
+- RLS policy on `drivers` table: `user_id = auth.uid() OR public.is_admin()` — returns false when auth.uid() is null
+- Fixed by creating an authenticated Supabase client (`createClient` with `Authorization: Bearer <token>`) for all DB queries after authentication
+- This ensures both the driver lookup AND the RPC `get_driver_earnings_detail` work correctly with RLS
+- Rebuilt and restarted server — returns 200 OK
+
+Stage Summary:
+- **Root Cause**: API route used anon Supabase client for DB queries; RLS blocked reads because `auth.uid()` was null on server-side
+- **Fix**: Created authenticated Supabase client with user's JWT token for DB queries in `/api/drivers/earnings-detail/route.ts`
+- **Build**: Successful, no errors
+- **Server**: Running, `/driver/earnings` returns 200
