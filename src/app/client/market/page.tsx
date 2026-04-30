@@ -29,7 +29,7 @@ import {
   ImageOff,
   ArrowLeft,
 } from 'lucide-react';
-import Image from 'next/image';
+// Using native <img> instead of next/image to avoid hostname config requirement
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
@@ -387,22 +387,21 @@ function SignedProductImage({
 
   if (fill) {
     return (
-      <Image
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
         src={src}
         alt={alt}
-        fill
-        className={`object-cover ${className}`}
-        sizes={sizes}
+        className={`absolute inset-0 w-full h-full object-cover ${className}`}
       />
     );
   }
 
   return (
-    <Image
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
       src={src}
       alt={alt}
       className={`object-cover ${className}`}
-      sizes={sizes}
     />
   );
 }
@@ -695,6 +694,7 @@ function ProductDetailModal({
   buying,
   onClose,
   allProducts,
+  onProductSelect,
 }: {
   product: Product & { vendor_name: string; image_path?: string | null };
   quantity: number;
@@ -704,6 +704,7 @@ function ProductDetailModal({
   buying: boolean;
   onClose: () => void;
   allProducts?: (Product & { vendor_name: string; image_path?: string | null })[];
+  onProductSelect?: (p: Product & { vendor_name: string; image_path?: string | null }) => void;
 }) {
   const lineTotal = product.price * quantity;
 
@@ -940,8 +941,7 @@ function ProductDetailModal({
                     key={p.id}
                     className="flex-shrink-0 w-[100px] glass rounded-xl overflow-hidden cursor-pointer hover:bg-white/5 transition-colors"
                     onClick={() => {
-                      setSelectedProduct(p);
-                      setSelectedQty(1);
+                      if (onProductSelect) onProductSelect(p);
                     }}
                   >
                     <div className="aspect-square relative overflow-hidden">
@@ -2255,6 +2255,10 @@ export default function ClientMarketPage() {
               setSelectedQty(1);
             }}
             allProducts={products}
+            onProductSelect={(p) => {
+              setSelectedProduct(p);
+              setSelectedQty(1);
+            }}
           />
         )}
       </AnimatePresence>

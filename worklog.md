@@ -67,3 +67,21 @@ Stage Summary:
 - 2 new pages created: /client/security and /client/terms
 - SQL provided for avatars storage bucket creation
 - Build successful, server running (HTTP 200)
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix marketplace image display error and product detail modal bug
+
+Work Log:
+- Investigated next.config.ts — has NO image hostname configuration
+- Found SignedProductImage component uses next/image (requires hostname config)
+- next.config.ts is a protected file, so replaced next/image with native <img> tags
+- Found ProductDetailModal references setSelectedProduct/setSelectedQty which are NOT in its scope
+- Added onProductSelect prop to ProductDetailModal and wired it correctly
+- Built and restarted server (HTTP 200)
+
+Stage Summary:
+- Fix 1: Replaced next/image with native <img> in SignedProductImage (fixes "hostname not configured" error)
+- Fix 2: Added onProductSelect prop to ProductDetailModal (fixes crash when clicking "More from vendor")
+- Server running at localhost:3000 — HTTP 200
+
