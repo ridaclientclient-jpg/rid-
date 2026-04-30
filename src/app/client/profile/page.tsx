@@ -2,12 +2,12 @@
 
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Phone, Shield, Star, CreditCard, FileText, HelpCircle, LogOut, ChevronRight, Camera, Bell, Lock, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, Shield, Star, CreditCard, FileText, HelpCircle, LogOut, ChevronRight, Camera, Bell, Lock, Loader2, X, Upload } from 'lucide-react';
 import { EmergencyContacts } from '@/components/EmergencyContacts';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
@@ -18,6 +18,10 @@ export default function ClientProfile() {
   const [totalRides, setTotalRides] = useState(0);
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [memberSince, setMemberSince] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProfileStats = useCallback(async (userId: string) => {
     try {
@@ -50,6 +54,16 @@ export default function ClientProfile() {
         const year = date.getFullYear();
         setMemberSince(`${month} ${year}`);
       }
+
+      // Get avatar from profiles
+      const { data: avatarData } = await supabase
+        .from('profiles')
+        .select('avatar')
+        .eq('id', userId)
+        .single();
+      if (avatarData?.avatar) {
+        setAvatarUrl(avatarData.avatar);
+      }
     } catch (err) {
       console.error('Profile stats error:', err);
     } finally {
@@ -66,9 +80,9 @@ export default function ClientProfile() {
   const menuItems = [
     { icon: CreditCard, label: 'Billetera', desc: 'Saldo y metodos de pago', href: '/client/wallet', color: 'text-emerald-400 bg-emerald-500/20' },
     { icon: FileText, label: 'Documentos', desc: 'Verificacion de identidad', href: '/client/verification', color: 'text-blue-400 bg-blue-500/20' },
-    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', action: () => toast.info('Notificaciones configuradas'), color: 'text-cyan-400 bg-cyan-500/20' },
-    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', action: () => toast.info('Funcion de seguridad'), color: 'text-amber-400 bg-amber-500/20' },
-    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', action: () => toast.info('Mostrando terminos...'), color: 'text-purple-400 bg-purple-500/20' },
+    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', href: '/client/notifications', color: 'text-cyan-400 bg-cyan-500/20' },
+    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', href: '/client/security', color: 'text-amber-400 bg-amber-500/20' },
+    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', href: '/client/terms', color: 'text-purple-400 bg-purple-500/20' },
     { icon: HelpCircle, label: 'Soporte', desc: 'Ayuda 24/7', href: '/client/support', color: 'text-pink-400 bg-pink-500/20' },
   ];
 
@@ -82,6 +96,74 @@ export default function ClientProfile() {
     );
   }
 
+  const handleAvatarUpload = async (file: File) => {
+    if (!user?.id) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen no puede ser mayor a 5MB');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('Solo se permiten imagenes');
+      return;
+    }
+    setIsUploadingAvatar(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/avatar.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+      setAvatarUrl(publicUrl);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar: publicUrl })
+        .eq('id', user.id);
+      if (updateError) throw updateError;
+
+      toast.success('Foto de perfil actualizada');
+      setShowAvatarModal(false);
+    } catch (err: any) {
+      toast.error('Error al subir foto: ' + (err?.message || 'Intenta de nuevo'));
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const openCamera = async () => {
+    setShowAvatarModal(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 640 } });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      await video.play();
+      await new Promise(r => setTimeout(r, 500));
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d')?.drawImage(video, 0, 0);
+      stream.getTracks().forEach(t => t.stop());
+      const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+      const arr = dataURL.split(',');
+      const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) u8arr[n] = bstr.charCodeAt(n);
+      const blob = new Blob([u8arr], { type: mime });
+      const file = new File([blob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      await handleAvatarUpload(file);
+    } catch {
+      toast.error('No se pudo acceder a la camara. Se abrira la galeria.');
+      fileInputRef.current?.click();
+    }
+  };
+
   const displayRating = avgRating !== null ? avgRating.toFixed(1) : '--';
 
   return (
@@ -89,13 +171,64 @@ export default function ClientProfile() {
       {/* Profile Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
         <div className="relative inline-block">
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-3xl font-bold text-white mx-auto">
-            {user?.name?.charAt(0) || 'U'}
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-3xl font-bold text-white mx-auto overflow-hidden">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              user?.name?.charAt(0) || 'U'
+            )}
           </div>
-          <button onClick={() => toast.info('Funcion de camara no disponible en demo')} className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
+          <button onClick={() => setShowAvatarModal(true)} className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
             <Camera className="w-4 h-4 text-white" />
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleAvatarUpload(file);
+              e.target.value = '';
+            }}
+          />
         </div>
+
+        {/* Avatar Upload Modal */}
+        {showAvatarModal && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center" onClick={() => setShowAvatarModal(false)}>
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              className="glass-strong rounded-t-2xl p-5 w-full max-w-sm space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white">Cambiar foto de perfil</h3>
+                <button onClick={() => setShowAvatarModal(false)} className="p-1 rounded-lg hover:bg-white/10">
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+              {isUploadingAvatar ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                  <span className="text-sm text-gray-400 ml-2">Subiendo foto...</span>
+                </div>
+              ) : (
+                <>
+                  <button onClick={openCamera} className="w-full flex items-center gap-3 p-3 rounded-xl glass hover:bg-white/10 transition-colors">
+                    <Camera className="w-5 h-5 text-cyan-400" />
+                    <span className="text-sm text-white">Tomar foto</span>
+                  </button>
+                  <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 p-3 rounded-xl glass hover:bg-white/10 transition-colors">
+                    <Upload className="w-5 h-5 text-cyan-400" />
+                    <span className="text-sm text-white">Subir desde galeria</span>
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
         <h2 className="text-xl font-bold text-white mt-3">{user?.name || 'Usuario'}</h2>
         <div className="flex items-center justify-center gap-2 mt-1">
           <span className={`text-xs px-2 py-0.5 rounded-full ${user?.isVerified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>

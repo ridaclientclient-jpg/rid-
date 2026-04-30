@@ -68,6 +68,7 @@ export default function ClientRide() {
   // ─── Fare Estimate ─────────────────────────────────
   const [fareEstimate, setFareEstimate] = useState<{price: number; distance: number; duration: number; eta: number} | null>(null);
   const [fareLoading, setFareLoading] = useState(false);
+  const [fareComparisons, setFareComparisons] = useState<Record<string, {price: number; priceFormatted: string; eta_min: number; duration: number}> | null>(null);
 
   useEffect(() => {
     if (originCoords && destCoords && !currentRide) {
@@ -75,23 +76,25 @@ export default function ClientRide() {
       const timer = setTimeout(async () => {
         setFareLoading(true);
         try {
-          const res = await fetch('/api/rides/fare-estimate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              originLat: originCoords.lat, originLng: originCoords.lng,
-              destLat: destCoords.lat, destLng: destCoords.lng,
-              rideType,
-            }),
-          });
+          // Fetch all ride type fares at once
+          const res = await fetch(`/api/rides/compare-fare?originLat=${originCoords.lat}&originLng=${originCoords.lng}&destLat=${destCoords.lat}&destLng=${destCoords.lng}`);
           const data = await res.json();
-          if (!cancelled && data.success) {
-            setFareEstimate({
-              price: data.estimated_price,
-              distance: data.estimated_distance,
-              duration: data.estimated_duration,
-              eta: data.eta_to_pickup,
-            });
+          if (!cancelled && data.success && data.comparisons) {
+            const compMap: Record<string, {price: number; priceFormatted: string; eta_min: number; duration: number}> = {};
+            for (const comp of data.comparisons) {
+              compMap[comp.type] = comp;
+            }
+            setFareComparisons(compMap);
+            // Also set fareEstimate for the selected ride type
+            const selected = compMap[rideType];
+            if (selected) {
+              setFareEstimate({
+                price: selected.price,
+                distance: 0,
+                duration: selected.duration,
+                eta: selected.eta_min,
+              });
+            }
           }
         } catch { /* ignore */ }
         if (!cancelled) setFareLoading(false);
@@ -99,8 +102,22 @@ export default function ClientRide() {
       return () => { cancelled = true; clearTimeout(timer); };
     } else if (!originCoords || !destCoords) {
       setFareEstimate(null);
+      setFareComparisons(null);
     }
-  }, [originCoords, destCoords, rideType, currentRide]);
+  }, [originCoords, destCoords, currentRide]);
+
+  // Update fareEstimate when rideType changes (from cached comparisons)
+  useEffect(() => {
+    if (fareComparisons && fareComparisons[rideType]) {
+      const sel = fareComparisons[rideType];
+      setFareEstimate({
+        price: sel.price,
+        distance: 0,
+        duration: sel.duration,
+        eta: sel.eta_min,
+      });
+    }
+  }, [rideType, fareComparisons]);
 
   // ─── Cancel with Fee ─────────────────────────────────
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -630,13 +647,13 @@ export default function ClientRide() {
   };
 
   const rideTypes = [
-    { id: 'standard', name: 'Economico', price: '₡1,500', time: '5 min', desc: '4 pasajeros', icon: Car, color: 'from-blue-600 to-cyan-500' },
-    { id: 'premium', name: 'Premium', price: '₡2,400', time: '3 min', desc: '4 pasajeros', icon: Car, color: 'from-purple-600 to-pink-500' },
-    { id: 'suv', name: 'SUV', price: '₡3,150', time: '7 min', desc: '6 pasajeros', icon: Car, color: 'from-amber-600 to-orange-500' },
-    { id: 'moto', name: 'Moto', price: '₡1,050', time: '2 min', desc: '1 pasajero', icon: Bike, color: 'from-green-600 to-emerald-500' },
-    { id: 'moto_express', name: 'Moto Express', price: '₡1,350', time: '1 min', desc: '1 pasajero - Envios', icon: Bike, color: 'from-red-600 to-rose-500' },
-    { id: 'grua', name: 'Grua', price: '₡4,500', time: '15 min', desc: 'Servicio de grua', icon: Truck, color: 'from-yellow-600 to-amber-500' },
-    { id: 'flete', name: 'Carro de Carga (Flete)', price: '₡5,250', time: '20 min', desc: 'Carga pesada', icon: Package, color: 'from-indigo-600 to-violet-500' },
+    { id: 'standard', name: 'Economico', price: fareComparisons?.standard?.priceFormatted ?? '---', time: fareComparisons?.standard ? `${fareComparisons.standard.eta_min} min` : '---', desc: '4 pasajeros', icon: Car, color: 'from-blue-600 to-cyan-500' },
+    { id: 'premium', name: 'Premium', price: fareComparisons?.premium?.priceFormatted ?? '---', time: fareComparisons?.premium ? `${fareComparisons.premium.eta_min} min` : '---', desc: '4 pasajeros', icon: Car, color: 'from-purple-600 to-pink-500' },
+    { id: 'suv', name: 'SUV', price: fareComparisons?.suv?.priceFormatted ?? '---', time: fareComparisons?.suv ? `${fareComparisons.suv.eta_min} min` : '---', desc: '6 pasajeros', icon: Car, color: 'from-amber-600 to-orange-500' },
+    { id: 'moto', name: 'Moto', price: fareComparisons?.moto?.priceFormatted ?? '---', time: fareComparisons?.moto ? `${fareComparisons.moto.eta_min} min` : '---', desc: '1 pasajero', icon: Bike, color: 'from-green-600 to-emerald-500' },
+    { id: 'moto_express', name: 'Moto Express', price: fareComparisons?.express?.priceFormatted ?? '---', time: fareComparisons?.express ? `${fareComparisons.express.eta_min} min` : '---', desc: '1 pasajero - Envios', icon: Bike, color: 'from-red-600 to-rose-500' },
+    { id: 'grua', name: 'Grua', price: fareComparisons?.xl?.priceFormatted ?? '---', time: fareComparisons?.xl ? `${fareComparisons.xl.eta_min} min` : '---', desc: 'Servicio de grua', icon: Truck, color: 'from-yellow-600 to-amber-500' },
+    { id: 'flete', name: 'Carro de Carga (Flete)', price: fareComparisons?.comfort?.priceFormatted ?? '---', time: fareComparisons?.comfort ? `${fareComparisons.comfort.eta_min} min` : '---', desc: 'Carga pesada', icon: Package, color: 'from-indigo-600 to-violet-500' },
   ];
 
   return (
@@ -1089,9 +1106,7 @@ export default function ClientRide() {
                 setPaymentMethod(method);
                 if (extra) setPaymentExtra(extra);
               }}
-              estimatedPrice={rideTypes.find(t => t.id === rideType)?.price
-                ? parseInt((rideTypes.find(t => t.id === rideType)?.price || '0').replace(/[^0-9]/g, ''))
-                : undefined}
+              estimatedPrice={fareEstimate?.price ?? undefined}
             />
 
             {/* Promo Code */}

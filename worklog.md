@@ -49,3 +49,21 @@ Stage Summary:
 - **Fix**: Created authenticated Supabase client with user's JWT token for DB queries in `/api/drivers/earnings-detail/route.ts`
 - **Build**: Successful, no errors
 - **Server**: Running, `/driver/earnings` returns 200
+---
+Task ID: 1-6
+Agent: Main Agent
+Task: Fix all 6 demo/fake data issues in client app
+
+Work Log:
+- Fix #1: Replaced hardcoded `recentPlaces` in client/page.tsx with real `useFavoritePlacesStore` data. Places now fetch from Supabase `favorite_places` table. Clicking a place uses `setPrefill()` to pre-fill destination in ride page. Empty state message shown when no places exist.
+- Fix #2: Fixed undefined `session` variable in client/page.tsx by destructuring it from `useAuthStore()`. Now passes `session?.access_token` to `RideRatingModal` for authenticated API calls.
+- Fix #3: Replaced hardcoded prices/ETAs in client/ride/page.tsx with dynamic data from `/api/rides/compare-fare` endpoint. Now fetches all ride type fares at once via `fareComparisons` state, updates individual type cards dynamically. `estimatedPrice` passed to `PaymentMethodSelector` now uses `fareEstimate?.price` directly.
+- Fix #4: Replaced camera "demo" toast in client/profile/page.tsx with real camera access (getUserMedia) + file upload fallback. Created avatar upload to Supabase Storage `avatars` bucket with profile update. Modal with "Take photo" and "Upload from gallery" options.
+- Fix #5: Connected placeholder buttons in profile to real pages: Notificaciones → `/client/notifications`, Seguridad → `/client/security` (new page), Términos → `/client/terms` (new page). Created `/client/security/page.tsx` (change password) and `/client/terms/page.tsx` (terms & conditions) following existing driver patterns.
+- Fix #6: Replaced "Objeto perdido" placeholder toast with navigation to `/client/support?topic=lost_item&ride={rideId}` so support chat gets context about the lost item and specific ride.
+
+Stage Summary:
+- All 6 issues fixed
+- 2 new pages created: /client/security and /client/terms
+- SQL provided for avatars storage bucket creation
+- Build successful, server running (HTTP 200)

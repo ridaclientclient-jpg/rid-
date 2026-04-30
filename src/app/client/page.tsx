@@ -6,12 +6,19 @@ import { MapPin, Clock, Star, Shield, ChevronRight, Zap, Car, Wallet, Bell, Head
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
 import { useRideStore } from '@/store/rideStore';
+import { useFavoritePlacesStore } from '@/store/favoritePlacesStore';
 import RideRatingModal from '@/components/RideRatingModal';
+import { useEffect } from 'react';
 
 export default function ClientHome() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const { currentRide, lastCompletedUnratedRide, markRideAsRated } = useRideStore();
+  const { places: favoritePlaces, isLoading: isLoadingPlaces, fetchPlaces, setPrefill } = useFavoritePlacesStore();
+
+  useEffect(() => {
+    if (user?.id) fetchPlaces(user.id);
+  }, [user?.id, fetchPlaces]);
 
   const quickActions = [
     { icon: Car, label: 'Pedir Viaje', desc: 'Transporte ahora', href: '/client/ride', color: 'from-blue-600 to-cyan-500' },
@@ -21,11 +28,9 @@ export default function ClientHome() {
     { icon: Headphones, label: 'Soporte', desc: '24/7 ayuda', href: '/client/support', color: 'from-amber-500 to-orange-500' },
   ];
 
-  const recentPlaces = [
-    { name: 'Casa', address: 'San José, Costa Rica', icon: '🏠' },
-    { name: 'Trabajo', address: 'Escazú, Costa Rica', icon: '🏢' },
-    { name: 'Gym', address: 'Santa Ana, Costa Rica', icon: '💪' },
-  ];
+  const recentPlaces = favoritePlaces.length > 0
+    ? favoritePlaces.map(p => ({ name: p.name, address: p.address, icon: p.icon, lat: p.lat, lng: p.lng }))
+    : [];
 
   return (
     <div className="p-4 space-y-6">
@@ -102,22 +107,32 @@ export default function ClientHome() {
         transition={{ delay: 0.3 }}
       >
         <h2 className="text-sm font-semibold text-gray-400 mb-3">Lugares Frecuentes</h2>
-        <div className="space-y-2">
-          {recentPlaces.map((place, i) => (
-            <button
-              key={i}
-              onClick={() => router.push('/client/ride')}
-              className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
-            >
-              <span className="text-xl">{place.icon}</span>
-              <div className="text-left">
-                <p className="text-sm font-medium text-white">{place.name}</p>
-                <p className="text-xs text-gray-500">{place.address}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-600 ml-auto" />
-            </button>
-          ))}
-        </div>
+        {recentPlaces.length > 0 ? (
+          <div className="space-y-2">
+            {recentPlaces.map((place, i) => (
+              <button
+                key={place.name + '-' + i}
+                onClick={() => {
+                  setPrefill(place.address, place.lat, place.lng, 'destination');
+                  router.push('/client/ride');
+                }}
+                className="w-full glass rounded-xl p-3 flex items-center gap-3 hover:bg-white/10 transition-colors"
+              >
+                <span className="text-xl">{place.icon}</span>
+                <div className="text-left flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white">{place.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{place.address}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="glass rounded-xl p-4 text-center">
+            <p className="text-xs text-gray-500">No tienes lugares guardados</p>
+            <p className="text-xs text-gray-600 mt-1">Los lugares se guardan automaticamente despues de un viaje</p>
+          </div>
+        )}
       </motion.div>
 
       {/* Ride Rating Modal — auto-shows after ride completion */}
@@ -128,7 +143,7 @@ export default function ClientHome() {
           driverName={lastCompletedUnratedRide.driverName}
           driverId={lastCompletedUnratedRide.driverId}
           userId={user.id}
-          session={session}
+          session={session?.access_token ?? null}
           onClose={() => markRideAsRated(lastCompletedUnratedRide.rideId)}
         />
       )}

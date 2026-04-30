@@ -351,9 +351,10 @@ function RideDetailsContent() {
       <div className="glass rounded-2xl overflow-hidden">
         <p className="text-xs font-semibold text-gray-400 p-4 pb-2">Ayuda y seguridad</p>
 
-        <button onClick={() => toast.info('Funcion disponible pronto')} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors">
+        <button onClick={() => router.push(`/client/support?topic=lost_item&ride=${ride.id}`)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors">
           <Package className="w-4 h-4 text-amber-400" />
           <span className="text-sm text-white flex-1 text-left">Encontre un objeto perdido</span>
+          <ChevronRight className="w-4 h-4 text-gray-600" />
         </button>
 
         <button onClick={() => router.push('/client/report')} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors">
