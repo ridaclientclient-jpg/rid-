@@ -320,32 +320,51 @@ function EmptyVendors() {
 
 function SignedProductImage({
   imagePath,
+  imageUrl,
   alt,
   className = '',
   fill = false,
   sizes,
 }: {
   imagePath: string | null | undefined;
+  imageUrl?: string | null;
   alt: string;
   className?: string;
   fill?: boolean;
   sizes?: string;
 }) {
   const [src, setSrc] = useState<string | null>(() => {
-    // Initialize to null — useEffect will fetch or show placeholder
+    // If imageUrl is a public URL (contains /object/public/), use it directly
+    if (imageUrl && imageUrl.includes('/object/public/')) return imageUrl;
     return null;
   });
 
   useEffect(() => {
-    if (!imagePath) return;
+    // If we already have a valid public URL, skip fetching
+    if (src) return;
+
+    if (!imagePath && !imageUrl) return;
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase.storage
-          .from('products')
-          .createSignedUrl(imagePath, 3600);
-        if (!cancelled && data?.signedUrl) {
-          setSrc(data.signedUrl);
+        if (imagePath) {
+          // Prefer public URL since the bucket is public
+          const { data: publicData } = supabase.storage
+            .from('products')
+            .getPublicUrl(imagePath);
+          if (!cancelled && publicData?.publicUrl) {
+            setSrc(publicData.publicUrl);
+            return;
+          }
+        }
+        if (imageUrl) {
+          // Try signed URL as fallback
+          const { data } = await supabase.storage
+            .from('products')
+            .createSignedUrl(imageUrl.startsWith('products/') ? imageUrl : `products/${imageUrl}`, 3600);
+          if (!cancelled && data?.signedUrl) {
+            setSrc(data.signedUrl);
+          }
         }
       } catch {
         // Silently fail — placeholder will show
@@ -354,7 +373,7 @@ function SignedProductImage({
     return () => {
       cancelled = true;
     };
-  }, [imagePath]);
+  }, [imagePath, imageUrl]);
 
   if (!src) {
     return (
@@ -517,7 +536,7 @@ function ProductCard({
   onAddToCart,
   cartQty,
 }: {
-  product: Product & { vendor_name: string };
+  product: Product & { vendor_name: string; image_path?: string | null };
   index: number;
   onSelect: () => void;
   onAddToCart: () => void;
@@ -538,7 +557,8 @@ function ProductCard({
         className="aspect-square relative overflow-hidden cursor-pointer"
       >
         <SignedProductImage
-          imagePath={product.image_url}
+          imagePath={product.image_path}
+          imageUrl={product.image_url}
           alt={product.name}
           fill
           sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
@@ -674,16 +694,23 @@ function ProductDetailModal({
   onBuyNow,
   buying,
   onClose,
+  allProducts,
 }: {
-  product: Product & { vendor_name: string };
+  product: Product & { vendor_name: string; image_path?: string | null };
   quantity: number;
   setQuantity: (q: number) => void;
   onAddToCart: () => void;
   onBuyNow: () => void;
   buying: boolean;
   onClose: () => void;
+  allProducts?: (Product & { vendor_name: string; image_path?: string | null })[];
 }) {
   const lineTotal = product.price * quantity;
+
+  // Other products from the same vendor
+  const sameVendorProducts = (allProducts || [])
+    .filter(p => p.vendor_id === product.vendor_id && p.id !== product.id)
+    .slice(0, 6);
 
   return (
     <motion.div
@@ -723,7 +750,8 @@ function ProductDetailModal({
         {/* Image */}
         <div className="relative aspect-[4/3] overflow-hidden">
           <SignedProductImage
-            imagePath={product.image_url}
+            imagePath={product.image_path}
+            imageUrl={product.image_url}
             alt={product.name}
             fill
             sizes="100vw"
@@ -898,6 +926,42 @@ function ProductDetailModal({
               </motion.button>
             </div>
           )}
+
+          {/* More products from same vendor */}
+          {sameVendorProducts.length > 0 && (
+            <div className="pt-3 border-t border-white/5">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Store className="w-4 h-4 text-orange-400" />
+                Mas de {product.vendor_name}
+              </h3>
+              <div className="flex gap-2.5 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {sameVendorProducts.map(p => (
+                  <div
+                    key={p.id}
+                    className="flex-shrink-0 w-[100px] glass rounded-xl overflow-hidden cursor-pointer hover:bg-white/5 transition-colors"
+                    onClick={() => {
+                      setSelectedProduct(p);
+                      setSelectedQty(1);
+                    }}
+                  >
+                    <div className="aspect-square relative overflow-hidden">
+                      <SignedProductImage
+                        imagePath={p.image_path}
+                        imageUrl={p.image_url}
+                        alt={p.name}
+                        fill
+                        sizes="100px"
+                      />
+                    </div>
+                    <div className="p-2">
+                      <p className="text-[10px] text-white truncate">{p.name}</p>
+                      <p className="text-[10px] font-bold text-orange-400">{formatCRC(p.price)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
     </motion.div>
@@ -1044,7 +1108,7 @@ export default function ClientMarketPage() {
     (Vendor & { product_count: number })[]
   >([]);
   const [products, setProducts] = useState<
-    (Product & { vendor_name: string })[]
+    (Product & { vendor_name: string; image_path?: string | null })[]
   >([]);
   const [banners, setBanners] = useState<{
     id: string;
@@ -1066,7 +1130,7 @@ export default function ClientMarketPage() {
   );
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<
-    (Product & { vendor_name: string }) | null
+    (Product & { vendor_name: string; image_path?: string | null }) | null
   >(null);
   const [selectedQty, setSelectedQty] = useState(1);
   const [buying, setBuying] = useState(false);
@@ -1078,6 +1142,35 @@ export default function ClientMarketPage() {
 
   // Delivery address
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [gettingLocation, setGettingLocation] = useState(false);
+
+  /* ── Get user GPS location ──────────────────────────── */
+  const useMyLocationForDelivery = async () => {
+    if (!navigator.geolocation) {
+      toast.error('GPS no disponible en este dispositivo');
+      return;
+    }
+    setGettingLocation(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 60000
+        });
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      // Reverse geocode using Nominatim (free)
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=es`);
+      const data = await res.json();
+      const address = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      handleAddressChange(address);
+      toast.success('Ubicacion detectada');
+    } catch {
+      toast.error('No se pudo obtener tu ubicacion');
+    } finally {
+      setGettingLocation(false);
+    }
+  };
 
   /* ── Load delivery address from localStorage ────────── */
   useEffect(() => {
@@ -1157,7 +1250,7 @@ export default function ClientMarketPage() {
         const { data: prodData, error: prodErr } = await supabase
           .from('products')
           .select(
-            'id, vendor_id, name, description, price, category, image_url, in_stock, stock_quantity, is_featured, avg_rating, vendors(store_name)'
+            'id, vendor_id, name, description, price, category, image_url, image_path, in_stock, stock_quantity, is_featured, avg_rating, vendors(store_name)'
           );
 
         // Fetch active banners for the client app
@@ -1182,7 +1275,7 @@ export default function ClientMarketPage() {
         }
 
         if (!prodErr && prodData) {
-          const mapped: (Product & { vendor_name: string })[] = prodData.map(
+          const mapped: (Product & { vendor_name: string; image_path?: string | null })[] = prodData.map(
             (p: Record<string, unknown>) => ({
               id: p.id as string,
               vendor_id: p.vendor_id as string,
@@ -1191,6 +1284,7 @@ export default function ClientMarketPage() {
               price: Number(p.price),
               category: (p.category as string) || 'General',
               image_url: (p.image_url as string) || null,
+              image_path: (p.image_path as string) || null,
               in_stock: p.in_stock as boolean,
               stock_quantity: p.stock_quantity as number | undefined,
               is_featured: p.is_featured as boolean | undefined,
@@ -1303,7 +1397,7 @@ export default function ClientMarketPage() {
   }, []);
 
   const handleAddToCart = useCallback(
-    (product: Product & { vendor_name: string }, qty = 1) => {
+    (product: Product & { vendor_name: string; image_path?: string | null }, qty = 1) => {
       for (let i = 0; i < qty; i++) {
         addItem({
           id: product.id,
@@ -1327,7 +1421,7 @@ export default function ClientMarketPage() {
 
   /* ── Buy now flow ────────────────────────────────────── */
   const handleBuyNow = useCallback(
-    async (product: Product & { vendor_name: string }, qty: number) => {
+    async (product: Product & { vendor_name: string; image_path?: string | null }, qty: number) => {
       if (!user?.id) {
         toast.error('Inicia sesión para hacer un pedido');
         return;
@@ -1514,6 +1608,19 @@ export default function ClientMarketPage() {
             />
           )}
         </div>
+        <button
+          type="button"
+          onClick={useMyLocationForDelivery}
+          disabled={gettingLocation}
+          className="flex-shrink-0 w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center hover:bg-orange-500/25 transition-colors disabled:opacity-50"
+          title="Usar mi ubicacion"
+        >
+          {gettingLocation ? (
+            <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
+          ) : (
+            <MapPin className="w-4 h-4 text-orange-400" />
+          )}
+        </button>
       </motion.div>
 
       {/* ── Header ──────────────────────────────────────────────────── */}
@@ -1735,7 +1842,8 @@ export default function ClientMarketPage() {
                   }}
                 >
                   <SignedProductImage
-                    imagePath={product.image_url}
+                    imagePath={product.image_path}
+                    imageUrl={product.image_url}
                     alt={product.name}
                     fill
                     sizes="150px"
@@ -2146,6 +2254,7 @@ export default function ClientMarketPage() {
               setSelectedProduct(null);
               setSelectedQty(1);
             }}
+            allProducts={products}
           />
         )}
       </AnimatePresence>
