@@ -289,7 +289,7 @@ export default function DriverRewards() {
             <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
             <span className="text-[10px] text-gray-500">Rating promedio</span>
           </div>
-          <p className="text-xl font-bold text-white">{rating > 0 ? rating.toFixed(2) : '5.00'}</p>
+          <p className="text-xl font-bold text-white">{rating > 0 ? rating.toFixed(2) : '\u2014'}</p>
         </div>
         <div className="glass rounded-xl p-3.5">
           <div className="flex items-center gap-2 mb-1.5">

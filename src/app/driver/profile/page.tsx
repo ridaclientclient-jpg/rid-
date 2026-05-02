@@ -138,7 +138,7 @@ export default function DriverProfile() {
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-2xl font-bold text-white">
               {user?.name?.charAt(0) || 'C'}
             </div>
-            <button onClick={() => toast.info('Funcion de camara no disponible en demo')} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center border-2 border-rida-dark">
+            <button onClick={() => toast.info('Funcion de camara en desarrollo')} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center border-2 border-rida-dark">
               <Camera className="w-3 h-3 text-white" />
             </button>
           </div>
@@ -155,7 +155,7 @@ export default function DriverProfile() {
             <div className="flex items-center gap-1.5 mt-1">
               <div className="flex items-center gap-0.5 bg-black/40 px-2 py-0.5 rounded-full">
                 <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                <span className="text-xs font-bold text-white">{rating > 0 ? rating.toFixed(2) : '5.00'}</span>
+                <span className="text-xs font-bold text-white">{rating > 0 ? rating.toFixed(2) : '\u2014'}</span>
               </div>
               {user?.isVerified && (
                 <span className="flex items-center gap-0.5 text-[10px] text-emerald-400">

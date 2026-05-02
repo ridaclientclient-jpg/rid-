@@ -672,7 +672,7 @@ export default function DriverHome() {
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1 bg-amber-500/20 px-2 py-0.5 rounded-full">
                   <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  <span className="text-[11px] font-bold text-amber-400">{rating > 0 ? rating.toFixed(2) : '5.00'}</span>
+                  <span className="text-[11px] font-bold text-amber-400">{rating > 0 ? rating.toFixed(2) : '\u2014'}</span>
                 </div>
                 <span className="text-[10px] text-gray-500">{driver?.total_rides || 0} viajes</span>
               </div>

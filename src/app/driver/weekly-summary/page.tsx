@@ -107,19 +107,6 @@ function formatDateShort(d: Date): string {
   return d.toLocaleDateString('es-CR', { day: 'numeric', month: 'short' });
 }
 
-function distributeEarnings(total: number, activeDays: number): number[] {
-  if (total <= 0 || activeDays <= 0) return new Array(7).fill(0);
-  const weights = [1.0, 0.85, 0.9, 0.95, 1.3, 1.5, 1.1]; // Mon-Sun weights
-  const avgPerDay = total / activeDays;
-  const result = weights.map((w) => Math.round(avgPerDay * w));
-  // Spread across only activeDays
-  const activeSlots: number[] = [];
-  for (let i = 0; i < 7; i++) {
-    if (i < activeDays) activeSlots.push(i);
-  }
-  return result.map((v, i) => (activeSlots.includes(i) ? v : 0));
-}
-
 // ─── Comparison Badge Component ──────────────────────────
 function ComparisonBadge({ current, previous, invert = false }: { current: number; previous: number; invert?: boolean }) {
   if (previous === 0 && current === 0) {
@@ -246,30 +233,9 @@ export default function WeeklySummaryPage() {
       setCurrentWeek(currentData);
       setPreviousWeek(previousData);
 
-      // Generate daily earnings distribution from current week data
-      if (currentData) {
-        const daily = distributeEarnings(
-          currentData.total_earnings,
-          currentData.active_days,
-        );
-        setDailyEarnings(
-          DAY_LABELS.map((day, i) => ({
-            day: DAY_FULL[i],
-            shortDay: day,
-            earnings: daily[i],
-          })),
-        );
-
-        // Estimate average duration: ~2.5 min per km at avg speed
-        const totalKm = currentData.total_distance_km || 0;
-        const totalRides = currentData.total_rides || 0;
-        if (totalKm > 0 && totalRides > 0) {
-          const kmPerRide = totalKm / totalRides;
-          setAvgDuration(Math.round(kmPerRide * 2.5 + 5)); // base 5 min pickup
-        } else {
-          setAvgDuration(0);
-        }
-      }
+      // Daily earnings: only show if there are real daily breakdowns from the API
+      // Currently the API returns a weekly total, so we show the total without faking daily data
+      setDailyEarnings([]);
     } finally {
       setLoading(false);
     }
@@ -640,6 +606,13 @@ export default function WeeklySummaryPage() {
         </div>
 
         <div className="space-y-3">
+          {dailyEarnings.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-sm text-gray-500">Sin datos diarios disponibles</p>
+              <p className="text-xs text-gray-600 mt-1">Los datos apareceran al completar viajes</p>
+            </div>
+          ) : (
+          <>
           {dailyEarnings.map((day, i) => {
             const heightPercent = maxDailyEarning > 0 ? (day.earnings / maxDailyEarning) * 100 : 0;
             const isHighest = day.earnings === maxDailyEarning && day.earnings > 0;
@@ -696,6 +669,8 @@ export default function WeeklySummaryPage() {
               </div>
             );
           })}
+          </>
+          )}
         </div>
 
         {/* Legend */}
@@ -940,7 +915,7 @@ export default function WeeklySummaryPage() {
             </p>
             <p className="text-[9px] text-gray-400 mt-1">Calificacion</p>
             <p className="text-xs font-bold text-white">
-              {displayData.avg_rating.toFixed(1)}
+              {displayData.avg_rating > 0 ? displayData.avg_rating.toFixed(1) : '\u2014'}
             </p>
           </div>
           <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/15">

@@ -70,7 +70,7 @@ export async function GET(request: Request) {
         total_earnings: summary.total_earnings ?? 0,
         total_tips: summary.total_tips ?? 0,
         total_distance_km: summary.total_distance_km ?? 0,
-        avg_rating: summary.avg_rating ?? driver.rating ?? 5.0,
+        avg_rating: summary.avg_rating ?? driver.rating ?? 0,
         acceptance_rate: summary.acceptance_rate ?? 100,
         cancellation_rate: summary.cancellation_rate ?? 0,
         active_days: summary.active_days ?? 0,
