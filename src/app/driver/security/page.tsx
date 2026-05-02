@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Lock, Eye, EyeOff, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 
 export default function DriverSecurity() {
@@ -36,6 +37,21 @@ export default function DriverSecurity() {
 
     setIsLoading(true);
     try {
+      // Verify current password by re-authenticating
+      const { data: sessionData } = await supabase.auth.getSession();
+      const email = sessionData?.session?.user?.email;
+      if (!email) { toast.error('No se pudo obtener el correo de la sesion'); return; }
+
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+      if (verifyError) {
+        toast.error('La contrasena actual es incorrecta');
+        setIsLoading(false);
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) {
         if (error.message.includes('Invalid login credentials') || error.message.includes('Credentials')) {

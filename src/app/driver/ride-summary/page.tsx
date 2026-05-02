@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -32,7 +33,7 @@ interface RideData {
   rider_name?: string;
 }
 
-export default function RideSummary() {
+function RideSummary() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuthStore();
@@ -249,5 +250,17 @@ export default function RideSummary() {
         </button>
       </motion.div>
     </div>
+  );
+}
+
+export default function RideSummaryPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-[calc(100vh-120px)]">
+        <div className="w-10 h-10 border-3 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+      </div>
+    }>
+      <RideSummary />
+    </Suspense>
   );
 }

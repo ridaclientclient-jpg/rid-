@@ -138,9 +138,26 @@ export default function DriverProfile() {
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-2xl font-bold text-white">
               {user?.name?.charAt(0) || 'C'}
             </div>
-            <button onClick={() => toast.info('Funcion de camara en desarrollo')} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center border-2 border-rida-dark">
+            <label className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center border-2 border-rida-dark cursor-pointer hover:bg-cyan-400 transition-colors">
               <Camera className="w-3 h-3 text-white" />
-            </button>
+              <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) { toast.error('La imagen no puede superar 5MB'); return; }
+                try {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  formData.append('userId', user?.id || '');
+                  formData.append('type', 'avatar');
+                  const res = await fetch('/api/drivers/upload-document', { method: 'POST', body: formData });
+                  const data = await res.json();
+                  if (res.ok && data.url) {
+                    toast.success('Foto de perfil actualizada');
+                    useAuthStore.getState().updateProfile({ avatar: data.url });
+                  } else { toast.error(data.error || 'Error al subir imagen'); }
+                } catch { toast.error('Error al subir imagen'); }
+              }} />
+            </label>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -189,7 +206,7 @@ export default function DriverProfile() {
           <div className="flex items-center justify-between mt-1.5">
             <span className="text-[10px] text-gray-500">Manten tu calificacion 4.85+</span>
             <button
-              onClick={() => toast.info('Funcion de beneficios proximamente')}
+              onClick={() => router.push('/driver/rewards')}
               className="text-[10px] text-cyan-400 font-medium hover:underline"
             >
               Ver beneficios

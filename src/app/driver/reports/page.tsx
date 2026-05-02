@@ -59,7 +59,7 @@ export default function DriverReports() {
   const [loading, setLoading] = useState(true);
   const [expandedWeek, setExpandedWeek] = useState<string | null>(null);
 
-  const maxEarnings = Math.max(...reports.map(r => r.net_earnings || 0), 1);
+  const maxEarnings = reports.length > 0 ? Math.max(...reports.map(r => r.net_earnings || 0), 1) : 1;
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;

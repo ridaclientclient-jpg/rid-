@@ -118,7 +118,8 @@ export default function DriverReferrals() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, referralCode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
