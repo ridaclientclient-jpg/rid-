@@ -25,6 +25,16 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+
+    // Auto-reload on chunk load errors (stale cache after deploy)
+    const isChunkError =
+      error.name === 'ChunkLoadError' ||
+      (error.message && error.message.includes('Loading chunk')) ||
+      (error.message && error.message.includes('Failed to load chunk'));
+
+    if (isChunkError) {
+      window.location.reload();
+    }
   }
 
   handleReset = () => {
