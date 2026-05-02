@@ -219,13 +219,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } else if (event === 'SIGNED_OUT') {
         // Skip if logout was already handled manually (prevents double state change)
         if ((get() as any)._isLoggingOut) return;
-        set({
-          user: null,
-          supaUser: null,
-          session: null,
-          isAuthenticated: false,
-          isLoading: false,
-        });
+        // Try to recover session before clearing state — sometimes SIGNED_OUT fires
+        // spuriously during token refresh on mobile browsers
+        if (get().isAuthenticated) {
+          console.warn('[AuthStore] SIGNED_OUT received while authenticated, attempting session recovery...');
+          supabase.auth.getSession().then(({ data: { session: recoveredSession } }) => {
+            if (recoveredSession) {
+              console.log('[AuthStore] Session recovered after SIGNED_OUT event');
+              set({ supaUser: recoveredSession.user, session: recoveredSession, isAuthenticated: true });
+            } else {
+              // Session truly gone — clear state
+              set({ user: null, supaUser: null, session: null, isAuthenticated: false, isLoading: false });
+            }
+          }).catch(() => {
+            set({ user: null, supaUser: null, session: null, isAuthenticated: false, isLoading: false });
+          });
+        } else {
+          set({ user: null, supaUser: null, session: null, isAuthenticated: false, isLoading: false });
+        }
       }
     });
     })()

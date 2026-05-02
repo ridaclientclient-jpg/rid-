@@ -71,18 +71,44 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
     checkBlocked();
   }, [checked, isAuthenticated, user?.id, authPage, router]);
 
-  // Redirect unauthenticated users to login (only once)
+  // Track if user was ever authenticated to prevent premature redirect on brief auth loss
+  const wasAuthenticatedRef = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated) wasAuthenticatedRef.current = true;
+  }, [isAuthenticated]);
+
+  // Redirect unauthenticated users to login — with session recovery attempt
   const redirectAttemptedRef = useRef(false);
+  const recoveryAttemptedRef = useRef(false);
   useEffect(() => {
     if (!checked || isBlocked) return;
     if (redirectAttemptedRef.current) return;
 
     if (!isAuthenticated && authPage) {
       if (pathname === authPage) return;
+
+      // If user was previously authenticated, try to recover session before redirecting
+      if (wasAuthenticatedRef.current && !recoveryAttemptedRef.current) {
+        recoveryAttemptedRef.current = true;
+        console.log('[AuthGuard] Session lost, attempting recovery...');
+        initAuth().then(() => {
+          // If initAuth recovered the session, isAuthenticated will be true → no redirect
+          if (!useAuthStore.getState().isAuthenticated) {
+            // Recovery failed — redirect now
+            redirectAttemptedRef.current = true;
+            router.replace(authPage);
+          }
+        }).catch(() => {
+          redirectAttemptedRef.current = true;
+          router.replace(authPage);
+        });
+        return;
+      }
+
       redirectAttemptedRef.current = true;
       router.replace(authPage);
     }
-  }, [checked, isAuthenticated, isBlocked, router, authPage, pathname]);
+  }, [checked, isAuthenticated, isBlocked, router, authPage, pathname, initAuth]);
 
   // Show blocked screen
   if (isBlocked) {

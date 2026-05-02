@@ -188,8 +188,8 @@ export default function WeeklySummaryPage() {
     async (offset: number) => {
       const accessToken = session?.access_token;
       if (!accessToken) {
-        toast.error('Sesion expirada. Inicia sesion de nuevo.');
-        router.push('/driver/login');
+        // Don't redirect — let AuthGuard handle auth. Just return null.
+        console.warn('[WeeklySummary] No access token available, skipping fetch');
         return null;
       }
 

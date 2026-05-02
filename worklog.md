@@ -212,3 +212,24 @@ Stage Summary:
 - No new issues found during re-audit
 - All 23+ pages confirmed working with real Supabase data or appropriate empty states
 - Total buttons reviewed: 100+
+---
+Task ID: 1
+Agent: main
+Task: Fix driver app trip panel redirecting to login screen
+
+Work Log:
+- Investigated the auth flow: AuthGuard → initAuth → Supabase getSession → onAuthStateChange
+- Identified 3 root causes for premature login redirect:
+  1. AuthGuard redirects immediately when isAuthenticated becomes false without attempting session recovery
+  2. weekly-summary page has its own independent redirect to /driver/login (bypasses AuthGuard)
+  3. onAuthStateChange SIGNED_OUT handler immediately clears auth state without trying to recover session
+- Fixed AuthGuard: Added wasAuthenticatedRef to track prior auth state; when session is lost, attempts initAuth() recovery before redirecting
+- Fixed authStore onAuthStateChange SIGNED_OUT: Now calls getSession() to verify session is truly gone before clearing state
+- Fixed weekly-summary page: Removed independent router.push('/driver/login'), now logs warning and returns null (AuthGuard handles auth)
+- Verified build compiles successfully
+- Server already running on port 3000, responding with 200
+
+Stage Summary:
+- 3 files modified: AuthGuard.tsx, authStore.ts, weekly-summary/page.tsx
+- Key improvement: Session recovery mechanism prevents premature logout on brief auth interruptions
+- Build passes, server responding normally
