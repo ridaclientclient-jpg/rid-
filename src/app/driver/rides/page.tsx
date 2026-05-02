@@ -163,7 +163,7 @@ export default function DriverRides() {
       const { data } = await supabase.from('profiles').select('name, phone').eq('id', riderId).single();
       if (data) {
         const { data: reviews } = await supabase.from('reviews').select('rating').eq('reviewee_id', riderId);
-        const avg = reviews && reviews.length > 0 ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length : 5.0;
+        const avg = reviews && reviews.length > 0 ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length : 0;
         setRiderProfile({ name: data.name, phone: data.phone || '', rating: Math.round(avg * 10) / 10 });
       }
     } catch {}
@@ -789,7 +789,7 @@ export default function DriverRides() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="glass rounded-xl p-2 text-center"><p className="text-xs text-gray-500">Precio</p><p className="text-sm font-bold text-white">₡{activeRide.price.toLocaleString()}</p></div>
                 <div className="glass rounded-xl p-2 text-center"><p className="text-xs text-gray-500">Distancia</p><p className="text-sm font-bold text-white">{activeRide.distance || 0} km</p></div>
-                <div className="glass rounded-xl p-2 text-center"><p className="text-xs text-gray-500">Pasajero</p><p className="text-sm font-bold text-white flex items-center justify-center gap-1"><Star className="w-3 h-3 text-amber-400 fill-amber-400" />{riderProfile?.rating?.toFixed(1) || '5.0'}</p></div>
+                <div className="glass rounded-xl p-2 text-center"><p className="text-xs text-gray-500">Pasajero</p><p className="text-sm font-bold text-white flex items-center justify-center gap-1"><Star className="w-3 h-3 text-amber-400 fill-amber-400" />{riderProfile?.rating && riderProfile.rating > 0 ? riderProfile.rating.toFixed(1) : '\u2014'}</p></div>
               </div>
               <div className="flex gap-3">
                 {currentAction ? (

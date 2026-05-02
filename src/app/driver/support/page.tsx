@@ -48,9 +48,9 @@ const faqItems = [
 ];
 
 const contactOptions = [
-  { icon: MessageSquare, label: 'Chat en vivo', desc: 'Respuesta inmediata', color: 'text-cyan-400 bg-cyan-500/20', action: () => window.location.href = '/driver/support/chat' },
-  { icon: Phone, label: 'WhatsApp', desc: '+506 8783-8329', color: 'text-emerald-400 bg-emerald-500/20', action: () => window.open('https://wa.me/50687838329', '_blank') },
-  { icon: Mail, label: 'Email', desc: 'soporte@rida.app', color: 'text-blue-400 bg-blue-500/20', action: () => window.open('mailto:soporte@rida.app', '_blank') },
+  { icon: MessageSquare, label: 'Chat en vivo', desc: 'Respuesta inmediata', color: 'text-cyan-400 bg-cyan-500/20', href: '/driver/support/chat' },
+  { icon: Phone, label: 'WhatsApp', desc: '+506 8783-8329', color: 'text-emerald-400 bg-emerald-500/20', href: 'https://wa.me/50687838329' },
+  { icon: Mail, label: 'Email', desc: 'soporte@rida.app', color: 'text-blue-400 bg-blue-500/20', href: 'mailto:soporte@rida.app' },
 ];
 
 const quickLinks = [
@@ -193,7 +193,13 @@ export default function DriverSupport() {
         {contactOptions.map((item, i) => (
           <button
             key={i}
-            onClick={item.action}
+            onClick={() => {
+              if (item.href.startsWith('/')) {
+                router.push(item.href);
+              } else {
+                window.open(item.href, '_blank');
+              }
+            }}
             className="glass rounded-xl p-3 flex flex-col items-center gap-2 hover:bg-white/5 transition-colors"
           >
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}>

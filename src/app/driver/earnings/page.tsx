@@ -339,7 +339,7 @@ export default function DriverEarnings() {
 
       if (wallet) {
         setWalletBalance(wallet.balance || 0);
-        setBonuses(wallet.total_earnings ? wallet.total_earnings * 0.05 : 0);
+        setBonuses(0); // Bonos reales deben venir de la DB cuando se implementen
         setWalletId(wallet.id);
       }
 

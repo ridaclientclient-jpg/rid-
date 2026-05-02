@@ -106,3 +106,56 @@ Stage Summary:
 - Emergency contacts CRUD should now work (RLS bypass via JWT user client)
 - Camera uses native capture input as primary method (mobile-friendly)
 
+
+---
+Task ID: 2-b
+Agent: Super Z (Main)
+Task: Full audit of driver app - fix fake data, bugs, and broken logic
+
+Work Log:
+- Read ALL 23 driver page files and API routes systematically
+- Investigated each file for: fake data, demo values, hardcoded numbers, broken logic, session loss, missing Supabase queries
+- Identified 4 issues requiring fixes (from critical to medium priority)
+
+FIX 1 (CRITICAL): driver/rewards/page.tsx line 118
+  - Problem: `const rating = driver?.rating || 5.0;` — shows fake 5.0 rating when driver has no reviews
+  - Fix: Changed fallback from 5.0 to 0 — `const rating = driver?.rating || 0;`
+  - Display already checks `rating > 0` showing "—" for 0, so no visual change for drivers without ratings
+
+FIX 2 (CRITICAL): driver/rides/page.tsx lines 166 and 792
+  - Problem 1: Rider rating calculated as `5.0` fallback when no reviews exist
+  - Problem 2: Rider rating display shows hardcoded `'5.0'` when profile rating is undefined
+  - Fix 1: Changed fallback from 5.0 to 0 — `reviews.length > 0 ? ... : 0`
+  - Fix 2: Changed display from `|| '5.0'` to conditional `riderProfile?.rating && riderProfile.rating > 0 ? riderProfile.rating.toFixed(1) : '—'`
+
+FIX 3 (HIGH): driver/support/page.tsx line 51
+  - Problem: `window.location.href = '/driver/support/chat'` causes full page reload, losing Supabase session
+  - Fix: Changed contactOptions from action functions to href strings; onClick handler now uses `router.push()` for internal routes and `window.open()` for external links
+  - Note: contactOptions is defined at module scope (outside component), so `router` was not available; restructured to use `href` property with conditional navigation in the component
+
+FIX 4 (MEDIUM): driver/earnings/page.tsx line 342
+  - Problem: `setBonuses(wallet.total_earnings ? wallet.total_earnings * 0.05 : 0)` — fabricated 5% bonus calculation displayed as real data
+  - Fix: Changed to `setBonuses(0)` — bonuses will show ₡0 until a real bonus tracking system is implemented in the DB
+  - Comment added explaining the change
+
+NOT TOUCHED (working correctly):
+- driver/page.tsx — rating uses `driver?.rating || 0` with `rating > 0 ? rating.toFixed(2) : '—'` display — CORRECT
+- driver/profile/page.tsx — rating uses `driver?.rating || 0` with `rating > 0 ? rating.toFixed(2) : '—'` display — CORRECT
+- driver/weekly-summary/page.tsx — daily earnings set to empty array (no fake data), duration from API — CORRECT
+- driver/earnings/page.tsx — weekly chart data from real rides in Supabase — CORRECT
+- driver/verification/page.tsx — real camera/upload to Supabase Storage — CORRECT
+- driver/vehicle/page.tsx — CRUD from Supabase — CORRECT
+- driver/ride-rating/page.tsx — submits to Supabase reviews table — CORRECT
+- driver/ride-summary/page.tsx — all data from Supabase — CORRECT
+- driver/login/page.tsx — real auth via Supabase — CORRECT
+- driver/notifications/page.tsx — real notifications from Supabase — CORRECT
+- driver/referrals/page.tsx — real data from Supabase — CORRECT
+- driver/reports/page.tsx — real data from Supabase RPC — CORRECT
+- driver/maintenance/page.tsx — uses VehicleMaintenance component — CORRECT
+- driver/layout.tsx — AuthGuard, real nav, real notifications count — CORRECT
+
+Stage Summary:
+- 4 fixes applied across 4 files (rewards, rides, support, earnings)
+- No new TypeScript errors introduced by fixes
+- All other 19 driver pages confirmed working correctly with real Supabase data
+- Policy maintained: "Sin datos demo, sin fake, sin mock, sin placeholder que parezca dato real. Todo debe venir de Supabase o estar vacío."

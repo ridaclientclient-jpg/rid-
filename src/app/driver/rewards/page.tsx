@@ -115,7 +115,7 @@ export default function DriverRewards() {
   const [dbLevels, setDbLevels] = useState<RewardLevel[]>([]);
 
   const totalRides = driver?.total_rides || 0;
-  const rating = driver?.rating || 5.0;
+  const rating = driver?.rating || 0;
   const totalEarnings = driver?.total_earnings || 0;
 
   const currentLevelIndex = getDriverLevelIndex(totalRides);
