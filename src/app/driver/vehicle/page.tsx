@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Car, Bike, Truck, Check, Plus, Pencil, Trash2, Save, X, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase, type Vehicle, type Driver } from '@/lib/supabase';
@@ -24,6 +25,7 @@ const serviceModeOptions: { id: ServiceMode; label: string; desc: string }[] = [
 
 export default function VehicleManagement() {
   const { user } = useAuthStore();
+  const router = useRouter();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [driver, setDriver] = useState<Driver | null>(null);
   const [loading, setLoading] = useState(true);
@@ -447,7 +449,8 @@ export default function VehicleManagement() {
           Despues de registrar tu vehiculo, debes subir las fotos del mismo en la seccion de Verificacion para completar el proceso. Las fotos deben mostrar la placa claramente visible.
         </p>
         <button
-          onClick={() => window.location.href = '/driver/verification'}
+          type="button"
+          onClick={() => router.push('/driver/verification')}
           className="mt-2 text-xs text-cyan-400 font-medium hover:underline"
         >
           Ir a Verificacion
