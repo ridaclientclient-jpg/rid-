@@ -77,13 +77,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const handleLogout = async () => {
     try {
+      // 1. Clear Supabase session
       await logout();
+      
+      // 2. Clear all local storage just in case
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+      
       toast.success('Sesión cerrada');
+      
+      // 3. Force hard reload to login page
+      window.location.replace('/admin/login');
     } catch (err) {
       console.error('Logout error:', err);
+      // Fallback redirect
+      window.location.href = '/admin/login';
     }
-    // Force full page navigation to ensure clean state
-    window.location.href = '/admin/login';
   };
 
   const isActive = (href: string) => {

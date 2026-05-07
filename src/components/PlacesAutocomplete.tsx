@@ -197,11 +197,11 @@ export default function PlacesAutocomplete({
         />
       </div>
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-[#0d1220]/[0.97] backdrop-blur-xl rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar border border-white/10 shadow-2xl shadow-black/50">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-sky-950/95 rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar border border-sky-500/30 shadow-2xl shadow-black/70">
           {userLocation && (
-            <div className="px-4 py-2 border-b border-white/5 flex items-center gap-1.5">
-              <Navigation className="w-3 h-3 text-cyan-400" />
-              <span className="text-[10px] text-cyan-400 font-medium">
+            <div className="px-4 py-2 border-b border-sky-500/20 flex items-center gap-1.5 bg-sky-950/95">
+              <Navigation className="w-3 h-3 text-sky-300" />
+              <span className="text-[10px] text-sky-200 font-medium">
                 Resultados cerca de tu ubicacion
               </span>
             </div>
@@ -212,8 +212,8 @@ export default function PlacesAutocomplete({
               onMouseDown={() => handleSelect(s)}
               className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                 i === selectedIndex
-                  ? 'bg-cyan-500/20 text-cyan-300'
-                  : 'text-gray-300 hover:bg-white/10'
+                  ? 'bg-sky-700 text-white'
+                  : 'text-white hover:bg-sky-800/80'
               }`}
             >
               <div className="flex items-start gap-2">
@@ -222,7 +222,7 @@ export default function PlacesAutocomplete({
               </div>
               {/* Show secondary text (matched substring) */}
               {s.structured_formatting?.secondary_text && (
-                <p className="text-[10px] text-gray-600 ml-5 truncate mt-0.5">
+                <p className="text-[10px] text-sky-200 ml-5 truncate mt-0.5">
                   {s.structured_formatting.secondary_text}
                 </p>
               )}

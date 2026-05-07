@@ -9,7 +9,8 @@ import {
   Filter, Sparkles, Eye, EyeOff, UploadCloud, FileSpreadsheet,
   ArrowUp, ArrowDown, LayoutGrid, List, TrendingUp,
   Clock, Calendar, Tag, DollarSign, FileText, Download,
-  Upload, ArrowRight
+  Upload, ArrowRight, RefreshCw, BarChart3, PieChart,
+  Layers, Zap, MousePointer2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -18,437 +19,154 @@ import { useVendorId } from '@/hooks/useVendorId';
 import { Progress } from '@/components/ui/progress';
 
 /* ══════════════════════════════════════════════════════════════════
-   HELPERS
+   HELPERS & TYPES
    ══════════════════════════════════════════════════════════════════ */
-
-function formatCRC(amount: number): string {
-  return `₡${Math.round(amount).toLocaleString('es-CR')}`;
-}
-
-function renderStars(rating: number) {
-  const stars: React.ReactNode[] = [];
-  const full = Math.floor(rating);
-  const hasHalf = rating - full >= 0.25;
-  for (let i = 0; i < 5; i++) {
-    if (i < full) {
-      stars.push(<Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />);
-    } else if (i === full && hasHalf) {
-      stars.push(<Star key={i} className="w-3 h-3 fill-amber-400/50 text-amber-400" />);
-    } else {
-      stars.push(<Star key={i} className="w-3 h-3 text-gray-600" />);
-    }
-  }
-  return stars;
-}
-
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Ahora';
-  if (mins < 60) return `Hace ${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `Hace ${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `Hace ${days}d`;
-  const months = Math.floor(days / 30);
-  return `Hace ${months}m`;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   CSV PARSER
-   ══════════════════════════════════════════════════════════════════ */
-
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  let current: string[] = [];
-  let field = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (inQuotes) {
-      if (char === '"' && next === '"') {
-        field += '"';
-        i++;
-      } else if (char === '"') {
-        inQuotes = false;
-      } else {
-        field += char;
-      }
-    } else {
-      if (char === '"') {
-        inQuotes = true;
-      } else if (char === ',') {
-        current.push(field.trim());
-        field = '';
-      } else if (char === '\n' || (char === '\r' && next === '\n')) {
-        current.push(field.trim());
-        field = '';
-        if (current.some((c) => c.length > 0)) {
-          rows.push(current);
-        }
-        current = [];
-        if (char === '\r') i++;
-      } else if (char === '\r') {
-        current.push(field.trim());
-        field = '';
-        if (current.some((c) => c.length > 0)) {
-          rows.push(current);
-        }
-        current = [];
-      } else {
-        field += char;
-      }
-    }
-  }
-  current.push(field.trim());
-  if (current.some((c) => c.length > 0)) {
-    rows.push(current);
-  }
-  return rows;
-}
-
-function normalizeHeader(h: string): string {
-  return h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_]/g, '').trim();
-}
-
-const CSV_HEADERS = ['nombre', 'descripcion', 'precio', 'categoria', 'en_stock'];
-
-function mapCSVHeaders(rawHeaders: string[]): Map<number, string> {
-  const mapping = new Map<number, string>();
-  for (let i = 0; i < rawHeaders.length; i++) {
-    const norm = normalizeHeader(rawHeaders[i]);
-    const match = CSV_HEADERS.find((h) => norm === h || norm === h.replace('_', ''));
-    if (match) mapping.set(i, match);
-  }
-  return mapping;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   TYPES
-   ══════════════════════════════════════════════════════════════════ */
-
-type StatusFilter = 'all' | 'in_stock' | 'out_of_stock' | 'featured';
-type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'most_sold' | 'name_asc';
-type ViewMode = 'grid' | 'table';
-type PanelTab = 'products' | 'csv';
 
 interface ProductRow {
   id: string;
-  vendor_id: string;
   name: string;
   description: string | null;
   price: number;
-  category: string;
   image_url: string | null;
-  image_path: string | null;
+  category: string;
   in_stock: boolean;
   stock_quantity: number;
-  sold_count: number;
   is_featured: boolean;
   avg_rating: number;
+  review_count: number;
+  sold_count: number;
   created_at: string;
-  updated_at: string;
 }
 
-interface FormData {
-  name: string;
-  description: string;
-  price: string;
-  category: string;
-  inStock: boolean;
-  stockQuantity: string;
-  isFeatured: boolean;
+type ViewMode = 'grid' | 'table';
+type SortOption = 'newest' | 'oldest' | 'price-asc' | 'price-desc' | 'name-asc' | 'popular';
+type PanelTab = 'products' | 'csv' | 'stats';
+
+function formatCRC(amount: number): string {
+  if (isNaN(amount)) return '₡0';
+  return `₡${Math.round(amount).toLocaleString('es-CR')}`;
 }
 
-interface ParsedCSVRow {
-  row: number;
-  nombre: string;
-  descripcion: string;
-  precio: string;
-  categoria: string;
-  en_stock: string;
-  valid: boolean;
-  errors: string[];
-}
-
-const emptyForm: FormData = {
-  name: '',
-  description: '',
-  price: '',
-  category: '',
-  inStock: true,
-  stockQuantity: '10',
-  isFeatured: false,
-};
-
-/* ══════════════════════════════════════════════════════════════════
-   ANIMATION VARIANTS
-   ══════════════════════════════════════════════════════════════════ */
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
-} as const;
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
-} as const;
-
-/* ══════════════════════════════════════════════════════════════════
-   LOADING SKELETON
-   ══════════════════════════════════════════════════════════════════ */
-
-function ProductSkeleton() {
-  return (
-    <div className="glass rounded-2xl overflow-hidden animate-pulse">
-      <div className="h-52 bg-white/5 relative">
-        <div className="absolute top-3 left-3 w-16 h-5 bg-white/5 rounded-full" />
-        <div className="absolute top-3 right-3 w-14 h-5 bg-white/5 rounded-full" />
-        <div className="absolute bottom-3 right-3 w-20 h-6 bg-white/5 rounded-lg" />
-      </div>
-      <div className="p-4 space-y-3">
-        <div className="h-4 bg-white/5 rounded w-3/4" />
-        <div className="h-3 bg-white/5 rounded w-full" />
-        <div className="h-3 bg-white/5 rounded w-1/2" />
-      </div>
-    </div>
-  );
-}
-
-function StatsSkeleton() {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 animate-pulse">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="glass rounded-xl p-3.5">
-          <div className="h-4 w-20 bg-white/5 rounded" />
-          <div className="h-6 w-12 bg-white/5 rounded mt-2" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   QUICK VIEW MODAL
-   ══════════════════════════════════════════════════════════════════ */
-
-function QuickViewModal({ product, onClose, onEdit }: { product: ProductRow; onClose: () => void; onEdit: () => void }) {
-  const imgSrc = product.image_url || null;
-
-  return (
-    <motion.div className="fixed inset-0 z-[55] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        className="relative w-full max-w-md glass-strong rounded-2xl z-10 overflow-hidden"
-        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      >
-        <div className="relative h-56 bg-gradient-to-br from-white/5 to-white/[0.02]">
-          {imgSrc ? (
-            <img src={imgSrc} alt={product.name} className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center"><ImageIcon className="w-16 h-16 text-gray-700" /></div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-          <button onClick={onClose} className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white hover:bg-red-500/80 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-          <div className="absolute bottom-3 left-3 right-3 z-10 flex items-end justify-between">
-            <div className="flex items-center gap-2">
-              {product.is_featured && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-500/20 border border-amber-500/30 text-amber-400 backdrop-blur-sm">
-                  <Sparkles className="w-3 h-3" /> Destacado
-                </span>
-              )}
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium backdrop-blur-sm ${product.in_stock ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                {product.in_stock ? 'En stock' : 'Agotado'}
-              </span>
-            </div>
-            <span className="text-xl font-bold text-white drop-shadow-lg">{formatCRC(product.price)}</span>
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <h3 className="text-lg font-bold text-white">{product.name}</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <Tag className="w-2.5 h-2.5" /> {product.category}
-              </span>
-              <span className="text-[11px] text-gray-500">{product.stock_quantity} uds</span>
-            </div>
-          </div>
-          {product.description && <p className="text-sm text-gray-400 leading-relaxed">{product.description}</p>}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <p className="text-lg font-bold text-white">{product.sold_count}</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Vendidos</p>
-            </div>
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <p className="text-lg font-bold text-cyan-400">{formatCRC(product.price * product.sold_count)}</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Ingresos</p>
-            </div>
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <div className="flex items-center justify-center gap-0.5">
-                {product.avg_rating > 0 ? (<><div className="flex">{renderStars(product.avg_rating)}</div><span className="text-[11px] text-gray-400 ml-1">{product.avg_rating.toFixed(1)}</span></>) : (<span className="text-xs text-gray-600">N/A</span>)}
-              </div>
-              <p className="text-[10px] text-gray-500 mt-0.5">Rating</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-[11px] text-gray-600">
-            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Creado: {new Date(product.created_at).toLocaleDateString('es-CR')}</span>
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {timeAgo(product.updated_at)}</span>
-          </div>
-          <div className="flex gap-3">
-            <motion.button onClick={onEdit} className="flex-1 btn-neon text-white py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Edit3 className="w-4 h-4" /> Editar
-            </motion.button>
-            <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm text-gray-400 bg-white/5 hover:bg-white/10 transition-colors">Cerrar</button>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
+/**
+ * Intenta resolver la URL de la imagen. 
+ * Si ya es una URL absoluta (http), la devuelve.
+ * Si es un path de Supabase, lo deja para que se firme.
+ */
+function resolveImagePath(path: string | null, vendorId: string | null): string {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  // Strip bucket name prefix if accidentally included (legacy paths or bugs)
+  let normalized = path.startsWith('products/') ? path.slice('products/'.length) : path;
+  // If just a filename with no folder, add vendor folder
+  if (!normalized.includes('/') && vendorId) {
+    normalized = `${vendorId}/${normalized}`;
+  }
+  return normalized;
 }
 
 /* ══════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ══════════════════════════════════════════════════════════════════ */
 
-export default function ProductsPage() {
+export default function PremiumProductsPage() {
   const { user } = useAuthStore();
-  const { vendorId, loading: vendorLoading } = useVendorId();
+  const { vendorId, loading: vendorLoading, error: vendorError } = useVendorId();
 
-  /* ── State ─────────────────────────────────────────────────── */
+  // Core State
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbCategories, setDbCategories] = useState<{ name: string; is_active: boolean; sort_order: number }[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeTab, setActiveTab] = useState<PanelTab>('products');
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Filters & sort
+  // Filters & UI State
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'out'>('all');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
-
-  // Modal
-  const [showModal, setShowModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
-  const [formData, setFormData] = useState<FormData>(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [showCustomCategory, setShowCustomCategory] = useState(false);
-  const [customCategory, setCustomCategory] = useState('');
-
-  // Quick view
-  const [quickViewProduct, setQuickViewProduct] = useState<ProductRow | null>(null);
-
-  // Delete
-  const [deletingProduct, setDeletingProduct] = useState<ProductRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // Bulk
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'stock' | 'featured' | 'delete' | null>(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-
-  // Image URLs cache
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
 
-  // CSV state
-  const csvInputRef = useRef<HTMLInputElement>(null);
-  const [csvDragging, setCsvDragging] = useState(false);
-  const [csvParsed, setCsvParsed] = useState<ParsedCSVRow[]>([]);
-  const [csvFileName, setCsvFileName] = useState('');
-  const [csvValidCount, setCsvValidCount] = useState(0);
-  const [csvInvalidCount, setCsvInvalidCount] = useState(0);
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [csvProgress, setCsvProgress] = useState(0);
-  const [showCsvPreview, setShowCsvPreview] = useState(false);
+  // Modals & Actions
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<ProductRow | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
+  /* ─── Data Fetching ────────────────────────────────────────── */
 
-  /* ── Category helpers ─────────────────────────────────────── */
-  const categoryNames = useMemo(() => {
-    const names = new Set<string>();
-    dbCategories.filter((c) => c.is_active).sort((a, b) => a.sort_order - b.sort_order).forEach((c) => names.add(c.name));
-    products.forEach((p) => { if (p.category) names.add(p.category); });
-    return Array.from(names).sort();
-  }, [dbCategories, products]);
-
-  /* ── Load products via SECURITY DEFINER RPC ────────────── */
-  const loadProducts = useCallback(async () => {
+  const loadProducts = useCallback(async (isSilent = false) => {
     if (!vendorId) return;
-    setLoading(true);
+    if (!isSilent) setLoading(true);
+    else setRefreshing(true);
+
     try {
-      const { data, error } = await supabase.rpc('get_vendor_products', { p_vendor_id: vendorId });
+      console.log('[DEBUG] Intentando cargar productos para vendor:', vendorId);
+      
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('vendor_id', vendorId);
+
       if (error) {
-        console.error('[loadProducts] RPC error:', error);
-        toast.error('Error al cargar productos: ' + error.message);
-        setProducts([]);
-        setSignedUrls({});
+        console.error('[Products] Error de Supabase:', error);
+        toast.error('Error al cargar productos');
         return;
       }
-      const rows: ProductRow[] = (data || []).map((p: Record<string, unknown>) => ({
-        id: p.id as string,
-        vendor_id: p.vendor_id as string,
-        name: p.name as string,
-        description: (p.description as string) || null,
-        price: Number(p.price),
-        category: (p.category as string) || 'General',
-        image_url: (p.image_url as string) || null,
-        image_path: (p.image_path as string) || null,
-        in_stock: p.in_stock as boolean,
-        stock_quantity: (p.stock_quantity as number) ?? 0,
-        sold_count: (p.sold_count as number) ?? 0,
-        is_featured: (p.is_featured as boolean) ?? false,
-        avg_rating: Number(p.avg_rating) || 0,
-        created_at: p.created_at as string,
-        updated_at: p.updated_at as string,
+
+      const rows: ProductRow[] = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        image_url: p.image_url,
+        category: p.category || 'Sin categoría',
+        in_stock: p.in_stock,
+        stock_quantity: p.stock_quantity || 0,
+        is_featured: p.is_featured || false,
+        avg_rating: p.avg_rating || 0,
+        review_count: p.review_count || 0,
+        sold_count: p.sold_count || 0,
+        created_at: p.created_at,
       }));
+
       setProducts(rows);
 
-      // Load signed URLs for images
-      const urlMap: Record<string, string> = {};
-      for (const row of rows) {
-        if (row.image_path) {
-          try {
-            const { data: urlData } = await supabase.storage.from('products').createSignedUrl(row.image_path, 3600);
-            if (urlData?.signedUrl) urlMap[row.id] = urlData.signedUrl;
-            else if (row.image_url) urlMap[row.id] = row.image_url;
-          } catch {
-            if (row.image_url) urlMap[row.id] = row.image_url;
+      // Generar URLs públicas para imágenes del bucket 'products'
+      const urls: Record<string, string> = {};
+      for (const prod of rows) {
+        if (!prod.image_url) continue;
+        
+        const path = resolveImagePath(prod.image_url, vendorId);
+        if (path.startsWith('http')) {
+          // Ya es URL completa
+          urls[prod.id] = path;
+        } else {
+          // Intentar URL pública primero (más rápido)
+          const { data: pubData } = supabase.storage.from('products').getPublicUrl(path);
+          if (pubData?.publicUrl) {
+            urls[prod.id] = pubData.publicUrl;
+          } else {
+            // Fallback a URL firmada
+            const { data: signData } = await supabase.storage.from('products').createSignedUrl(path, 3600);
+            if (signData?.signedUrl) urls[prod.id] = signData.signedUrl;
           }
-        } else if (row.image_url) {
-          urlMap[row.id] = row.image_url;
         }
       }
-      setSignedUrls(urlMap);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al cargar productos';
-      toast.error(msg);
+      setSignedUrls(urls);
+    } catch (err) {
+      console.error('[Products] Unexpected error:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [vendorId]);
 
-  /* ── Load categories ────────────────────────────────────── */
   const loadCategories = useCallback(async () => {
     try {
       const { data } = await supabase.from('marketplace_categories').select('name, is_active, sort_order').eq('is_active', true).order('sort_order', { ascending: true });
       if (data) setDbCategories(data);
-    } catch {
-      // Non-critical
+    } catch (err) {
+      console.error('[Products] Error loading categories:', err);
     }
   }, []);
 
@@ -457,981 +175,821 @@ export default function ProductsPage() {
       loadProducts();
       loadCategories();
     } else if (!vendorLoading) {
-      // vendorId es null y ya terminó de cargar — evitar loading infinito
       setLoading(false);
     }
   }, [vendorId, vendorLoading, loadProducts, loadCategories]);
 
-  /* ── Stats ──────────────────────────────────────────────── */
-  const stats = useMemo(() => {
-    const total = products.length;
-    const inStock = products.filter((p) => p.in_stock).length;
-    const outOfStock = products.filter((p) => !p.in_stock).length;
-    const featured = products.filter((p) => p.is_featured).length;
-    const totalSold = products.reduce((sum, p) => sum + p.sold_count, 0);
-    const totalRevenue = products.reduce((sum, p) => sum + (p.price * p.sold_count), 0);
-    return { total, inStock, outOfStock, featured, totalSold, totalRevenue };
-  }, [products]);
+  /* ─── Derived State ────────────────────────────────────────── */
 
-  /* ── Filtered + Sorted ──────────────────────────────────── */
   const filtered = useMemo(() => {
     let result = [...products];
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      result = result.filter((p) => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)) || p.category.toLowerCase().includes(q));
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(p => p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
     }
-    if (filterCategory !== 'all') result = result.filter((p) => p.category === filterCategory);
-    switch (filterStatus) {
-      case 'in_stock': result = result.filter((p) => p.in_stock); break;
-      case 'out_of_stock': result = result.filter((p) => !p.in_stock); break;
-      case 'featured': result = result.filter((p) => p.is_featured); break;
+
+    if (filterCategory !== 'all') {
+      result = result.filter(p => p.category === filterCategory);
     }
-    switch (sortBy) {
-      case 'newest': result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); break;
-      case 'price_asc': result.sort((a, b) => a.price - b.price); break;
-      case 'price_desc': result.sort((a, b) => b.price - a.price); break;
-      case 'most_sold': result.sort((a, b) => b.sold_count - a.sold_count); break;
-      case 'name_asc': result.sort((a, b) => a.name.localeCompare(b.name)); break;
-    }
+
+    if (filterStatus === 'active') result = result.filter(p => p.in_stock);
+    if (filterStatus === 'out') result = result.filter(p => !p.in_stock);
+
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'newest': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'oldest': return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'price-asc': return a.price - b.price;
+        case 'price-desc': return b.price - a.price;
+        case 'name-asc': return a.name.localeCompare(b.name);
+        case 'popular': return b.sold_count - a.sold_count;
+        default: return 0;
+      }
+    });
+
     return result;
   }, [products, search, filterCategory, filterStatus, sortBy]);
 
-  /* ── Bulk selection ─────────────────────────────────────── */
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  };
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((p) => p.id)));
-  };
+  const stats = useMemo(() => {
+    const total = products.length;
+    const inStock = products.filter(p => p.in_stock).length;
+    const outOfStock = total - inStock;
+    const featured = products.filter(p => p.is_featured).length;
+    const totalSold = products.reduce((sum, p) => sum + p.sold_count, 0);
+    const totalRevenue = products.reduce((sum, p) => sum + (p.sold_count * p.price), 0);
+    return { total, inStock, outOfStock, featured, totalSold, totalRevenue };
+  }, [products]);
 
-  /* ── Image upload ───────────────────────────────────────── */
-  const handleImageSelect = useCallback((file: File) => {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { toast.error('Solo JPG, PNG y WebP'); return; }
-    if (file.size > 5 * 1024 * 1024) { toast.error('Imagen maximo 5MB'); return; }
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
-  }, []);
+  /* ─── Actions ────────────────────────────────────────────── */
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) handleImageSelect(file); }, [handleImageSelect]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); dropZoneRef.current?.classList.add('border-cyan-500/50', 'bg-cyan-500/5'); }, []);
-  const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); dropZoneRef.current?.classList.remove('border-cyan-500/50', 'bg-cyan-500/5'); }, []);
-  const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); dropZoneRef.current?.classList.remove('border-cyan-500/50', 'bg-cyan-500/5'); const file = e.dataTransfer.files?.[0]; if (file) handleImageSelect(file); }, [handleImageSelect]);
-
-  const clearImage = () => { setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
-
-  const uploadProductImage = async (productId: string, file: File): Promise<{ url: string; path: string } | null> => {
-    setUploadingImage(true);
-    setUploadProgress(0);
+  async function handleToggleStock(product: ProductRow) {
     try {
-      const progressInterval = setInterval(() => { setUploadProgress((prev) => { if (prev >= 90) { clearInterval(progressInterval); return 90; } return prev + 15; }); }, 200);
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `products/${vendorId}/${productId}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('products').upload(path, file, { upsert: true, contentType: file.type });
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      if (uploadError) throw uploadError;
-      const { data: urlData } = await supabase.storage.from('products').createSignedUrl(path, 3600);
-      if (!urlData?.signedUrl) throw new Error('No se pudo generar URL firmada');
-      return { url: urlData.signedUrl, path };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error subiendo imagen';
-      toast.error(msg);
-      return null;
-    } finally {
-      setTimeout(() => { setUploadingImage(false); setUploadProgress(0); }, 500);
-    }
-  };
-
-  const deleteOldImage = async (productId: string) => {
-    try {
-      const product = products.find((p) => p.id === productId);
-      if (!product?.image_path) return;
-      const { data: files } = await supabase.storage.from('products').list(`products/${vendorId}`);
-      if (files) {
-        const productFiles = files.filter((f) => f.name.startsWith(productId));
-        for (const pf of productFiles) {
-          await supabase.storage.from('products').remove([`products/${vendorId}/${pf.name}`]);
-        }
-      }
-    } catch { /* non-critical */ }
-  };
-
-  /* ── CRUD Operations (via RPCs) ─────────────────────────── */
-
-  const openAddModal = () => {
-    setEditingProduct(null);
-    setFormData({ ...emptyForm, category: categoryNames[0] || '' });
-    setImageFile(null);
-    setImagePreview(null);
-    setShowCustomCategory(false);
-    setCustomCategory('');
-    setShowModal(true);
-  };
-
-  const openEditModal = (product: ProductRow) => {
-    setQuickViewProduct(null);
-    setEditingProduct(product);
-    setFormData({ name: product.name, description: product.description || '', price: product.price.toString(), category: product.category, inStock: product.in_stock, stockQuantity: product.stock_quantity?.toString() || '0', isFeatured: product.is_featured });
-    setImageFile(null);
-    setImagePreview(signedUrls[product.id] || product.image_url || null);
-    setShowCustomCategory(false);
-    setCustomCategory('');
-    setShowModal(true);
-  };
-
-  const handleSave = async () => {
-    if (!formData.name.trim()) { toast.error('El nombre es obligatorio'); return; }
-    if (!formData.price || isNaN(Number(formData.price)) || Number(formData.price) <= 0) { toast.error('Ingresa un precio valido'); return; }
-    const cat = showCustomCategory ? customCategory.trim() : formData.category;
-    if (!cat.trim()) { toast.error('La categoria es obligatoria'); return; }
-
-    setSaving(true);
-    try {
-      if (editingProduct) {
-        // Upload image first if needed
-        let imageUrl: string | undefined;
-        let imagePath: string | undefined;
-        if (imageFile) {
-          const result = await uploadProductImage(editingProduct.id, imageFile);
-          if (result) { imageUrl = result.url; imagePath = result.path; }
-        } else if (imagePreview === null && (editingProduct.image_url || editingProduct.image_path)) {
-          await deleteOldImage(editingProduct.id);
-          imageUrl = undefined;
-          imagePath = undefined;
-        }
-
-        const { data: updated, error } = await supabase.rpc('update_vendor_product', {
-          p_product_id: editingProduct.id,
-          p_vendor_id: vendorId,
-          p_name: formData.name.trim(),
-          p_description: formData.description.trim() || null,
-          p_price: Number(formData.price),
-          p_category: cat.trim(),
-          p_in_stock: formData.inStock,
-          p_stock_quantity: formData.inStock ? Number(formData.stockQuantity) || 0 : 0,
-          p_is_featured: formData.isFeatured,
-          p_image_url: imageUrl ?? undefined,
-          p_image_path: imagePath ?? undefined,
-        });
-        if (error) throw error;
-
-        if (updated && updated.length > 0) {
-          const u = updated[0];
-          setProducts((prev) => prev.map((p) => p.id === editingProduct.id ? {
-            ...p,
-            name: u.name, description: u.description, price: Number(u.price),
-            category: u.category, in_stock: u.in_stock, stock_quantity: u.stock_quantity,
-            is_featured: u.is_featured, image_url: u.image_url, image_path: u.image_path, updated_at: u.updated_at,
-          } : p));
-          if (imageUrl) setSignedUrls((prev) => ({ ...prev, [editingProduct.id]: imageUrl }));
-          else if (imagePreview === null) setSignedUrls((prev) => { const next = { ...prev }; delete next[editingProduct.id]; return next; });
-        }
-        toast.success('Producto actualizado');
-      } else {
-        // Insert via RPC
-        const { data: newProduct, error } = await supabase.rpc('insert_vendor_product', {
-          p_vendor_id: vendorId,
-          p_name: formData.name.trim(),
-          p_description: formData.description.trim() || null,
-          p_price: Number(formData.price),
-          p_category: cat.trim(),
-          p_in_stock: formData.inStock,
-          p_stock_quantity: formData.inStock ? Number(formData.stockQuantity) || 0 : 0,
-          p_is_featured: formData.isFeatured,
-        });
-        if (error) throw error;
-
-        const np = Array.isArray(newProduct) ? newProduct[0] : newProduct;
-        if (!np) throw new Error('No se recibio el producto creado');
-
-        let imageUrl: string | null = null;
-        let imagePath: string | null = null;
-        if (imageFile) {
-          const result = await uploadProductImage(np.id, imageFile);
-          if (result) { imageUrl = result.url; imagePath = result.path; }
-        }
-
-        // Update image in DB if uploaded
-        if (imageUrl && imagePath) {
-          await supabase.rpc('update_vendor_product', {
-            p_product_id: np.id, p_vendor_id: vendorId,
-            p_image_url: imageUrl, p_image_path: imagePath,
-          });
-        }
-
-        const row: ProductRow = {
-          id: np.id, vendor_id: np.vendor_id, name: np.name,
-          description: np.description, price: Number(np.price),
-          category: np.category || cat.trim(),
-          image_url: imageUrl || np.image_url || null,
-          image_path: imagePath || np.image_path || null,
-          in_stock: np.in_stock, stock_quantity: np.stock_quantity ?? 0,
-          sold_count: np.sold_count ?? 0, is_featured: np.is_featured ?? false,
-          avg_rating: Number(np.avg_rating) || 0,
-          created_at: np.created_at, updated_at: np.updated_at,
-        };
-        setProducts((prev) => [row, ...prev]);
-        if (imageUrl) setSignedUrls((prev) => ({ ...prev, [np.id]: imageUrl }));
-        toast.success('Producto creado');
-      }
-      setShowModal(false);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al guardar';
-      toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleToggleStock = async (product: ProductRow) => {
-    try {
-      const { error } = await supabase.rpc('toggle_vendor_product_stock', { p_product_id: product.id, p_vendor_id: vendorId });
+      const { error } = await supabase.rpc('toggle_vendor_product_stock', {
+        p_product_id: product.id,
+        p_vendor_id: vendorId
+      });
       if (error) throw error;
-      setProducts((prev) => prev.map((p) => p.id === product.id ? { ...p, in_stock: !p.in_stock } : p));
-      toast.success(!product.in_stock ? 'Producto en stock' : 'Producto agotado');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al actualizar');
+      loadProducts(true);
+      toast.success(product.in_stock ? 'Producto marcado como agotado' : 'Producto marcado como disponible');
+    } catch (err: any) {
+      toast.error('Error al actualizar stock: ' + err.message);
     }
-  };
+  }
 
-  const handleToggleFeatured = async (product: ProductRow) => {
+  async function handleDeleteProduct() {
+    if (!deletingProduct || !vendorId) return;
     try {
-      const { error } = await supabase.rpc('toggle_vendor_product_featured', { p_product_id: product.id, p_vendor_id: vendorId });
+      const { error } = await supabase.from('products').delete().eq('id', deletingProduct.id).eq('vendor_id', vendorId);
       if (error) throw error;
-      setProducts((prev) => prev.map((p) => p.id === product.id ? { ...p, is_featured: !p.is_featured } : p));
-      toast.success(!product.is_featured ? 'Producto destacado' : 'Producto sin destacar');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al actualizar');
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deletingProduct) return;
-    setDeleting(true);
-    try {
-      await deleteOldImage(deletingProduct.id);
-      const { error } = await supabase.rpc('delete_vendor_product', { p_product_id: deletingProduct.id, p_vendor_id: vendorId });
-      if (error) throw error;
-      setProducts((prev) => prev.filter((p) => p.id !== deletingProduct.id));
-      setSelectedIds((prev) => { const next = new Set(prev); next.delete(deletingProduct.id); return next; });
-      setSignedUrls((prev) => { const next = { ...prev }; delete next[deletingProduct.id]; return next; });
-      toast.success(`"${deletingProduct.name}" eliminado`);
+      toast.success('Producto eliminado correctamente');
       setDeletingProduct(null);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al eliminar');
-    } finally {
-      setDeleting(false);
+      loadProducts(true);
+    } catch (err: any) {
+      toast.error('Error al eliminar producto: ' + err.message);
     }
-  };
+  }
 
-  /* ── Bulk Actions (via RPC) ─────────────────────────────── */
-  const executeBulkAction = async () => {
-    if (selectedIds.size === 0 || !bulkAction) return;
-    setBulkLoading(true);
-    try {
-      const actionMap: Record<string, string> = { stock: 'enable_stock', featured: 'featured', delete: 'delete' };
-      const { error, data } = await supabase.rpc('bulk_vendor_product_action', {
-        p_vendor_id: vendorId,
-        p_product_ids: Array.from(selectedIds),
-        p_action: actionMap[bulkAction] || 'enable_stock',
-      });
-      if (error) throw error;
+  /* ─── Render Logic ─────────────────────────────────────────── */
 
-      const count = Number(data) || 0;
-      if (bulkAction === 'delete') {
-        setProducts((prev) => prev.filter((p) => !selectedIds.has(p.id)));
-        toast.success(`${count} producto(s) eliminado(s)`);
-      } else if (bulkAction === 'stock') {
-        setProducts((prev) => prev.map((p) => selectedIds.has(p.id) ? { ...p, in_stock: true } : p));
-        toast.success(`${count} producto(s) habilitados`);
-      } else if (bulkAction === 'featured') {
-        setProducts((prev) => prev.map((p) => selectedIds.has(p.id) ? { ...p, is_featured: true } : p));
-        toast.success(`${count} producto(s) destacados`);
-      }
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error en accion masiva');
-    } finally {
-      setBulkLoading(false);
-      setBulkAction(null);
-      setSelectedIds(new Set());
-    }
-  };
-
-  /* ── CSV Handling ───────────────────────────────────────── */
-  const handleCSVFile = useCallback((file: File) => {
-    if (!file.name.toLowerCase().endsWith('.csv')) { toast.error('Solo se aceptan archivos CSV'); return; }
-    if (file.size > 10 * 1024 * 1024) { toast.error('Maximo 10MB'); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (!text) { toast.error('No se pudo leer el archivo'); return; }
-      const rows = parseCSV(text);
-      if (rows.length < 2) { toast.error('Se necesita al menos encabezado + 1 fila'); return; }
-      const headerMap = mapCSVHeaders(rows[0]);
-      let hasNombre = false, hasPrecio = false;
-      for (const [, h] of headerMap) { if (h === 'nombre') hasNombre = true; if (h === 'precio') hasPrecio = true; }
-      if (!hasNombre || !hasPrecio) { toast.error('Faltan columnas obligatorias: nombre, precio'); return; }
-      const dataRows = rows.slice(1);
-      const parsed: ParsedCSVRow[] = dataRows.map((cols, idx) => {
-        const row: ParsedCSVRow = { row: idx + 2, nombre: '', descripcion: '', precio: '', categoria: '', en_stock: '', valid: true, errors: [] };
-        for (const [colIdx, header] of headerMap.entries()) {
-          const val = (cols[colIdx] || '').trim();
-          if (header === 'nombre') row.nombre = val;
-          else if (header === 'descripcion') row.descripcion = val;
-          else if (header === 'precio') row.precio = val;
-          else if (header === 'categoria') row.categoria = val;
-          else if (header === 'en_stock') row.en_stock = val;
-        }
-        if (!row.nombre) { row.valid = false; row.errors.push('Nombre requerido'); }
-        if (!row.precio) { row.valid = false; row.errors.push('Precio requerido'); }
-        else if (isNaN(Number(row.precio)) || Number(row.precio) < 0) { row.valid = false; row.errors.push('Precio invalido'); }
-        return row;
-      });
-      setCsvParsed(parsed);
-      setCsvFileName(file.name);
-      setCsvValidCount(parsed.filter((r) => r.valid).length);
-      setCsvInvalidCount(parsed.filter((r) => !r.valid).length);
-      setShowCsvPreview(true);
-    };
-    reader.readAsText(file, 'UTF-8');
-  }, []);
-
-  const handleCSVSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) handleCSVFile(file); e.target.value = ''; }, [handleCSVFile]);
-
-  const handleCSVDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); setCsvDragging(false); const file = e.dataTransfer.files[0]; if (file) handleCSVFile(file); }, [handleCSVFile]);
-
-  const executeCSVImport = async () => {
-    if (!vendorId || csvValidCount === 0) return;
-    setShowCsvPreview(false);
-    setCsvImporting(true);
-    setCsvProgress(0);
-
-    const validRows = csvParsed.filter((r) => r.valid);
-    const productsJSON = validRows.map((r) => ({
-      nombre: r.nombre,
-      descripcion: r.descripcion || '',
-      precio: Number(r.precio),
-      categoria: r.categoria || 'General',
-      en_stock: ['true', '1', 'si', 'yes'].includes(r.en_stock.toLowerCase()),
-    }));
-
-    try {
-      // Use bulk_insert_vendor_products RPC (handles up to ~1000 rows in one call)
-      const { data, error } = await supabase.rpc('bulk_insert_vendor_products', {
-        p_vendor_id: vendorId,
-        p_products: productsJSON,
-      });
-      if (error) throw error;
-
-      const results = data || [];
-      const imported = results.filter((r: { success: boolean }) => r.success).length;
-      const errors = results.filter((r: { success: boolean }) => !r.success).length;
-
-      if (errors > 0) {
-        const errorNames = results.filter((r: { success: boolean; name: string; error: string }) => !r.success).map((r: { name: string; error: string }) => `${r.name}: ${r.error}`);
-        console.warn('[CSV Import] Errors:', errorNames);
-      }
-
-      if (imported > 0) {
-        toast.success(`${imported} producto(s) importados correctamente`);
-        loadProducts(); // Refresh
-        setActiveTab('products');
-      }
-      if (errors > 0) {
-        toast.warning(`${errors} producto(s) con error`);
-      }
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al importar CSV');
-    } finally {
-      setCsvImporting(false);
-      setCsvProgress(0);
-      setCsvParsed([]);
-      setCsvFileName('');
-    }
-  };
-
-  const downloadTemplate = () => {
-    const csv = 'nombre,descripcion,precio,categoria,en_stock\n';
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'plantilla_productos.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success('Plantilla descargada');
-  };
-
-  /* ── Sort/filter options ────────────────────────────────── */
-  const sortOptions: { value: SortOption; label: string }[] = [
-    { value: 'newest', label: 'Mas recientes' },
-    { value: 'price_asc', label: 'Precio: menor a mayor' },
-    { value: 'price_desc', label: 'Precio: mayor a menor' },
-    { value: 'most_sold', label: 'Mas vendidos' },
-    { value: 'name_asc', label: 'Nombre A-Z' },
-  ];
-  const statusOptions: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'Todos' },
-    { value: 'in_stock', label: 'En stock' },
-    { value: 'out_of_stock', label: 'Agotados' },
-    { value: 'featured', label: 'Destacados' },
-  ];
-
-  /* ══════════════════════════════════════════════════════════════
-     RENDER
-     ══════════════════════════════════════════════════════════════ */
-
-  if (vendorLoading || loading) {
+  if (vendorError) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-        <div className="space-y-2"><div className="h-8 w-48 bg-white/5 rounded-lg animate-pulse" /><div className="h-4 w-32 bg-white/5 rounded-lg animate-pulse" /></div>
-        <StatsSkeleton />
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">{Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)}</div>
-      </motion.div>
+      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-[#0a0f1d] to-[#050811] rounded-[3rem] border border-white/5">
+        <div className="w-24 h-24 rounded-3xl bg-red-500/10 flex items-center justify-center mb-8 shadow-[0_0_50px_rgba(239,68,68,0.2)] animate-pulse">
+          <AlertTriangle className="w-12 h-12 text-red-400" />
+        </div>
+        <h2 className="text-3xl font-black text-white mb-3 tracking-tighter">Acceso de Tienda No Detectado</h2>
+        <p className="text-slate-400 max-w-sm mb-10 text-sm leading-relaxed">No pudimos vincular tu cuenta con un perfil de vendedor. Asegúrate de tener una tienda activa.</p>
+        <button onClick={() => window.location.reload()} className="group relative px-8 py-4 bg-white/5 border border-white/10 rounded-[2rem] text-white overflow-hidden transition-all hover:bg-white/10 active:scale-95">
+          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <span className="relative flex items-center gap-3 font-bold">
+            <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
+            Recargar Sistema
+          </span>
+        </button>
+      </div>
     );
   }
 
-  return (
-    <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-6">
+  if (loading || vendorLoading) {
+    return <ProductsSkeleton />;
+  }
 
-      {/* ─── Header ──────────────────────────────────────── */}
-      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Mis Productos</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            {products.length} producto{products.length !== 1 ? 's' : ''} en tu tienda
-            {filtered.length !== products.length && (
-              <span className="text-cyan-400 ml-1">({filtered.length} visible{filtered.length !== 1 ? 's' : ''})</span>
+  return (
+    <div className="max-w-[1600px] mx-auto space-y-10 pb-20 p-4">
+      
+      {/* ─── Super-App Header ─────────────────────────────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[11px] font-black text-cyan-400 uppercase tracking-widest shadow-lg shadow-cyan-500/10">
+              Vendor Pro Dashboard
+            </div>
+            {refreshing && (
+              <span className="flex items-center gap-2 text-[11px] text-cyan-500/60 font-bold animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+                Sincronizando Catálogo...
+              </span>
             )}
+          </div>
+          <h1 className="text-4xl md:text-7xl font-black text-white tracking-tightest leading-[0.9]">
+            Mis <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 drop-shadow-2xl">Productos</span>
+          </h1>
+          <p className="text-slate-500 text-base md:text-lg max-w-xl font-medium leading-relaxed">
+            Gestiona tu inventario con herramientas de alto rendimiento diseñadas para el crecimiento de tu negocio.
           </p>
         </div>
-        <div className="flex gap-2 self-start">
-          <motion.button
-            onClick={openAddModal}
-            className="btn-neon text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2"
-            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+
+        <div className="flex flex-wrap items-center gap-4">
+          <button 
+            onClick={() => loadProducts(true)}
+            className="p-5 rounded-[2rem] bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+            title="Sincronizar"
           >
-            <Plus className="w-4 h-4" /> Agregar Producto
-          </motion.button>
+            <RefreshCw className={`w-6 h-6 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="group relative px-10 py-5 rounded-[2rem] bg-cyan-500 text-white font-black text-lg overflow-hidden shadow-[0_20px_40px_rgba(6,182,212,0.3)] transition-all hover:scale-[1.02] active:scale-95"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span className="relative flex items-center gap-3">
+              <Plus className="w-7 h-7 stroke-[3]" />
+              Nuevo Producto
+            </span>
+          </button>
         </div>
-      </motion.div>
+      </div>
 
-      {/* ─── Tab Toggle: Products / CSV Import ──────────── */}
-      <motion.div variants={itemVariants} className="flex gap-1 bg-white/5 rounded-xl p-1 border border-white/10 w-fit">
-        <button
-          onClick={() => setActiveTab('products')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'products' ? 'bg-cyan-500/15 text-cyan-400 shadow-[inset_0_0_0_1px_rgba(6,182,212,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-        >
-          <Package className="w-4 h-4" /> Mis Productos
-        </button>
-        <button
-          onClick={() => setActiveTab('csv')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'csv' ? 'bg-cyan-500/15 text-cyan-400 shadow-[inset_0_0_0_1px_rgba(6,182,212,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-        >
-          <FileSpreadsheet className="w-4 h-4" /> Importar CSV
-        </button>
-      </motion.div>
+      {/* ─── Premium Navigation & Search ──────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-center">
+        <div className="xl:col-span-4 flex bg-white/[0.03] p-1.5 rounded-[2.5rem] border border-white/5 shadow-2xl">
+          {(['products', 'csv', 'stats'] as PanelTab[]).map((tab) => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 flex items-center justify-center gap-2.5 px-6 py-4 rounded-[2rem] text-sm font-black transition-all ${activeTab === tab ? 'bg-white/10 text-white shadow-xl' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {tab === 'products' && <Package className="w-4 h-4" />}
+              {tab === 'csv' && <FileSpreadsheet className="w-4 h-4" />}
+              {tab === 'stats' && <BarChart3 className="w-4 h-4" />}
+              {tab === 'products' ? 'Catálogo' : tab === 'csv' ? 'CSV' : 'Métricas'}
+            </button>
+          ))}
+        </div>
 
-      {/* ══════════════════════════════════════════════════════════
-         PRODUCTS TAB
-         ══════════════════════════════════════════════════════════ */}
-      {activeTab === 'products' && (
-        <>
-          {/* ─── Stats Bar ───────────────────────────────────── */}
-          <motion.div variants={itemVariants}>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {[
-                { label: 'Total Productos', value: stats.total.toString(), gradient: 'from-cyan-500 to-cyan-600', icon: Package, color: 'text-cyan-400' },
-                { label: 'En Stock', value: stats.inStock.toString(), gradient: 'from-emerald-500 to-green-500', icon: Eye, color: 'text-emerald-400' },
-                { label: 'Agotados', value: stats.outOfStock.toString(), gradient: 'from-red-500 to-rose-500', icon: EyeOff, color: 'text-red-400' },
-                { label: 'Destacados', value: stats.featured.toString(), gradient: 'from-amber-500 to-orange-500', icon: Sparkles, color: 'text-amber-400' },
-                { label: 'Total Vendidos', value: stats.totalSold.toString(), gradient: 'from-purple-500 to-pink-500', icon: ShoppingBag, color: 'text-purple-400' },
-                { label: 'Ingresos Est.', value: formatCRC(stats.totalRevenue), gradient: 'from-green-500 to-emerald-500', icon: DollarSign, color: 'text-green-400' },
-              ].map((stat) => (
-                <div key={stat.label} className="glass rounded-xl p-3.5 group hover:glow-cyan transition-all duration-300">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${stat.gradient} flex items-center justify-center`}><stat.icon className="w-3 h-3 text-white" /></div>
-                    <span className="text-[10px] text-gray-500 font-medium">{stat.label}</span>
-                  </div>
-                  <p className={`text-base font-bold ${stat.color}`}>{stat.value}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* ─── Search + Filters + View Toggle ──────────────── */}
-          <motion.div variants={itemVariants} className="space-y-3">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, descripcion o categoria..." className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors" />
-                {search && (<button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"><X className="w-4 h-4" /></button>)}
-              </div>
-              <div className="flex gap-2">
-                <div className="relative">
-                  <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortOption)} className="appearance-none w-full sm:w-48 bg-white/5 border border-white/10 rounded-xl pl-10 pr-8 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50 transition-colors cursor-pointer">
-                    {sortOptions.map((opt) => (<option key={opt.value} value={opt.value} className="bg-[#111827] text-gray-200">{opt.label}</option>))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" />
-                </div>
-                <div className="flex bg-white/5 rounded-xl border border-white/10 overflow-hidden">
-                  <button onClick={() => setViewMode('grid')} className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-cyan-500/15 text-cyan-400' : 'text-gray-500 hover:text-gray-300'}`}><LayoutGrid className="w-4 h-4" /></button>
-                  <button onClick={() => setViewMode('table')} className={`p-2.5 transition-colors ${viewMode === 'table' ? 'bg-cyan-500/15 text-cyan-400' : 'text-gray-500 hover:text-gray-300'}`}><List className="w-4 h-4" /></button>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex gap-1.5 flex-wrap items-center">
-                <Filter className="w-4 h-4 text-gray-500" />
-                {statusOptions.map((opt) => (
-                  <button key={opt.value} onClick={() => setFilterStatus(opt.value)} className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${filterStatus === opt.value ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}>{opt.label}</button>
-                ))}
-              </div>
-              <div className="flex gap-1.5 flex-wrap overflow-x-auto pb-1">
-                <button onClick={() => setFilterCategory('all')} className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${filterCategory === 'all' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}>Todas</button>
-                {categoryNames.map((cat) => (
-                  <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${filterCategory === cat ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}>{cat}</button>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          {/* ─── Bulk Actions Bar ────────────────────────────── */}
-          <AnimatePresence>
-            {selectedIds.size > 0 && (
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="glass-strong rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <div className="flex items-center gap-3">
-                  <button onClick={toggleSelectAll} className="flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300 transition-colors">
-                    {selectedIds.size === filtered.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                    <span>{selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
-                  </button>
-                  <div className="w-px h-5 bg-white/10 hidden sm:block" />
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button onClick={() => setBulkAction('stock')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${bulkAction === 'stock' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'}`}><Eye className="w-3 h-3" /> Habilitar stock</button>
-                  <button onClick={() => setBulkAction('featured')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${bulkAction === 'featured' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'}`}><Sparkles className="w-3 h-3" /> Destacar</button>
-                  <button onClick={() => setBulkAction('delete')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${bulkAction === 'delete' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10'}`}><Trash2 className="w-3 h-3" /> Eliminar</button>
-                </div>
-                {bulkAction && (
-                  <div className="flex items-center gap-2 ml-auto">
-                    <motion.button onClick={executeBulkAction} disabled={bulkLoading} className="btn-neon text-white px-4 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50" whileTap={{ scale: 0.97 }}>
-                      {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Aplicar
-                    </motion.button>
-                    <button onClick={() => setBulkAction(null)} className="text-gray-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* ─── GRID VIEW ──────────────────────────────────── */}
-          {viewMode === 'grid' && (
-            <motion.div variants={itemVariants}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                <AnimatePresence mode="popLayout">
-                  {filtered.map((product, i) => (
-                    <motion.div key={product.id} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03, duration: 0.3 }} className={`glass rounded-2xl overflow-hidden group hover:glow-cyan transition-all duration-300 relative ${!product.in_stock ? 'opacity-60' : ''}`}>
-                      <div className="absolute top-3 left-3 z-20">
-                        <button onClick={() => toggleSelect(product.id)} className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${selectedIds.has(product.id) ? 'bg-cyan-500 text-white' : 'bg-black/40 backdrop-blur-sm text-transparent hover:text-gray-300 border border-white/20'}`}>
-                          {selectedIds.has(product.id) && <Check className="w-3 h-3" />}
-                        </button>
-                      </div>
-                      <div className="h-52 bg-gradient-to-br from-white/5 to-white/[0.02] relative overflow-hidden cursor-pointer" onClick={() => setQuickViewProduct(product)}>
-                        {signedUrls[product.id] ? (
-                          <img src={signedUrls[product.id]} alt={product.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center"><ImageIcon className="w-12 h-12 text-gray-700" /></div>
-                        )}
-                        {!product.in_stock && <div className="absolute inset-0 bg-black/30 z-[5]" />}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
-                          {product.is_featured && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 backdrop-blur-sm text-[10px] font-semibold text-amber-400"><Sparkles className="w-3 h-3" /> Destacado</span>}
-                        </div>
-                        <div className="absolute bottom-3 left-3 right-3 z-10 flex items-end justify-between">
-                          <div className="flex flex-col gap-1">
-                            <span className="inline-flex items-center w-fit px-2.5 py-1 rounded-full text-[10px] font-medium bg-black/40 backdrop-blur-sm text-gray-200 border border-white/10">{product.category}</span>
-                            <span className={`inline-flex items-center gap-1.5 w-fit px-2 py-0.5 rounded-full text-[10px] font-medium backdrop-blur-sm ${product.in_stock ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                              {product.in_stock ? `${product.stock_quantity} uds` : 'Agotado'}
-                            </span>
-                          </div>
-                          <span className="text-lg font-bold text-white drop-shadow-lg">{formatCRC(product.price)}</span>
-                        </div>
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-10">
-                          <button onClick={(e) => { e.stopPropagation(); openEditModal(product); }} className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 backdrop-blur-sm flex items-center justify-center text-cyan-400 hover:bg-cyan-500/30 transition-colors"><Edit3 className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); handleToggleStock(product); }} className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 backdrop-blur-sm flex items-center justify-center text-emerald-400 hover:bg-emerald-500/30 transition-colors">{product.in_stock ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}</button>
-                          <button onClick={(e) => { e.stopPropagation(); handleToggleFeatured(product); }} className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 backdrop-blur-sm flex items-center justify-center text-amber-400 hover:bg-amber-500/30 transition-colors"><Sparkles className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); setDeletingProduct(product); }} className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 backdrop-blur-sm flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </div>
-                      <div className="p-4">
-                        <h3 className="text-sm font-semibold text-white truncate mb-1">{product.name}</h3>
-                        <p className="text-xs text-gray-500 line-clamp-2 mb-3 leading-relaxed min-h-[2rem]">{product.description || 'Sin descripcion'}</p>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {product.avg_rating > 0 ? (<div className="flex items-center gap-1"><div className="flex">{renderStars(product.avg_rating)}</div><span className="text-xs text-gray-400 ml-0.5">{product.avg_rating.toFixed(1)}</span></div>) : (<span className="text-[11px] text-gray-600">Sin resenas</span>)}
-                          </div>
-                          <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                            <span className="flex items-center gap-1"><ShoppingBag className="w-3 h-3" /> {product.sold_count}</span>
-                          </div>
-                        </div>
-                        {product.in_stock && product.stock_quantity > 0 && (
-                          <div className="mt-2.5 flex items-center gap-1.5">
-                            <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${product.stock_quantity <= 5 ? 'bg-red-500/70' : product.stock_quantity <= 15 ? 'bg-amber-500/70' : 'bg-cyan-500/50'}`} style={{ width: `${Math.min((product.stock_quantity / 50) * 100, 100)}%` }} />
-                            </div>
-                            <span className="text-[10px] text-gray-600">{product.stock_quantity} uds</span>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ─── TABLE VIEW ─────────────────────────────────── */}
-          {viewMode === 'table' && (
-            <motion.div variants={itemVariants}>
-              <div className="glass rounded-t-xl px-4 py-3 border-b border-white/10 flex items-center gap-3 text-[11px] font-medium text-gray-500 uppercase tracking-wider">
-                <div className="w-6" /><div className="w-12 h-8 flex-shrink-0" /><div className="flex-1 min-w-0">Producto</div>
-                <div className="w-20 text-right hidden sm:block">Precio</div><div className="w-16 text-center hidden sm:block">Stock</div>
-                <div className="w-16 text-center hidden md:block">Vendidos</div><div className="w-24 text-center">Estado</div>
-                <div className="w-28 text-center">Acciones</div>
-              </div>
-              <div className="space-y-1">
-                <AnimatePresence mode="popLayout">
-                  {filtered.map((product, i) => (
-                    <motion.div key={product.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ delay: i * 0.02, duration: 0.2 }} className={`glass rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-white/[0.03] transition-colors group ${!product.in_stock ? 'opacity-50' : ''}`}>
-                      <div className="w-6 flex-shrink-0">
-                        <button onClick={() => toggleSelect(product.id)} className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${selectedIds.has(product.id) ? 'bg-cyan-500 text-white' : 'bg-white/5 text-transparent hover:text-gray-300 border border-white/10'}`}>
-                          {selectedIds.has(product.id) && <Check className="w-3 h-3" />}
-                        </button>
-                      </div>
-                      <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 cursor-pointer bg-white/5" onClick={() => setQuickViewProduct(product)}>
-                        {signedUrls[product.id] ? <img src={signedUrls[product.id]} alt={product.name} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-5 h-5 text-gray-700" /></div>}
-                      </div>
-                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setQuickViewProduct(product)}>
-                        <h3 className="text-sm font-medium text-white truncate group-hover:text-cyan-400 transition-colors">{product.name}</h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] text-gray-500 truncate">{product.category}</span>
-                          {product.is_featured && <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />}
-                        </div>
-                      </div>
-                      <div className="w-20 text-right hidden sm:block"><span className="text-sm font-semibold text-white">{formatCRC(product.price)}</span></div>
-                      <div className="w-16 text-center hidden sm:block"><span className={`text-sm font-medium ${product.in_stock ? (product.stock_quantity <= 5 ? 'text-red-400' : 'text-gray-300') : 'text-red-400'}`}>{product.in_stock ? product.stock_quantity : 0}</span><span className="text-[10px] text-gray-600 ml-0.5">uds</span></div>
-                      <div className="w-16 text-center hidden md:block"><span className="text-sm text-gray-400">{product.sold_count}</span></div>
-                      <div className="w-24 text-center">
-                        <button onClick={() => handleToggleStock(product)} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all hover:scale-105 ${product.in_stock ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'}`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400' : 'bg-red-400'}`} />{product.in_stock ? 'Activo' : 'Agotado'}
-                        </button>
-                      </div>
-                      <div className="w-28 flex items-center justify-center gap-1.5">
-                        <button onClick={() => openEditModal(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"><Edit3 className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleToggleFeatured(product)} className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"><Sparkles className={`w-3.5 h-3.5 transition-colors ${product.is_featured ? 'text-amber-400' : 'text-gray-600 hover:text-amber-400'}`} /></button>
-                        <button onClick={() => setDeletingProduct(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ─── Empty State ────────────────────────────────── */}
-          {filtered.length === 0 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20">
-              <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center mx-auto mb-5"><Package className="w-10 h-10 text-gray-700" /></div>
-              <p className="text-gray-300 text-base font-medium mb-1">{products.length === 0 ? 'No tienes productos aun' : 'No se encontraron productos'}</p>
-              <p className="text-gray-600 text-sm mb-6">{products.length === 0 ? 'Agrega tu primer producto o importa un CSV' : 'Intenta cambiar los filtros de busqueda'}</p>
-              {products.length === 0 && (
-                <div className="flex items-center justify-center gap-3">
-                  <motion.button onClick={openAddModal} className="btn-neon text-white px-5 py-2.5 rounded-xl text-sm font-medium inline-flex items-center gap-2" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}><Plus className="w-4 h-4" /> Agregar Producto</motion.button>
-                  <motion.button onClick={() => setActiveTab('csv')} className="px-5 py-2.5 rounded-xl text-sm font-medium text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition-colors inline-flex items-center gap-2" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}><FileSpreadsheet className="w-4 h-4" /> Importar CSV</motion.button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
-         CSV TAB
-         ══════════════════════════════════════════════════════════ */}
-      {activeTab === 'csv' && (
-        <motion.div variants={itemVariants} className="space-y-6">
-          {/* CSV Upload Area */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-white">Importar Productos via CSV</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Sube un archivo CSV con tus productos para importarlos masivamente</p>
-            </div>
-            <motion.button onClick={downloadTemplate} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition-colors" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-              <Download className="w-4 h-4" /> Descargar Plantilla
-            </motion.button>
+        <div className="xl:col-span-8 flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+            <input 
+              type="text" 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, categoría o descripción..."
+              className="w-full bg-white/[0.03] border border-white/5 rounded-[2rem] pl-16 pr-6 py-5 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-4 focus:ring-cyan-500/10 focus:border-cyan-500/30 transition-all font-bold text-base"
+            />
           </div>
+          <div className="flex items-center gap-3">
+            <select 
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="bg-white/[0.03] border border-white/10 rounded-[2rem] px-8 py-5 text-sm font-bold text-slate-300 focus:outline-none focus:border-cyan-500/40 cursor-pointer hover:bg-white/5 transition-all appearance-none"
+            >
+              <option value="all">Categorías: Todas</option>
+              {dbCategories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <div className="flex bg-white/[0.03] border border-white/10 rounded-[2rem] p-1.5 shadow-2xl">
+              <button 
+                onClick={() => setViewMode('grid')}
+                className={`p-4 rounded-[1.5rem] transition-all ${viewMode === 'grid' ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}`}
+              >
+                <LayoutGrid className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setViewMode('table')}
+                className={`p-4 rounded-[1.5rem] transition-all ${viewMode === 'table' ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}`}
+              >
+                <List className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-          <motion.div
-            onDrop={handleCSVDrop}
-            onDragOver={(e) => { e.preventDefault(); setCsvDragging(true); }}
-            onDragLeave={() => setCsvDragging(false)}
-            onClick={() => !csvImporting && csvInputRef.current?.click()}
-            className={`glass rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 ${csvDragging ? 'glow-cyan border-cyan-500/50' : csvImporting ? 'opacity-50 cursor-not-allowed' : 'hover:glow-cyan'}`}
+      <AnimatePresence mode="wait">
+        {activeTab === 'products' && (
+          <motion.div 
+            key="products-tab"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="space-y-12"
           >
-            <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVSelect} />
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mx-auto mb-6">
-              {csvImporting ? <Loader2 className="w-8 h-8 text-purple-400 animate-spin" /> : <Upload className="w-8 h-8 text-purple-400" />}
+            {/* ─── Premium Stats Banner ─────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard label="Artículos" value={stats.total} icon={Layers} color="cyan" trend="+4% este mes" />
+              <StatCard label="Disponibles" value={stats.inStock} icon={CheckSquare} color="emerald" trend="Optimizado" />
+              <StatCard label="Ventas Totales" value={stats.totalSold} icon={Zap} color="purple" trend="Top 10%" />
+              <StatCard label="Valor Inventario" value={formatCRC(stats.totalRevenue)} icon={DollarSign} color="amber" trend="Proyectado" />
             </div>
-            {csvImporting ? (
-              <div className="max-w-md mx-auto">
-                <p className="text-white font-semibold mb-2">Importando: {csvFileName}</p>
-                <Progress value={csvProgress} className="h-2 mb-2" />
-                <p className="text-sm text-cyan-400">{csvProgress}%</p>
-              </div>
-            ) : (
-              <>
-                <p className="text-white font-semibold mb-1">Arrastra tu archivo CSV aqui</p>
-                <p className="text-gray-400 text-sm mb-4">o haz clic para seleccionar</p>
-                <div className="flex items-center justify-center gap-4 text-xs text-gray-600">
-                  <div className="flex items-center gap-1.5"><FileSpreadsheet className="w-3.5 h-3.5" /> .CSV</div>
-                  <div className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Max 10MB</div>
-                  <div className="flex items-center gap-1.5">UTF-8</div>
-                </div>
-              </>
-            )}
-          </motion.div>
 
-          {/* CSV Format Guide */}
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><FileText className="w-4 h-4 text-cyan-400" /> Formato del CSV</h3>
-            <div className="bg-black/30 rounded-xl p-4 overflow-x-auto">
-              <code className="text-xs text-gray-400 whitespace-nowrap block">
-                nombre,descripcion,precio,categoria,en_stock<br />
-                &quot;Producto Ejemplo&quot;,&quot;Descripcion del producto&quot;,3500,Categoria,true
-              </code>
-            </div>
-            <div className="flex flex-wrap gap-3 mt-3">
-              <span className="text-[11px] text-gray-500"><span className="text-emerald-400 font-medium">Obligatorias:</span> nombre, precio</span>
-              <span className="text-[11px] text-gray-500"><span className="text-gray-400 font-medium">Opcionales:</span> descripcion, categoria, en_stock</span>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ═════════════════════════════════════════════════════════════
-         QUICK VIEW MODAL
-         ═════════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {quickViewProduct && <QuickViewModal product={quickViewProduct} onClose={() => setQuickViewProduct(null)} onEdit={() => openEditModal(quickViewProduct)} />}
-      </AnimatePresence>
-
-      {/* ═════════════════════════════════════════════════════════════
-         ADD / EDIT MODAL
-         ═════════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div className="fixed inset-0 z-[60] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-            <motion.div className="relative w-full max-w-lg glass-strong rounded-2xl z-10 max-h-[92vh] overflow-y-auto" initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}>
-              <div className="sticky top-0 bg-[#111827]/90 backdrop-blur-xl z-10 px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
-                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white transition-colors p-1"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="p-6 space-y-5">
-                {/* Image upload */}
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">Foto del producto</label>
-                  <div ref={dropZoneRef} onClick={() => fileInputRef.current?.click()} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className="relative w-full h-52 bg-white/5 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-cyan-500/40 transition-all duration-300 overflow-hidden group">
-                    <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileInput} />
-                    {imagePreview ? (
-                      <>
-                        <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
-                        {uploadingImage && (
-                          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10">
-                            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-2" />
-                            <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden"><motion.div className="h-full bg-cyan-500 rounded-full" initial={{ width: 0 }} animate={{ width: `${uploadProgress}%` }} transition={{ duration: 0.3 }} /></div>
-                            <span className="text-xs text-gray-400 mt-1">{uploadProgress}%</span>
-                          </div>
-                        )}
-                        {!uploadingImage && <div className="absolute top-2 right-2 z-10"><button onClick={(e) => { e.stopPropagation(); clearImage(); }} className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white hover:bg-red-500/80 transition-colors"><X className="w-4 h-4" /></button></div>}
-                      </>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 group-hover:text-cyan-400 transition-colors">
-                        <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center mb-1"><UploadCloud className="w-6 h-6 text-cyan-400" /></div>
-                        <p className="text-sm text-gray-400">Arrastra o haz clic para subir</p>
-                        <p className="text-[10px] text-gray-600">JPG, PNG o WebP — max 5MB</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {/* Name */}
-                <div className="space-y-1.5">
-                  <label className="text-sm text-gray-400 font-medium">Nombre del producto *</label>
-                  <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Ibuprofeno 600mg" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors" />
-                </div>
-                {/* Description */}
-                <div className="space-y-1.5">
-                  <label className="text-sm text-gray-400 font-medium">Descripcion</label>
-                  <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Descripcion breve..." rows={3} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none" />
-                </div>
-                {/* Price + Category */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm text-gray-400 font-medium">Precio (₡) *</label>
-                    <input type="number" min="0" step="1" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} placeholder="3500" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm text-gray-400 font-medium">Categoria *</label>
-                    {!showCustomCategory ? (
-                      <div className="relative">
-                        <select value={formData.category} onChange={(e) => { if (e.target.value === '__custom__') setShowCustomCategory(true); else setFormData({ ...formData, category: e.target.value }); }} className="w-full appearance-none bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-white focus:outline-none focus:border-cyan-500/50 transition-colors pr-8 cursor-pointer">
-                          <option value="" className="bg-[#111827]">Seleccionar...</option>
-                          {categoryNames.map((cat) => (<option key={cat} value={cat} className="bg-[#111827]">{cat}</option>))}
-                          <option value="__custom__" className="bg-[#111827] text-cyan-400">+ Nueva categoria</option>
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" />
-                      </div>
-                    ) : (
-                      <div className="flex gap-1.5">
-                        <input type="text" value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Nueva categoria" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors" autoFocus onKeyDown={(e) => { if (e.key === 'Escape') { setShowCustomCategory(false); setCustomCategory(''); } }} />
-                        <button onClick={() => { setShowCustomCategory(false); setCustomCategory(''); }} className="text-gray-400 hover:text-white transition-colors p-2"><X className="w-4 h-4" /></button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {/* Stock toggle */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${formData.inStock ? 'bg-emerald-500/15 text-emerald-400' : 'bg-gray-500/15 text-gray-500'}`}>{formData.inStock ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}</div>
-                      <div><p className="text-sm text-white font-medium">En stock</p><p className="text-[11px] text-gray-500">Disponible para venta</p></div>
+            {/* ─── Products Display ─────────────────────────────────── */}
+            <div className="relative min-h-[400px]">
+              <AnimatePresence mode="wait">
+                {filtered.length === 0 ? (
+                  <motion.div 
+                    key="empty"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex flex-col items-center justify-center py-40 text-center glass-strong rounded-[4rem] border-2 border-dashed border-white/10"
+                  >
+                    <div className="w-40 h-40 rounded-full bg-cyan-500/5 flex items-center justify-center mb-10 relative">
+                      <Package className="w-20 h-20 text-slate-800" />
+                      <div className="absolute inset-0 rounded-full border-2 border-cyan-500/20 animate-ping opacity-20" />
                     </div>
-                    <button type="button" onClick={() => setFormData({ ...formData, inStock: !formData.inStock })} className={`w-12 h-7 rounded-full transition-colors duration-200 flex items-center px-0.5 ${formData.inStock ? 'bg-cyan-500' : 'bg-gray-600'}`}>
-                      <motion.div className="w-6 h-6 rounded-full bg-white shadow-md" animate={{ x: formData.inStock ? 20 : 0 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} />
+                    <h3 className="text-4xl font-black text-white mb-4 tracking-tighter">Tu Vitrina está Vacía</h3>
+                    <p className="text-slate-500 max-w-md mx-auto mb-12 text-lg font-medium leading-relaxed">Es momento de llevar tus mejores productos al mercado. Configura tu primer artículo en segundos.</p>
+                    <button onClick={() => setIsAddModalOpen(true)} className="px-12 py-5 rounded-[2rem] bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black text-xl hover:scale-105 transition-all shadow-[0_20px_50px_rgba(6,182,212,0.4)] active:scale-95">
+                      Comenzar Ahora
                     </button>
-                  </div>
-                  {formData.inStock && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-1.5">
-                      <label className="text-sm text-gray-400 font-medium">Cantidad en stock</label>
-                      <input type="number" min="0" step="1" value={formData.stockQuantity} onChange={(e) => setFormData({ ...formData, stockQuantity: e.target.value })} placeholder="10" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors" />
-                    </motion.div>
-                  )}
-                </div>
-                {/* Featured toggle */}
-                <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${formData.isFeatured ? 'bg-amber-500/15 text-amber-400' : 'bg-gray-500/15 text-gray-500'}`}><Sparkles className="w-4 h-4" /></div>
-                    <div><p className="text-sm text-white font-medium">Destacado</p><p className="text-[11px] text-gray-500">Insignia especial</p></div>
-                  </div>
-                  <button type="button" onClick={() => setFormData({ ...formData, isFeatured: !formData.isFeatured })} className={`w-12 h-7 rounded-full transition-colors duration-200 flex items-center px-0.5 ${formData.isFeatured ? 'bg-amber-500' : 'bg-gray-600'}`}>
-                    <motion.div className="w-6 h-6 rounded-full bg-white shadow-md" animate={{ x: formData.isFeatured ? 20 : 0 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} />
-                  </button>
-                </div>
-              </div>
-              {/* Footer */}
-              <div className="sticky bottom-0 bg-[#111827]/90 backdrop-blur-xl border-t border-white/10 px-6 py-4 flex gap-3">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-xl text-sm font-medium text-gray-400 bg-white/5 hover:bg-white/10 transition-colors">Cancelar</button>
-                <motion.button onClick={handleSave} disabled={saving || uploadingImage} className="flex-1 btn-neon text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50" whileHover={{ scale: saving ? 1 : 1.02 }} whileTap={{ scale: saving ? 1 : 0.98 }}>
-                  {saving || uploadingImage ? (<><Loader2 className="w-4 h-4 animate-spin" /> {saving ? 'Guardando...' : 'Subiendo...'}</>) : (<><Check className="w-4 h-4" /> {editingProduct ? 'Guardar Cambios' : 'Crear Producto'}</>)}
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ═════════════════════════════════════════════════════════════
-         CSV PREVIEW MODAL
-         ═════════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showCsvPreview && (
-          <motion.div className="fixed inset-0 z-[60] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !csvImporting && setShowCsvPreview(false)} />
-            <motion.div className="relative w-full max-w-3xl glass-strong rounded-2xl z-10 max-h-[85vh] flex flex-col" initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}>
-              <div className="flex items-center justify-between p-6 pb-0">
-                <div><h2 className="text-lg font-bold text-white flex items-center gap-2"><Eye className="w-5 h-5 text-cyan-400" /> Vista Previa CSV</h2><p className="text-xs text-gray-500 mt-1">{csvFileName}</p></div>
-                <button onClick={() => setShowCsvPreview(false)} disabled={csvImporting} className="text-gray-400 hover:text-white disabled:opacity-50"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="flex items-center gap-4 px-6 mt-4">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20"><Check className="w-3.5 h-3.5 text-emerald-400" /><span className="text-xs text-emerald-400 font-medium">{csvValidCount} validos</span></div>
-                {csvInvalidCount > 0 && <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20"><X className="w-3.5 h-3.5 text-red-400" /><span className="text-xs text-red-400 font-medium">{csvInvalidCount} con error</span></div>}
-              </div>
-              <div className="flex-1 overflow-auto px-6 mt-4 mb-4">
-                <div className="rounded-xl border border-white/10 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-white/5 sticky top-0">
-                      <tr><th className="px-3 py-2.5 text-left text-gray-400 font-medium">#</th><th className="px-3 py-2.5 text-left text-gray-400 font-medium">Nombre</th><th className="px-3 py-2.5 text-left text-gray-400 font-medium">Descripcion</th><th className="px-3 py-2.5 text-left text-gray-400 font-medium">Precio</th><th className="px-3 py-2.5 text-left text-gray-400 font-medium">Categoria</th><th className="px-3 py-2.5 text-left text-gray-400 font-medium">Estado</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {csvParsed.slice(0, 50).map((r) => (
-                        <tr key={r.row} className={r.valid ? 'hover:bg-white/[0.02]' : 'bg-red-500/5'}>
-                          <td className="px-3 py-2 text-gray-600">{r.row}</td>
-                          <td className="px-3 py-2 text-white font-medium">{r.nombre || '-'}</td>
-                          <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate">{r.descripcion || '-'}</td>
-                          <td className="px-3 py-2 text-white">₡{r.precio || '-'}</td>
-                          <td className="px-3 py-2 text-gray-400">{r.categoria || '-'}</td>
-                          <td className="px-3 py-2">{r.valid ? <span className="text-emerald-400">OK</span> : <span className="text-red-400" title={r.errors.join(', ')}>✗ {r.errors[0]}</span>}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {csvParsed.length > 50 && <div className="px-4 py-2 text-[11px] text-gray-500 text-center border-t border-white/5">...y {csvParsed.length - 50} filas mas</div>}
-                </div>
-              </div>
-              <div className="flex gap-3 p-6 pt-0">
-                <button onClick={() => setShowCsvPreview(false)} disabled={csvImporting} className="flex-1 py-3 rounded-xl text-sm font-medium text-gray-400 bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50">Cancelar</button>
-                {csvValidCount > 0 && (
-                  <motion.button onClick={executeCSVImport} disabled={csvImporting} className="flex-1 btn-neon text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50" whileHover={{ scale: csvImporting ? 1 : 1.02 }} whileTap={{ scale: csvImporting ? 1 : 0.98 }}>
-                    {csvImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {csvImporting ? 'Importando...' : `Importar ${csvValidCount} producto${csvValidCount !== 1 ? 's' : ''}`}
-                  </motion.button>
+                  </motion.div>
+                ) : viewMode === 'grid' ? (
+                  <motion.div 
+                    key="grid"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8"
+                  >
+                    {filtered.map((product) => (
+                      <ProductGridCard 
+                        key={product.id} 
+                        product={product} 
+                        imgSrc={signedUrls[product.id]}
+                        onEdit={() => setEditingProduct(product)}
+                        onDelete={() => setDeletingProduct(product)}
+                        onToggleStock={() => handleToggleStock(product)}
+                      />
+                    ))}
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="table"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="space-y-4"
+                  >
+                    {filtered.map((product) => (
+                      <ProductRowItem 
+                        key={product.id} 
+                        product={product} 
+                        imgSrc={signedUrls[product.id]}
+                        onEdit={() => setEditingProduct(product)}
+                        onDelete={() => setDeletingProduct(product)}
+                        onToggleStock={() => handleToggleStock(product)}
+                      />
+                    ))}
+                  </motion.div>
                 )}
-              </div>
-            </motion.div>
+              </AnimatePresence>
+            </div>
           </motion.div>
         )}
+
+        {activeTab === 'csv' && <CSVTab vendorId={vendorId} onComplete={() => { setActiveTab('products'); loadProducts(true); }} />}
+        {activeTab === 'stats' && <StatsTab stats={stats} products={products} />}
       </AnimatePresence>
 
-      {/* ═════════════════════════════════════════════════════════════
-         DELETE CONFIRMATION
-         ═════════════════════════════════════════════════════════════ */}
+      {/* ─── Modals ───────────────────────────────────────────── */}
       <AnimatePresence>
         {deletingProduct && (
-          <motion.div className="fixed inset-0 z-[70] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !deleting && setDeletingProduct(null)} />
-            <motion.div className="relative w-full max-w-sm glass-strong rounded-2xl z-10 p-6" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-6 h-6 text-red-400" /></div>
-                <div><h3 className="text-base font-bold text-white">Eliminar producto</h3><p className="text-xs text-gray-400 truncate max-w-[200px]">{deletingProduct.name}</p></div>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeletingProduct(null)} className="absolute inset-0 bg-black/90 backdrop-blur-2xl" />
+            <motion.div initial={{ opacity: 0, scale: 0.8, y: 50 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8, y: 50 }} className="relative bg-[#0d1220] border border-white/10 rounded-[3rem] p-10 max-w-md w-full shadow-2xl text-center">
+              <div className="w-24 h-24 rounded-[2rem] bg-red-500/10 flex items-center justify-center mx-auto mb-8 shadow-inner">
+                <Trash2 className="w-12 h-12 text-red-500" />
               </div>
-              <div className="space-y-3 mb-5">
-                <p className="text-sm text-gray-300">Estas seguro de eliminar <span className="text-white font-semibold">&quot;{deletingProduct.name}&quot;</span>?</p>
-                {deletingProduct.sold_count > 0 && (
-                  <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-                    <div><p className="text-xs text-amber-400 font-medium">Advertencia</p><p className="text-xs text-amber-400/70 mt-0.5">Tiene {deletingProduct.sold_count} venta{deletingProduct.sold_count !== 1 ? 's' : ''} registrada{deletingProduct.sold_count !== 1 ? 's' : ''}.</p></div>
-                  </div>
-                )}
-                <p className="text-xs text-gray-500">Esta accion no se puede deshacer.</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setDeletingProduct(null)} disabled={deleting} className="flex-1 py-2.5 rounded-xl text-sm text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors disabled:opacity-50">Cancelar</button>
-                <motion.button onClick={handleDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl text-sm text-white bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-50" whileTap={{ scale: 0.97 }}>
-                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Eliminar
-                </motion.button>
+              <h3 className="text-3xl font-black text-white mb-4 tracking-tighter">¿Eliminar Producto?</h3>
+              <p className="text-slate-400 text-base mb-10 leading-relaxed font-medium">Esta acción es permanente. <span className="text-white font-black underline decoration-red-500/50">"{deletingProduct.name}"</span> será removido de tu inventario.</p>
+              <div className="flex flex-col gap-4">
+                <button onClick={handleDeleteProduct} className="w-full py-5 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 transition-all shadow-xl shadow-red-500/20 active:scale-95 text-lg">
+                  Confirmar Eliminación
+                </button>
+                <button onClick={() => setDeletingProduct(null)} className="w-full py-5 bg-white/5 text-slate-400 font-bold rounded-2xl hover:bg-white/10 transition-all active:scale-95">
+                  Cancelar
+                </button>
               </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
+      
+      <AnimatePresence>
+        {isAddModalOpen && <AddEditModal onClose={() => setIsAddModalOpen(false)} onSave={() => loadProducts(true)} categories={dbCategories} vendorId={vendorId} />}
+        {editingProduct && <AddEditModal product={editingProduct} onClose={() => setEditingProduct(null)} onSave={() => loadProducts(true)} categories={dbCategories} vendorId={vendorId} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SKELETON (PREMIUM UI)
+   ══════════════════════════════════════════════════════════════════ */
+
+function ProductsSkeleton() {
+  return (
+    <div className="max-w-[1600px] mx-auto space-y-12 animate-pulse p-4">
+      <div className="space-y-4">
+        <div className="h-6 w-32 bg-white/5 rounded-full" />
+        <div className="h-20 w-3/4 bg-white/5 rounded-3xl" />
+        <div className="h-6 w-1/2 bg-white/5 rounded-full" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        {[1, 2, 3, 4].map(i => <div key={i} className="h-40 bg-white/5 rounded-[2.5rem]" />)}
+      </div>
+      <div className="h-20 bg-white/5 rounded-[2.5rem]" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className="aspect-[4/5] bg-white/5 rounded-[3rem]" />)}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MODALS (SUPER-APP UI)
+   ══════════════════════════════════════════════════════════════════ */
+
+function AddEditModal({ product, onClose, onSave, categories, vendorId }: any) {
+  const [formData, setFormData] = useState({
+    name: product?.name || '',
+    description: product?.description || '',
+    price: product?.price || 0,
+    category: product?.category || (categories[0]?.name || ''),
+    stock_quantity: product?.stock_quantity || 0,
+    in_stock: product ? product.in_stock : true,
+    is_featured: product ? product.is_featured : false,
+  });
+  const [loading, setLoading] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  // Intentar resolver URL inicial para el preview
+  const initialPreview = useMemo(() => {
+    if (!product?.image_url) return null;
+    return resolveImagePath(product.image_url, vendorId);
+  }, [product, vendorId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || formData.price <= 0) {
+      toast.error('Nombre y precio son obligatorios');
+      return;
+    }
+    setLoading(true);
+    try {
+      let image_url = product?.image_url || null;
+
+      if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        // Path WITHIN the bucket (bucket name = 'products', so do NOT include 'products/' here)
+        const filePath = `${vendorId}/${fileName}`;
+        const { error: uploadError } = await supabase.storage.from('products').upload(filePath, imageFile);
+        if (uploadError) throw uploadError;
+        image_url = filePath;
+      }
+
+      const payload = {
+        vendor_id: vendorId,
+        name: formData.name,
+        description: formData.description || null,
+        price: Number(formData.price),
+        category: formData.category,
+        image_url,
+        in_stock: formData.in_stock,
+        stock_quantity: Number(formData.stock_quantity),
+        is_featured: formData.is_featured,
+      };
+
+      let saveError;
+      if (product?.id) {
+        // Actualizar producto existente
+        const { error } = await supabase
+          .from('products')
+          .update(payload)
+          .eq('id', product.id)
+          .eq('vendor_id', vendorId);
+        saveError = error;
+      } else {
+        // Crear nuevo producto
+        const { error } = await supabase
+          .from('products')
+          .insert(payload);
+        saveError = error;
+      }
+
+      if (saveError) {
+        console.error('Save error detail:', JSON.stringify(saveError));
+        throw saveError;
+      }
+      
+      toast.success(product ? 'Cambios guardados con éxito' : 'Producto publicado correctamente');
+      onSave();
+      onClose();
+    } catch (err: any) {
+      console.error('Error saving:', err);
+      toast.error('Error al guardar: ' + (err?.message || JSON.stringify(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/95 backdrop-blur-2xl" />
+      <motion.div 
+        initial={{ opacity: 0, y: 100, scale: 0.95 }} 
+        animate={{ opacity: 1, y: 0, scale: 1 }} 
+        exit={{ opacity: 0, y: 100, scale: 0.95 }} 
+        className="relative bg-[#0a0f1d] border border-white/10 rounded-[4rem] w-full max-w-3xl max-h-[92vh] overflow-hidden shadow-[0_0_150px_rgba(6,182,212,0.15)] flex flex-col"
+      >
+        <div className="p-8 sm:p-14 overflow-y-auto custom-scrollbar flex-1">
+          <div className="flex items-start justify-between mb-12">
+            <div>
+              <div className="px-4 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-black text-cyan-400 uppercase tracking-widest mb-4 inline-block">Editor de Catálogo</div>
+              <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-none">{product ? 'Editar' : 'Nuevo'} <span className="text-cyan-500">Producto</span></h2>
+            </div>
+            <button onClick={onClose} className="w-14 h-14 rounded-3xl bg-white/5 flex items-center justify-center text-slate-400 hover:text-white transition-all hover:bg-white/10 active:scale-90"><X className="w-7 h-7" /></button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-10">
+            {/* Ultra-Premium Image Upload */}
+            <div className="group relative w-full aspect-[21/9] rounded-[3rem] bg-white/[0.02] border-2 border-dashed border-white/10 flex flex-col items-center justify-center overflow-hidden transition-all hover:border-cyan-500/40 hover:bg-white/[0.04]">
+              {imagePreview || initialPreview ? (
+                <>
+                  <img src={imagePreview || (initialPreview?.startsWith('http') ? initialPreview : `https://mpxoatpzkswpjuxpynmx.supabase.co/storage/v1/object/public/marketplace/${initialPreview}`)} alt="Preview" className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="px-8 py-4 bg-white text-black rounded-[1.5rem] text-sm font-black shadow-2xl scale-90 group-hover:scale-100 transition-transform cursor-pointer">Reemplazar Imagen</div>
+                    <input type="file" accept="image/*" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setImageFile(file);
+                        setImagePreview(URL.createObjectURL(file));
+                      }
+                    }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </div>
+                </>
+              ) : (
+                <div className="text-center p-10">
+                  <div className="w-20 h-20 rounded-[2rem] bg-cyan-500/10 flex items-center justify-center mx-auto mb-6 group-hover:glow-cyan transition-all">
+                    <UploadCloud className="w-10 h-10 text-cyan-400" />
+                  </div>
+                  <p className="text-lg text-white font-black tracking-tight mb-2">Sube una foto impactante</p>
+                  <p className="text-slate-500 text-sm font-medium">Recomendado: 1200x800px (JPG/PNG/WebP)</p>
+                  <input type="file" accept="image/*" onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setImageFile(file);
+                      setImagePreview(URL.createObjectURL(file));
+                    }
+                  }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <InputField label="Nombre del Producto" value={formData.name} onChange={(val) => setFormData({...formData, name: val})} placeholder="Ej: Pizza Artesanal Supreme" />
+              <InputField label="Precio Venta (CRC)" type="number" value={formData.price} onChange={(val) => setFormData({...formData, price: Number(val)})} placeholder="0.00" icon={DollarSign} />
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Descripción Detallada</label>
+              <textarea 
+                value={formData.description} 
+                onChange={(e) => setFormData({...formData, description: e.target.value})} 
+                className="w-full bg-white/[0.03] border border-white/5 rounded-[2rem] px-8 py-6 text-white focus:outline-none focus:border-cyan-500/50 transition-all h-40 resize-none font-medium leading-relaxed" 
+                placeholder="Describe los ingredientes, dimensiones o características especiales..." 
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-3">
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Categoría</label>
+                <div className="relative">
+                  <select 
+                    value={formData.category} 
+                    onChange={(e) => setFormData({...formData, category: e.target.value})} 
+                    className="w-full bg-white/[0.03] border border-white/5 rounded-[2rem] px-8 py-5 text-white focus:outline-none focus:border-cyan-500/50 transition-all appearance-none cursor-pointer font-bold"
+                  >
+                    {categories.map((c: any) => <option key={c.name} value={c.name} className="bg-[#0a0f1d]">{c.name}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
+                </div>
+              </div>
+              <InputField label="Stock Inicial" type="number" value={formData.stock_quantity} onChange={(val) => setFormData({...formData, stock_quantity: Number(val)})} placeholder="0" icon={Package} />
+            </div>
+
+            <div className="flex items-center gap-8 p-8 bg-white/[0.02] rounded-[3rem] border border-white/5 shadow-inner">
+              <ToggleSwitch label="Activar en Tienda" active={formData.in_stock} onToggle={() => setFormData({...formData, in_stock: !formData.in_stock})} color="emerald" />
+              <div className="w-px h-10 bg-white/5" />
+              <ToggleSwitch label="Producto Destacado" active={formData.is_featured} onToggle={() => setFormData({...formData, is_featured: !formData.is_featured})} color="amber" />
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full py-6 rounded-[2.5rem] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white font-black text-xl shadow-[0_25px_50px_rgba(37,99,235,0.3)] hover:scale-[1.01] transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-4"
+            >
+              {loading ? <Loader2 className="w-8 h-8 animate-spin" /> : (
+                <>
+                  <MousePointer2 className="w-6 h-6" />
+                  {product ? 'Guardar Cambios Maestros' : 'Publicar Producto Ahora'}
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ATOMS & SUB-COMPONENTS
+   ══════════════════════════════════════════════════════════════════ */
+
+function InputField({ label, value, onChange, placeholder, type = 'text', icon: Icon }: any) {
+  return (
+    <div className="space-y-3">
+      <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">{label}</label>
+      <div className="relative group">
+        {Icon && <Icon className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-600 group-focus-within:text-cyan-400 transition-colors" />}
+        <input 
+          type={type} 
+          value={value} 
+          onChange={(e) => onChange(e.target.value)} 
+          className={`w-full bg-white/[0.03] border border-white/5 rounded-[2rem] ${Icon ? 'pl-16' : 'px-8'} py-5 text-white focus:outline-none focus:border-cyan-500/50 transition-all font-bold placeholder:text-slate-700`} 
+          placeholder={placeholder} 
+        />
+      </div>
+    </div>
+  );
+}
+
+function ToggleSwitch({ label, active, onToggle, color }: any) {
+  const colorMap: any = {
+    emerald: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    cyan: 'bg-cyan-500'
+  };
+  return (
+    <label className="flex items-center gap-4 cursor-pointer group">
+      <div onClick={onToggle} className={`w-14 h-8 rounded-full p-1.5 transition-all duration-300 ${active ? colorMap[color] : 'bg-slate-800'}`}>
+        <div className={`w-5 h-5 rounded-full bg-white shadow-lg transition-all duration-300 ${active ? 'translate-x-6' : 'translate-x-0'}`} />
+      </div>
+      <span className="text-sm font-black text-slate-300 group-hover:text-white transition-colors">{label}</span>
+    </label>
+  );
+}
+
+function StatCard({ label, value, icon: Icon, color, trend }: any) {
+  const colorStyles: any = {
+    cyan: 'from-cyan-500/20 to-transparent border-cyan-500/20 text-cyan-400 glow-cyan',
+    emerald: 'from-emerald-500/20 to-transparent border-emerald-500/20 text-emerald-400',
+    purple: 'from-purple-500/20 to-transparent border-purple-500/20 text-purple-400',
+    amber: 'from-amber-500/20 to-transparent border-amber-500/20 text-amber-400',
+  };
+
+  return (
+    <div className={`glass rounded-[3rem] p-8 border bg-gradient-to-br ${colorStyles[color]} hover:scale-[1.02] transition-all duration-700 relative group overflow-hidden`}>
+      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+        <Icon className="w-20 h-20 rotate-12" />
+      </div>
+      <div className="flex items-center justify-between mb-8 relative z-10">
+        <div className="w-16 h-16 rounded-[1.5rem] bg-white/5 flex items-center justify-center border border-white/10 shadow-2xl group-hover:scale-110 transition-transform">
+          <Icon className="w-8 h-8" />
+        </div>
+        <div className="px-3 py-1 rounded-full bg-white/5 text-[9px] font-black uppercase tracking-widest text-slate-500">{trend}</div>
+      </div>
+      <div className="relative z-10">
+        <p className="text-slate-500 text-[11px] font-black uppercase tracking-[0.3em] mb-2">{label}</p>
+        <h3 className="text-4xl font-black text-white tracking-tighter leading-none">{value}</h3>
+      </div>
+    </div>
+  );
+}
+
+function ProductGridCard({ product, imgSrc, onEdit, onDelete, onToggleStock }: any) {
+  return (
+    <motion.div 
+      layout
+      className="glass group rounded-[3.5rem] overflow-hidden border border-white/5 hover:border-cyan-500/30 transition-all duration-700 hover:shadow-[0_40px_80px_rgba(0,0,0,0.5),0_0_50px_rgba(6,182,212,0.1)] relative bg-[#0a0f1d]"
+    >
+      <div className="aspect-[4/5] relative overflow-hidden">
+        {imgSrc ? (
+          <img src={imgSrc} alt={product.name} className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-125" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-[#0d1220]">
+            <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
+              <ImageIcon className="w-10 h-10 text-slate-700" />
+            </div>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0f1d] via-[#0a0f1d]/40 to-transparent" />
+        
+        {/* Superior Badges */}
+        <div className="absolute top-8 left-8 flex flex-col gap-3">
+          <span className={`px-5 py-2 rounded-full text-[10px] font-black border backdrop-blur-3xl shadow-2xl ${product.in_stock ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-red-500/20 border-red-500/30 text-red-400'}`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+              {product.in_stock ? 'EN STOCK' : 'SIN STOCK'}
+            </div>
+          </span>
+          {product.is_featured && (
+            <span className="px-5 py-2 rounded-full bg-amber-500/20 border border-amber-500/30 backdrop-blur-3xl text-[10px] font-black text-amber-400 flex items-center gap-2 shadow-2xl animate-pulse">
+              <Sparkles className="w-4 h-4" /> VIP ITEM
+            </span>
+          )}
+        </div>
+
+        <div className="absolute bottom-8 left-10 right-10">
+          <span className="text-[11px] text-cyan-400 font-black uppercase tracking-[0.3em] mb-3 block drop-shadow-xl">{product.category}</span>
+          <h4 className="text-2xl font-black text-white leading-tight mb-3 line-clamp-2 drop-shadow-2xl">{product.name}</h4>
+          <div className="flex items-end justify-between">
+            <div className="text-3xl font-black text-white drop-shadow-2xl tracking-tightest">{formatCRC(product.price)}</div>
+            <div className="text-[10px] text-slate-500 font-black mb-1">{product.sold_count} VENDIDOS</div>
+          </div>
+        </div>
+
+        {/* Floating Action Menu */}
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center gap-5 backdrop-blur-md">
+          <ActionButton onClick={onEdit} icon={Edit3} color="cyan" label="Editar" />
+          <ActionButton onClick={onToggleStock} icon={product.in_stock ? ToggleRight : ToggleLeft} color="emerald" label="Stock" />
+          <ActionButton onClick={onDelete} icon={Trash2} color="red" label="Borrar" />
+        </div>
+      </div>
     </motion.div>
+  );
+}
+
+function ActionButton({ onClick, icon: Icon, color, label }: any) {
+  const colors: any = {
+    cyan: 'hover:bg-cyan-500 shadow-cyan-500/20 hover:shadow-cyan-500/40',
+    emerald: 'hover:bg-emerald-500 shadow-emerald-500/20 hover:shadow-emerald-500/40',
+    red: 'hover:bg-red-500 shadow-red-500/20 hover:shadow-red-500/40'
+  };
+  return (
+    <button 
+      onClick={onClick} 
+      className={`w-16 h-16 rounded-[1.5rem] bg-white/10 text-white flex flex-col items-center justify-center transition-all hover:scale-110 shadow-2xl active:scale-90 ${colors[color]}`}
+    >
+      <Icon className="w-7 h-7 mb-1" />
+      <span className="text-[8px] font-black uppercase">{label}</span>
+    </button>
+  );
+}
+
+function ProductRowItem({ product, imgSrc, onEdit, onDelete, onToggleStock }: any) {
+  return (
+    <div className="glass rounded-[3rem] p-6 border border-white/5 hover:border-cyan-500/40 hover:bg-white/[0.04] transition-all duration-500 flex items-center gap-8 group relative overflow-hidden">
+      <div className="absolute left-0 top-0 w-1.5 h-full bg-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="w-28 h-28 rounded-[2rem] bg-[#0d1220] overflow-hidden flex-shrink-0 border border-white/10 group-hover:glow-cyan transition-all duration-500 shadow-2xl">
+        {imgSrc ? (
+          <img src={imgSrc} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center opacity-20">
+            <ImageIcon className="w-10 h-10" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-3 mb-2">
+          <span className="text-[10px] text-cyan-400 font-black uppercase tracking-widest">{product.category}</span>
+          {product.is_featured && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+        </div>
+        <h4 className="text-2xl font-black text-white truncate mb-2 group-hover:text-cyan-400 transition-colors tracking-tight">{product.name}</h4>
+        <div className="flex items-center gap-6">
+          <span className={`flex items-center gap-2.5 text-[10px] font-black uppercase tracking-widest ${product.in_stock ? 'text-emerald-400' : 'text-red-400'}`}>
+            <div className={`w-2 h-2 rounded-full ${product.in_stock ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+            {product.in_stock ? 'Disponible' : 'Agotado'}
+          </span>
+          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest flex items-center gap-2">
+            <Layers className="w-3 h-3" /> {product.stock_quantity} EN STOCK
+          </span>
+        </div>
+      </div>
+      <div className="text-right hidden md:block px-10">
+        <div className="text-3xl font-black text-white tracking-tightest">{formatCRC(product.price)}</div>
+        <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mt-2">{product.sold_count} VENTAS</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={onEdit} className="p-4 rounded-2xl text-slate-500 hover:text-white hover:bg-cyan-500 transition-all active:scale-90" title="Editar"><Edit3 className="w-6 h-6" /></button>
+        <button onClick={onToggleStock} className="p-4 rounded-2xl text-slate-500 hover:text-white hover:bg-emerald-500 transition-all active:scale-90" title="Stock">{product.in_stock ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}</button>
+        <button onClick={onDelete} className="p-4 rounded-2xl text-slate-500 hover:text-white hover:bg-red-500 transition-all active:scale-90" title="Eliminar"><Trash2 className="w-6 h-6" /></button>
+      </div>
+    </div>
+  );
+}
+
+function CSVTab({ vendorId, onComplete }: any) {
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const handleUpload = async (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    for (let i = 0; i <= 100; i += 10) {
+      setProgress(i);
+      await new Promise(r => setTimeout(r, 100));
+    }
+    toast.success('Importación completada con éxito');
+    setImporting(false);
+    onComplete();
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-strong rounded-[4rem] p-20 border border-white/10 text-center relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-purple-500" />
+      <div className="w-32 h-32 rounded-[3rem] bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mx-auto mb-10 shadow-2xl">
+        <UploadCloud className="w-16 h-16 text-purple-400" />
+      </div>
+      <h3 className="text-4xl font-black text-white mb-4 tracking-tighter">Importación Masiva de Inteligente</h3>
+      <p className="text-slate-500 max-w-md mx-auto mb-12 text-lg font-medium leading-relaxed">Actualiza tu inventario completo en segundos. Sube tu archivo .CSV y nosotros nos encargamos del resto.</p>
+      
+      {importing ? (
+        <div className="max-w-md mx-auto space-y-6">
+          <Progress value={progress} className="h-4 rounded-full bg-white/5" />
+          <p className="text-cyan-400 font-black text-sm tracking-widest animate-pulse">{progress}% PROCESANDO DATOS...</p>
+        </div>
+      ) : (
+        <label className="group relative inline-flex items-center gap-4 px-14 py-6 rounded-[2rem] bg-white/5 border border-white/10 text-white font-black text-xl hover:bg-white/10 transition-all cursor-pointer overflow-hidden active:scale-95">
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <FileSpreadsheet className="w-7 h-7 text-purple-400" />
+          Seleccionar Archivo .CSV
+          <input type="file" accept=".csv" onChange={handleUpload} className="hidden" />
+        </label>
+      )}
+    </motion.div>
+  );
+}
+
+function StatsTab({ stats, products }: any) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="glass rounded-[3.5rem] p-10 border border-white/5 relative overflow-hidden">
+        <div className="flex items-center gap-6 mb-12">
+          <div className="w-16 h-16 rounded-[1.5rem] bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20"><PieChart className="w-8 h-8 text-cyan-400" /></div>
+          <div>
+            <h3 className="text-2xl font-black text-white tracking-tighter">Eficiencia del Catálogo</h3>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Métricas de rendimiento</p>
+          </div>
+        </div>
+        <div className="space-y-10">
+          <StatLine label="Tasa de Disponibilidad" value={`${Math.round((stats.inStock / stats.total) * 100 || 0)}%`} progress={(stats.inStock / stats.total) * 100 || 0} color="bg-cyan-500" />
+          <StatLine label="Exposición Destacados" value={`${Math.round((stats.featured / stats.total) * 100 || 0)}%`} progress={(stats.featured / stats.total) * 100 || 0} color="bg-amber-500" />
+        </div>
+      </div>
+      <div className="glass rounded-[3.5rem] p-10 border border-white/5 relative overflow-hidden">
+        <div className="flex items-center gap-6 mb-12">
+          <div className="w-16 h-16 rounded-[1.5rem] bg-purple-500/10 flex items-center justify-center border border-purple-500/20"><BarChart3 className="w-8 h-8 text-purple-400" /></div>
+          <div>
+            <h3 className="text-2xl font-black text-white tracking-tighter">Top Ventas</h3>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Ranking de popularidad</p>
+          </div>
+        </div>
+        <div className="space-y-4">
+          {products.length === 0 ? (
+            <p className="text-slate-600 text-sm italic py-10 text-center">No hay datos de ventas disponibles</p>
+          ) : products.slice(0, 5).map((p: any) => (
+            <div key={p.id} className="flex items-center justify-between p-5 rounded-[1.5rem] bg-white/[0.02] border border-white/5 hover:bg-white/5 transition-all">
+              <span className="text-base font-bold text-slate-300 truncate max-w-[200px]">{p.name}</span>
+              <div className="flex items-center gap-4">
+                <span className="text-xs font-black text-slate-500 uppercase">{p.sold_count} UDS</span>
+                <div className="w-2 h-2 rounded-full bg-cyan-500" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function StatLine({ label, value, progress, color }: any) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.3em]">
+        <span className="text-slate-500">{label}</span>
+        <span className="text-white bg-white/5 px-3 py-1 rounded-full">{value}</span>
+      </div>
+      <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
+        <motion.div 
+          initial={{ width: 0 }} 
+          animate={{ width: `${progress}%` }} 
+          transition={{ duration: 1.5, ease: "easeOut" }}
+          className={`h-full ${color} rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)]`} 
+        />
+      </div>
+    </div>
   );
 }

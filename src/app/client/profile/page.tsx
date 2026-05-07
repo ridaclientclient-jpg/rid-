@@ -99,8 +99,8 @@ export default function ClientProfile() {
 
   const handleAvatarUpload = async (file: File) => {
     if (!user?.id) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('La imagen no puede ser mayor a 5MB');
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('La imagen no puede ser mayor a 20MB');
       return;
     }
     if (!file.type.startsWith('image/')) {

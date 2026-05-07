@@ -107,7 +107,7 @@ export default function AdminManagementPage() {
   const [blocking, setBlocking] = useState(false);
   const [removing, setRemoving] = useState(false);
 
-  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
   const fetchAdmins = useCallback(async () => {
     try {
@@ -116,12 +116,18 @@ export default function AdminManagementPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setAdmins(data.admins || []);
+        // Ensure data.admins is an array and sort by role (super admins first)
+        const sortedAdmins = (data.admins || []).sort((a: AdminUser, b: AdminUser) => {
+          if (a.role === 'super_admin' && b.role !== 'super_admin') return -1;
+          if (a.role !== 'super_admin' && b.role === 'super_admin') return 1;
+          return 0;
+        });
+        setAdmins(sortedAdmins);
       } else {
         toast.error(data.error || 'Error al cargar administradores');
       }
     } catch {
-      toast.error('Error de conexion');
+      toast.error('Error de conexion al cargar admins');
     } finally {
       setLoading(false);
     }

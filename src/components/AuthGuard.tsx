@@ -26,11 +26,18 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
   useEffect(() => {
     let cancelled = false;
 
+    // Optimización: Si ya estamos autenticados, saltamos la pantalla de carga inmediatamente
+    if (isAuthenticated) {
+      setChecked(true);
+    }
+
     // Safety timeout: force show content after 8s even if initAuth hangs
     const safetyTimeout = setTimeout(() => {
       if (!cancelled) {
         setChecked(true);
-        setAuthError('Tiempo de espera agotado. Recarga la pagina.');
+        if (!isAuthenticated) {
+          setAuthError('Tiempo de espera agotado. Recarga la pagina.');
+        }
       }
     }, 8000);
 
@@ -39,13 +46,15 @@ export default function AuthGuard({ children, requiredRole, authPage }: AuthGuar
       .catch((err) => {
         if (!cancelled) {
           setChecked(true);
-          setAuthError('Error de conexion. Verifica tu internet.');
+          if (!isAuthenticated) {
+            setAuthError('Error de conexion. Verifica tu internet.');
+          }
           console.error('[AuthGuard] initAuth failed:', err);
         }
       });
 
     return () => { cancelled = true; clearTimeout(safetyTimeout); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initAuth, isAuthenticated]);
 
   // Check if user is blocked (after auth is verified)
   useEffect(() => {

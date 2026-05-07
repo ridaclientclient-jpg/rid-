@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
 import { supabase, type Courier, type Delivery } from '@/lib/supabase';
@@ -63,6 +63,8 @@ export default function CourierDeliveries() {
   const [courier, setCourier] = useState<Courier | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [hasNewOrder, setHasNewOrder] = useState(false);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const activeDelivery = deliveries.find(
     (d) => d.status === 'assigned' || d.status === 'picked_up' || d.status === 'in_transit'
@@ -104,6 +106,50 @@ export default function CourierDeliveries() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Realtime subscription — triggers when a delivery is assigned to this courier
+  useEffect(() => {
+    if (!courier?.id) return;
+
+    // Clean up previous channel if any
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    const channel = supabase
+      .channel(`courier-deliveries-${courier.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'deliveries',
+        },
+        (payload) => {
+          const row = (payload.new ?? {}) as Partial<Delivery>;
+          // Only react to events that belong to this courier
+          if (row.courier_id !== courier.id) return;
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            if (row.status === 'assigned') {
+              setHasNewOrder(true);
+              toast.success('¡Nueva entrega asignada!', {
+                description: 'Tienes una orden pendiente de recogida',
+                duration: 6000,
+              });
+            }
+            fetchData();
+          }
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [courier?.id, fetchData]);
 
   const updateDeliveryStatus = async (deliveryId: string, newStatus: string) => {
     setUpdatingId(deliveryId);
@@ -165,10 +211,29 @@ export default function CourierDeliveries() {
     <div className="p-4 space-y-4">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-xl font-bold text-white">Entregas</h1>
-        <p className="text-sm text-gray-400 mt-0.5">
-          {activeDelivery ? 'Tienes una entrega activa' : 'Sin entregas activas'}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">Entregas</h1>
+            <p className="text-sm text-gray-400 mt-0.5">
+              {activeDelivery ? 'Tienes una entrega activa' : 'Sin entregas activas'}
+            </p>
+          </div>
+          {/* New order badge */}
+          <AnimatePresence>
+            {hasNewOrder && (
+              <motion.button
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0 }}
+                onClick={() => setHasNewOrder(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg shadow-orange-500/30 animate-pulse"
+              >
+                <Package className="w-3.5 h-3.5" />
+                Nueva orden!
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
       </motion.div>
 
       {/* Stats Row */}

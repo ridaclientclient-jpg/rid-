@@ -8,7 +8,7 @@ import {
   X, Loader2, ChevronLeft, Star, ImageIcon, Upload, ChevronDown,
   CheckSquare, Square, AlertTriangle, DollarSign, StarHalf, Filter,
   ArrowUpDown, MoreHorizontal, ToggleLeft, ToggleRight, Sparkles,
-  ArrowUpDownIcon
+  LayoutGrid, List, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase, type Product, type Vendor, type ProductReview } from '@/lib/supabase';
@@ -161,10 +161,9 @@ function LoadingState() {
           </div>
         ))}
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <ProductCardSkeleton key={i} />
-        ))}
+      <div className="glass rounded-2xl p-8 flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 text-violet-500 animate-spin opacity-50" />
+        <p className="text-gray-500 text-sm animate-pulse">Cargando productos...</p>
       </div>
     </div>
   );
@@ -305,6 +304,7 @@ export default function AdminProductsPage() {
   const [detailReviews, setDetailReviews] = useState<ProductReview[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table'); // Default to table since user mentioned columns
 
   // ─── Fetch Products ─────────────────────────────────────────
   const fetchProducts = useCallback(async () => {
@@ -329,17 +329,19 @@ export default function AdminProductsPage() {
           .eq('status', 'delivered');
 
         for (const delivery of completedDeliveries || []) {
-          const items = (delivery.items || []) as Array<{ id?: string; qty?: number }>;
+          const items = Array.isArray(delivery.items) ? delivery.items : [];
           for (const item of items) {
-            if (item.id && productIds.includes(item.id)) {
-              soldMap[item.id] = (soldMap[item.id] || 0) + (item.qty || 1);
+            if (item && typeof item === 'object' && 'id' in item && item.id && productIds.includes(item.id as string)) {
+              const qty = (item as any).qty || 1;
+              soldMap[item.id as string] = (soldMap[item.id as string] || 0) + qty;
             }
           }
         }
       }
 
       const mapped: ProductRow[] = allProducts.map((p) => {
-        const vendor = p.vendors as { store_name?: string; category?: string } | null;
+        const rawVendor = p.vendors;
+        const vendor = (Array.isArray(rawVendor) ? rawVendor[0] : rawVendor) as { store_name?: string; category?: string } | null;
         const vendorCat = vendor?.category || 'other';
         const displayCat = categoryMap[p.category] || categoryMap[vendorCat] || p.category || 'Otro';
 
@@ -723,15 +725,26 @@ export default function AdminProductsPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Productos</h1>
           <p className="text-gray-400 text-sm mt-1">Gestión de productos del marketplace</p>
         </div>
-        <motion.button
-          onClick={openAddModal}
-          className="self-start inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-500 hover:to-purple-500 shadow-lg shadow-violet-500/20 transition-all"
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-        >
-          <Plus className="w-4 h-4" />
-          Agregar Producto
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <motion.button
+            onClick={fetchProducts}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title="Actualizar datos"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </motion.button>
+          <motion.button
+            onClick={openAddModal}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-500 hover:to-purple-500 shadow-lg shadow-violet-500/20 transition-all"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+          >
+            <Plus className="w-4 h-4" />
+            Agregar Producto
+          </motion.button>
+        </div>
       </div>
 
       {/* Quick Stats */}
@@ -778,6 +791,28 @@ export default function AdminProductsPage() {
               ))}
             </select>
             <ArrowUpDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-lg transition-all ${
+                viewMode === 'table' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'text-gray-500 hover:text-white'
+              }`}
+              title="Vista de Tabla"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-lg transition-all ${
+                viewMode === 'grid' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'text-gray-500 hover:text-white'
+              }`}
+              title="Vista de Cuadrícula"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -906,135 +941,237 @@ export default function AdminProductsPage() {
         </div>
       )}
 
-      {/* Product Grid */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <AnimatePresence mode="popLayout">
-          {visibleProducts.map((product, i) => (
-            <motion.div
-              key={product.id}
-              layout
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ delay: Math.min(i * 0.03, 0.3) }}
-              className={`glass rounded-2xl overflow-hidden group transition-all duration-300 ${
-                bulkSelected.has(product.id)
-                  ? 'ring-2 ring-violet-500 shadow-lg shadow-violet-500/10'
-                  : 'hover:shadow-lg hover:shadow-violet-500/5'
-              }`}
-            >
-              {/* Image / Category header */}
-              <div className="relative h-36 overflow-hidden">
-                {product.image_url && imageSignedUrls[product.id] ? (
-                  <img
-                    src={imageSignedUrls[product.id]}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className={`w-full h-full bg-gradient-to-br ${categoryColors[product.category] || categoryColors['Otro']} flex items-center justify-center`}>
-                    <Package className="w-10 h-10 opacity-50" />
-                  </div>
-                )}
-                {/* Overlays */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+      {/* Products Content */}
+      {viewMode === 'grid' ? (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <AnimatePresence mode="popLayout">
+            {visibleProducts.map((product, i) => (
+              <motion.div
+                key={product.id}
+                layout
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                className={`glass rounded-2xl overflow-hidden group transition-all duration-300 ${
+                  bulkSelected.has(product.id)
+                    ? 'ring-2 ring-violet-500 shadow-lg shadow-violet-500/10'
+                    : 'hover:shadow-lg hover:shadow-violet-500/5'
+                }`}
+              >
+                {/* Image / Category header */}
+                <div className="relative h-36 overflow-hidden">
+                  {product.image_url && imageSignedUrls[product.id] ? (
+                    <img
+                      src={imageSignedUrls[product.id]}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className={`w-full h-full bg-gradient-to-br ${categoryColors[product.category] || categoryColors['Otro']} flex items-center justify-center`}>
+                      <Package className="w-10 h-10 opacity-50" />
+                    </div>
+                  )}
+                  {/* Overlays */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
 
-                {/* Checkbox */}
-                <div className="absolute top-3 left-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleSelect(product.id);
-                    }}
-                    className="p-1 rounded-md bg-black/30 backdrop-blur-sm hover:bg-black/50 transition-colors"
+                  {/* Checkbox */}
+                  <div className="absolute top-3 left-3">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelect(product.id);
+                      }}
+                      className="p-1 rounded-md bg-black/30 backdrop-blur-sm hover:bg-black/50 transition-colors"
+                    >
+                      {bulkSelected.has(product.id) ? (
+                        <CheckSquare className="w-4 h-4 text-violet-400" />
+                      ) : (
+                        <Square className="w-4 h-4 text-white/60" />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Stock indicator */}
+                  <div
+                    className={`absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium backdrop-blur-sm ${
+                      product.in_stock
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-red-500/20 text-red-400'
+                    }`}
                   >
-                    {bulkSelected.has(product.id) ? (
-                      <CheckSquare className="w-4 h-4 text-violet-400" />
-                    ) : (
-                      <Square className="w-4 h-4 text-white/60" />
-                    )}
+                    <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                    {product.in_stock ? 'En stock' : 'Agotado'}
+                  </div>
+
+                  {/* Featured badge */}
+                  {product.is_featured && (
+                    <div className="absolute bottom-3 left-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-400 backdrop-blur-sm">
+                      <Sparkles className="w-3 h-3" />
+                      Destacado
+                    </div>
+                  )}
+                </div>
+
+                {/* Content */}
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className="text-sm font-semibold text-white truncate flex-1">{product.name}</h3>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border shrink-0 ${
+                      categoryBadgeColors[product.category] || categoryBadgeColors['Otro']
+                    }`}>
+                      {product.category}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Store className="w-3 h-3 text-gray-500" />
+                    <span className="text-[11px] text-gray-400 truncate">{product.vendor_name}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-lg font-bold text-white">{formatCRC(product.price)}</p>
+                    <p className="text-[11px] text-gray-500 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" />
+                      {product.sold_count} vendidos
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-3 border-t border-white/10">
+                    <motion.button
+                      onClick={() => openDetailModal(product)}
+                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 transition-colors"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <Eye className="w-3 h-3" />
+                      Ver
+                    </motion.button>
+                    <motion.button
+                      onClick={() => openEditModal(product)}
+                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Editar
+                    </motion.button>
+                    <motion.button
+                      onClick={() => openDeleteConfirm(product)}
+                      className="flex items-center justify-center p-2 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <div className="glass rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/5 bg-white/[0.02]">
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider w-10">
+                  <button onClick={toggleSelectAll} className="p-1 rounded hover:bg-white/10 transition-colors">
+                    {allVisibleSelected ? <CheckSquare className="w-4 h-4 text-violet-400" /> : <Square className="w-4 h-4" />}
                   </button>
-                </div>
-
-                {/* Stock indicator */}
-                <div
-                  className={`absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium backdrop-blur-sm ${
-                    product.in_stock
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-red-500/20 text-red-400'
-                  }`}
+                </th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Producto</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Vendedor</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Precio</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Categoría</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ventas</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Rating</th>
+                <th className="px-5 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {visibleProducts.map((product, i) => (
+                <motion.tr
+                  key={product.id}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.02 }}
+                  className={`hover:bg-white/[0.03] transition-colors group ${bulkSelected.has(product.id) ? 'bg-violet-500/5' : ''}`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${product.in_stock ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                  {product.in_stock ? 'En stock' : 'Agotado'}
-                </div>
-
-                {/* Featured badge */}
-                {product.is_featured && (
-                  <div className="absolute bottom-3 left-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-400 backdrop-blur-sm">
-                    <Sparkles className="w-3 h-3" />
-                    Destacado
-                  </div>
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h3 className="text-sm font-semibold text-white truncate flex-1">{product.name}</h3>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border shrink-0 ${
-                    categoryBadgeColors[product.category] || categoryBadgeColors['Otro']
-                  }`}>
-                    {product.category}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 mb-3">
-                  <Store className="w-3 h-3 text-gray-500" />
-                  <span className="text-[11px] text-gray-400 truncate">{product.vendor_name}</span>
-                </div>
-
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-lg font-bold text-white">{formatCRC(product.price)}</p>
-                  <p className="text-[11px] text-gray-500 flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3" />
-                    {product.sold_count} vendidos
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 pt-3 border-t border-white/10">
-                  <motion.button
-                    onClick={() => openDetailModal(product)}
-                    className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 transition-colors"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Eye className="w-3 h-3" />
-                    Ver
-                  </motion.button>
-                  <motion.button
-                    onClick={() => openEditModal(product)}
-                    className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Editar
-                  </motion.button>
-                  <motion.button
-                    onClick={() => openDeleteConfirm(product)}
-                    className="flex items-center justify-center p-2 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </motion.button>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+                  <td className="px-5 py-4">
+                    <button
+                      onClick={() => toggleSelect(product.id)}
+                      className="p-1 rounded hover:bg-white/10 transition-colors"
+                    >
+                      {bulkSelected.has(product.id) ? <CheckSquare className="w-4 h-4 text-violet-400" /> : <Square className="w-4 h-4 text-gray-600" />}
+                    </button>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 shrink-0">
+                        {product.image_url && imageSignedUrls[product.id] ? (
+                          <img src={imageSignedUrls[product.id]} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className={`w-full h-full bg-gradient-to-br ${categoryColors[product.category] || categoryColors['Otro']} flex items-center justify-center`}>
+                            <Package className="w-5 h-5 opacity-40" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{product.name}</p>
+                        {product.is_featured && (
+                          <span className="text-[10px] text-amber-400 flex items-center gap-0.5 mt-0.5">
+                            <Sparkles className="w-2.5 h-2.5" /> Destacado
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-sm text-gray-400">{product.vendor_name}</td>
+                  <td className="px-5 py-4 text-sm font-bold text-white">{formatCRC(product.price)}</td>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${categoryBadgeColors[product.category] || categoryBadgeColors['Otro']}`}>
+                      {product.category}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-col gap-1">
+                      <span className={`text-[11px] font-medium ${product.in_stock ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {product.in_stock ? 'En stock' : 'Agotado'}
+                      </span>
+                      {product.in_stock && <span className="text-[10px] text-gray-500">{product.stock_quantity} unidades</span>}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-1.5 text-sm text-gray-300">
+                      <TrendingUp className="w-3.5 h-3.5 text-gray-500" />
+                      {product.sold_count}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <StarRating rating={product.avg_rating} />
+                  </td>
+                  <td className="px-5 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openDetailModal(product)} className="p-2 rounded-lg text-violet-400 hover:bg-violet-500/10 transition-colors" title="Ver detalle">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => openEditModal(product)} className="p-2 rounded-lg text-cyan-400 hover:bg-cyan-500/10 transition-colors" title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => openDeleteConfirm(product)} className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors" title="Eliminar">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Empty State */}
       {filtered.length === 0 && !loading && (

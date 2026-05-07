@@ -79,8 +79,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           </main>
 
           {/* Bottom Navigation */}
-          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md glass-strong border-t border-white/10 z-50">
-            <div className="flex items-center justify-around py-2 px-2">
+          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-sky-950/95 backdrop-blur-xl border-t border-white/10 z-50">
+            <div className="flex items-center justify-around py-0.5 px-2 gap-1">
               {navItems.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -88,22 +88,22 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
                     key={item.href}
                     type="button"
                     onClick={() => { if (pathname !== item.href) router.push(item.href); }}
-                    className={`relative flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all ${
-                      isActive ? 'text-cyan-400' : 'text-gray-500 hover:text-gray-300'
+                    className={`relative flex flex-col items-center gap-0 py-0.5 px-1.5 rounded-lg transition-all ${
+                      isActive ? 'text-cyan-400' : 'text-gray-400 hover:text-gray-200'
                     }`}
                   >
                     {isActive && (
                       <motion.div
                         layoutId="client-nav-active"
-                        className="absolute inset-0 bg-cyan-500/10 rounded-xl"
+                        className="absolute inset-0 bg-cyan-500/10 rounded-lg"
                         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                       />
                     )}
                     <div className="relative z-10">
-                      <item.icon className="w-5 h-5" />
+                      <item.icon className="w-3.5 h-3.5" />
                       {item.showCartBadge && <CartBadge />}
                     </div>
-                    <span className="text-[10px] font-medium relative z-10">{item.label}</span>
+                    <span className="text-[8px] font-medium relative z-10 leading-none">{item.label}</span>
                   </button>
                 );
               })}

@@ -115,14 +115,14 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
 
           {/* Bottom Navigation */}
           <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md glass-strong border-t border-white/10 z-50">
-            <div className="flex items-center justify-around py-2 px-2">
+            <div className="flex items-center justify-around py-1 px-2">
               {navItems.map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <button
                     key={item.href}
                     onClick={() => { if (pathname !== item.href) router.push(item.href); }}
-                    className={`relative flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all ${
+                    className={`relative flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all ${
                       isActive ? 'text-cyan-400' : 'text-gray-500 hover:text-gray-300'
                     }`}
                   >
@@ -133,8 +133,8 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
                         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                       />
                     )}
-                    <item.icon className="w-5 h-5 relative z-10" />
-                    <span className="text-[10px] font-medium relative z-10">{item.label}</span>
+                    <item.icon className="w-4 h-4 relative z-10" />
+                    <span className="text-[9px] font-medium relative z-10">{item.label}</span>
                   </button>
                 );
               })}

@@ -319,92 +319,108 @@ function EmptyVendors() {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 function SignedProductImage({
-  imagePath,
   imageUrl,
   alt,
+  vendorId,
   className = '',
   fill = false,
-  sizes,
 }: {
-  imagePath: string | null | undefined;
   imageUrl?: string | null;
   alt: string;
+  vendorId?: string | null;
   className?: string;
   fill?: boolean;
-  sizes?: string;
 }) {
-  const [src, setSrc] = useState<string | null>(() => {
-    // If imageUrl is a public URL (contains /object/public/), use it directly
-    if (imageUrl && imageUrl.includes('/object/public/')) return imageUrl;
-    return null;
-  });
+  const [src, setSrc] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    // If we already have a valid public URL, skip fetching
-    if (src) return;
+    if (!imageUrl) {
+      setSrc(null);
+      return;
+    }
 
-    if (!imagePath && !imageUrl) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        if (imagePath) {
-          // Prefer public URL since the bucket is public
-          const { data: publicData } = supabase.storage
-            .from('products')
-            .getPublicUrl(imagePath);
-          if (!cancelled && publicData?.publicUrl) {
-            setSrc(publicData.publicUrl);
-            return;
-          }
-        }
-        if (imageUrl) {
-          // Try signed URL as fallback
-          const { data } = await supabase.storage
-            .from('products')
-            .createSignedUrl(imageUrl.startsWith('products/') ? imageUrl : `products/${imageUrl}`, 3600);
-          if (!cancelled && data?.signedUrl) {
-            setSrc(data.signedUrl);
-          }
-        }
-      } catch {
-        // Silently fail — placeholder will show
+    if (imageUrl.startsWith('http')) {
+      setSrc(imageUrl);
+      return;
+    }
+
+    // Try different path variations based on the current attempt number
+    const getPath = () => {
+      let path = imageUrl;
+      
+      if (attempt === 0) {
+        // Variation 1: Clean path (standard)
+        return path.startsWith('products/') ? path.slice(9) : path;
       }
-    })();
-    return () => {
-      cancelled = true;
+      if (attempt === 1) {
+        // Variation 2: As is
+        return path;
+      }
+      if (attempt === 2 && vendorId && !path.includes('/')) {
+        // Variation 3: Prepend vendorId if missing
+        return `${vendorId}/${path.startsWith('products/') ? path.slice(9) : path}`;
+      }
+      return null;
     };
-  }, [imagePath, imageUrl]);
 
-  if (!src) {
+    const path = getPath();
+    if (!path) {
+      if (attempt < 2) setAttempt(attempt + 1);
+      return;
+    }
+
+    // Use Public URL initially for speed
+    const { data: pubData } = supabase.storage.from('products').getPublicUrl(path);
+    if (pubData?.publicUrl) {
+      setSrc(pubData.publicUrl);
+    }
+
+    // Attempt to upgrade to signed URL
+    supabase.storage.from('products').createSignedUrl(path, 3600).then(({ data }) => {
+      if (data?.signedUrl) {
+        setSrc(data.signedUrl);
+      }
+    });
+  }, [imageUrl, attempt, vendorId]);
+
+  if (!src && attempt >= 2) {
     return (
-      <div
-        className={`bg-gradient-to-br from-orange-500/10 to-amber-600/5 flex items-center justify-center ${className}`}
-      >
+      <div className={`bg-gradient-to-br from-orange-500/10 to-amber-600/5 flex items-center justify-center ${className}`}>
         <ImageOff className="w-8 h-8 text-white/10" />
       </div>
     );
   }
 
-  if (fill) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt={alt}
-        className={`absolute inset-0 w-full h-full object-cover ${className}`}
-      />
-    );
-  }
+  const imgClass = fill ? `absolute inset-0 w-full h-full object-cover ${className}` : `object-cover ${className}`;
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt={alt}
-      className={`object-cover ${className}`}
-    />
+    <div className={`relative ${fill ? 'w-full h-full' : ''} ${className}`}>
+      {!src && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/5 animate-pulse">
+          <div className="w-6 h-6 rounded-full border-2 border-orange-500/30 border-t-orange-500 animate-spin" />
+        </div>
+      )}
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img 
+          src={src} 
+          alt={alt} 
+          className={imgClass}
+          onError={() => {
+            if (attempt < 2) {
+              setAttempt(prev => prev + 1);
+              setSrc(null);
+            } else {
+              setSrc(null);
+            }
+          }}
+        />
+      )}
+    </div>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    VENDOR CARD
@@ -449,10 +465,10 @@ function VendorCard({
       >
         {vendor.logo_url ? (
           <SignedProductImage
-            imagePath={vendor.logo_url}
+            imageUrl={vendor.logo_url}
             alt={vendor.store_name}
+            vendorId={vendor.id}
             fill
-            sizes="300px"
           />
         ) : (
           <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -535,7 +551,7 @@ function ProductCard({
   onAddToCart,
   cartQty,
 }: {
-  product: Product & { vendor_name: string; image_path?: string | null };
+  product: Product & { vendor_name: string };
   index: number;
   onSelect: () => void;
   onAddToCart: () => void;
@@ -556,11 +572,10 @@ function ProductCard({
         className="aspect-square relative overflow-hidden cursor-pointer"
       >
         <SignedProductImage
-          imagePath={product.image_path}
           imageUrl={product.image_url}
           alt={product.name}
+          vendorId={product.vendor_id}
           fill
-          sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
         />
 
         {/* Featured badge */}
@@ -696,14 +711,14 @@ function ProductDetailModal({
   allProducts,
   onProductSelect,
 }: {
-  product: Product & { vendor_name: string; image_path?: string | null };
+  product: Product & { vendor_name: string };
   quantity: number;
   setQuantity: (q: number) => void;
   onAddToCart: () => void;
   onBuyNow: () => void;
   buying: boolean;
   onClose: () => void;
-  allProducts?: (Product & { vendor_name: string; image_path?: string | null })[];
+  allProducts?: (Product & { vendor_name: string })[];
   onProductSelect?: (p: Product & { vendor_name: string; image_path?: string | null }) => void;
 }) {
   const lineTotal = product.price * quantity;
@@ -751,11 +766,10 @@ function ProductDetailModal({
         {/* Image */}
         <div className="relative aspect-[4/3] overflow-hidden">
           <SignedProductImage
-            imagePath={product.image_path}
             imageUrl={product.image_url}
             alt={product.name}
+            vendorId={product.vendor_id}
             fill
-            sizes="100vw"
           />
 
           {/* Overlay gradient */}
@@ -946,11 +960,10 @@ function ProductDetailModal({
                   >
                     <div className="aspect-square relative overflow-hidden">
                       <SignedProductImage
-                        imagePath={p.image_path}
                         imageUrl={p.image_url}
                         alt={p.name}
+                        vendorId={p.vendor_id}
                         fill
-                        sizes="100px"
                       />
                     </div>
                     <div className="p-2">
@@ -1250,7 +1263,7 @@ export default function ClientMarketPage() {
         const { data: prodData, error: prodErr } = await supabase
           .from('products')
           .select(
-            'id, vendor_id, name, description, price, category, image_url, image_path, in_stock, stock_quantity, is_featured, avg_rating, vendors(store_name)'
+            'id, vendor_id, name, description, price, category, image_url, in_stock, stock_quantity, is_featured, avg_rating, vendors(store_name)'
           );
 
         // Fetch active banners for the client app
@@ -1275,16 +1288,15 @@ export default function ClientMarketPage() {
         }
 
         if (!prodErr && prodData) {
-          const mapped: (Product & { vendor_name: string; image_path?: string | null })[] = prodData.map(
+          const mapped: (Product & { vendor_name: string })[] = prodData.map(
             (p: Record<string, unknown>) => ({
               id: p.id as string,
               vendor_id: p.vendor_id as string,
               name: p.name as string,
-              description: (p.description as string) || null,
+              description: (p.description as string) || undefined,
               price: Number(p.price),
               category: (p.category as string) || 'General',
-              image_url: (p.image_url as string) || null,
-              image_path: (p.image_path as string) || null,
+              image_url: (p.image_url as string) || undefined,
               in_stock: p.in_stock as boolean,
               stock_quantity: p.stock_quantity as number | undefined,
               is_featured: p.is_featured as boolean | undefined,
@@ -1397,10 +1409,11 @@ export default function ClientMarketPage() {
   }, []);
 
   const handleAddToCart = useCallback(
-    (product: Product & { vendor_name: string; image_path?: string | null }, qty = 1) => {
+    (product: Product & { vendor_name: string }, qty = 1) => {
       for (let i = 0; i < qty; i++) {
         addItem({
           id: product.id,
+          vendor_id: product.vendor_id,
           name: product.name,
           description: product.description || '',
           price: product.price,
@@ -1421,7 +1434,7 @@ export default function ClientMarketPage() {
 
   /* ── Buy now flow ────────────────────────────────────── */
   const handleBuyNow = useCallback(
-    async (product: Product & { vendor_name: string; image_path?: string | null }, qty: number) => {
+    async (product: Product & { vendor_name: string }, qty: number) => {
       if (!user?.id) {
         toast.error('Inicia sesión para hacer un pedido');
         return;
@@ -1842,11 +1855,10 @@ export default function ClientMarketPage() {
                   }}
                 >
                   <SignedProductImage
-                    imagePath={product.image_path}
                     imageUrl={product.image_url}
                     alt={product.name}
+                    vendorId={product.vendor_id}
                     fill
-                    sizes="150px"
                   />
                   {product.is_featured && (
                     <div className="absolute top-1.5 left-1.5 z-10">

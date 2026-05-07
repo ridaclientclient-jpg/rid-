@@ -684,9 +684,9 @@ export default function ClientRide() {
       <DraggableBottomSheet
         initialSnap="peek"
         minHeight={140}
-        className="glass-strong rounded-t-3xl"
+        className="rounded-t-3xl bg-sky-950/95 border border-sky-600/30 shadow-black/60 text-white"
       >
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 text-white">
         {!currentRide ? (
           <>
             {/* Location Inputs */}
