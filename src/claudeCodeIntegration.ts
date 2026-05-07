@@ -1,13 +1,13 @@
 import { OpenRouter } from '@openrouterai/openrouter';
 
-const apiKey = 'REMOVED';
+const apiKey = process.env.OPENROUTER_API_KEY;
 const client = new OpenRouter(apiKey);
 
 // Configuration for free API usage
 const API_CONFIG = {
   model: 'openrouter/free',  // Free tier model
   maxTokens: 1024,          // Adjust based on your needs
-  apiKey: 'REMOVED',
+  apiKey: process.env.OPENROUTER_API_KEY,
   provider: 'openai/gpt-oss-120b:free'    // Can switch to 'another-free-provider' easily
 };
 
