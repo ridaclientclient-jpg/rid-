@@ -3,30 +3,199 @@ import { OpenRouter } from '@openrouterai/openrouter';
 const apiKey = process.env.OPENROUTER_API_KEY;
 const client = new OpenRouter(apiKey);
 
-// Configuration for free API usage
 const API_CONFIG = {
-  model: 'openrouter/free',  // Free tier model
-  maxTokens: 1024,          // Adjust based on your needs
-  apiKey: process.env.OPENROUTER_API_KEY,
-  provider: 'openai/gpt-oss-120b:free'    // Can switch to 'another-free-provider' easily
+  model: 'openrouter/free',
+  maxTokens: 1024,
+  apiKey,
+  provider: 'openai/gpt-oss-120b:free'
 };
 
-// Main function with free tier awareness
 async function generateCode(prompt: string) {
   try {
     const response = await client.completion.create({
-      model: 'openrouter/free',
-      prompt: prompt,
-      max_tokens: MAX_TOKENS
-    }
+      model: API_CONFIG.model,
+      prompt,
+      max_tokens: API_CONFIG.maxTokens
+    });
 
-const MAX_TOKENS = 1024;);
-    console.log('Generated code:', response.choices[0].text);
+    console.log('Generated code:', response.choices?.[0]?.text);
   } catch (error) {
     console.error('Error generating code:', error);
   }
 }
 
-// Example usage:
 generateCode('Write a function to calculate factorial');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
