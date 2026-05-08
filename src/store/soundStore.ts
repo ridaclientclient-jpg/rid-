@@ -147,12 +147,13 @@ function getToneSequence(event: SoundEvent): ToneSequence[] {
       ];
 
     case 'new_ride_request':
-      // Alert: two-tone attention grabber
+      // Urgent incoming request alert with a continuous ride-style feel
       return [
-        { type: 'sine', frequency: 700, startTime: 0, duration: 0.12, gainStart: 0.25, gainEnd: 0.2 },
-        { type: 'sine', frequency: 900, startTime: 0.15, duration: 0.12, gainStart: 0.25, gainEnd: 0.2 },
-        { type: 'sine', frequency: 700, startTime: 0.3, duration: 0.12, gainStart: 0.25, gainEnd: 0.2 },
-        { type: 'sine', frequency: 900, startTime: 0.45, duration: 0.2, gainStart: 0.3, gainEnd: 0 },
+        { type: 'sawtooth', frequency: 640, startTime: 0, duration: 0.16, gainStart: 0.28, gainEnd: 0.2 },
+        { type: 'sawtooth', frequency: 760, startTime: 0.18, duration: 0.16, gainStart: 0.28, gainEnd: 0.2 },
+        { type: 'sawtooth', frequency: 840, startTime: 0.36, duration: 0.16, gainStart: 0.32, gainEnd: 0.18 },
+        { type: 'sawtooth', frequency: 760, startTime: 0.54, duration: 0.16, gainStart: 0.28, gainEnd: 0.15 },
+        { type: 'sawtooth', frequency: 640, startTime: 0.72, duration: 0.22, gainStart: 0.32, gainEnd: 0 },
       ];
 
     case 'message':

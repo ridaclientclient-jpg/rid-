@@ -156,6 +156,7 @@ export default function DriversPage() {
   /* ─── Detail Modal State ──────────────────────────────── */
   const [selectedDriver, setSelectedDriver] = useState<DriverData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [driverDocs, setDriverDocs] = useState<Document[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [earningsHistory, setEarningsHistory] = useState<{ date: string; amount: number }[]>([]);
@@ -372,30 +373,131 @@ export default function DriversPage() {
   /* ═════════════════════════════════════════════════════════
      SUSPEND/ACTIVATE TOGGLE
      ═════════════════════════════════════════════════════════ */
-  const toggleSuspend = async (driverId: string, driverName: string, currentStatus: DriverStatus) => {
-    const newStatus = currentStatus === 'suspended' ? 'offline' : 'suspended';
+  const toggleSuspend = async (
+    driverId: string,
+    userId: string,
+    driverName: string,
+    currentStatus: DriverStatus,
+  ) => {
+    const isSuspending = currentStatus !== 'suspended';
+    const newStatus = isSuspending ? 'suspended' : 'offline';
+    setActionLoading(true);
+
     try {
-      const { error } = await supabase
+      const updateDriver = await supabase
         .from('drivers')
         .update({ status: newStatus })
         .eq('id', driverId);
 
-      if (error) {
-        toast.error('Error al actualizar estado del conductor');
+      const updateProfile = await supabase
+        .from('profiles')
+        .update({ is_active: !isSuspending })
+        .eq('id', userId);
+
+      if (updateDriver.error || updateProfile.error) {
+        toast.error('Error al actualizar el estado del conductor');
         return;
       }
 
-      toast.success(newStatus === 'suspended'
-        ? `Conductor ${driverName} suspendido`
+      toast.success(isSuspending
+        ? `Conductor ${driverName} bloqueado`
         : `Conductor ${driverName} reactivado`
       );
       setDrivers(prev => prev.map(d =>
         d.id === driverId ? { ...d, status: newStatus as DriverStatus } : d
       ));
+      if (selectedDriver?.id === driverId) {
+        setSelectedDriver({ ...selectedDriver, status: newStatus as DriverStatus });
+      }
     } catch (err) {
-      toast.error('Error al actualizar estado del conductor');
+      toast.error('Error al actualizar el estado del conductor');
+    } finally {
+      setActionLoading(false);
+      setOpenMenu(null);
     }
-    setOpenMenu(null);
+  };
+
+  const verifyVehicle = async (driverId: string, userId: string, driverName: string) => {
+    setActionLoading(true);
+
+    try {
+      const { error: vehicleError } = await supabase
+        .from('vehicles')
+        .update({ verified: true })
+        .eq('driver_id', driverId);
+
+      const { error: driverError } = await supabase
+        .from('drivers')
+        .update({ is_verified: true, status: 'verified' })
+        .eq('id', driverId);
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ is_verified: true, is_active: true })
+        .eq('id', userId);
+
+      if (vehicleError || driverError || profileError) {
+        toast.error('Error al verificar el vehículo');
+        return;
+      }
+
+      toast.success(`Vehículo de ${driverName} verificado`);
+      setDrivers(prev => prev.map(d =>
+        d.id === driverId ? { ...d, vehicleVerified: true, status: 'verified' } : d
+      ));
+      if (selectedDriver?.id === driverId) {
+        setSelectedDriver({ ...selectedDriver, vehicleVerified: true, status: 'verified' });
+      }
+    } catch (err) {
+      console.error('verifyVehicle error:', err);
+      toast.error('Error al verificar el vehículo');
+    } finally {
+      setActionLoading(false);
+      setOpenMenu(null);
+    }
+  };
+
+  const deleteDriverAccount = async (driverId: string, userId: string, driverName: string) => {
+    const confirmed = window.confirm(`¿Deseas eliminar permanentemente la cuenta de ${driverName}? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    try {
+      const { error: vehicleError } = await supabase
+        .from('vehicles')
+        .delete()
+        .eq('driver_id', driverId);
+
+      const { error: docsError } = await supabase
+        .from('documents')
+        .delete()
+        .eq('user_id', userId);
+
+      const { error: driverError } = await supabase
+        .from('drivers')
+        .delete()
+        .eq('id', driverId);
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ is_active: false })
+        .eq('id', userId);
+
+      if (vehicleError || docsError || driverError || profileError) {
+        toast.error('Error al eliminar la cuenta del conductor');
+        return;
+      }
+
+      toast.success(`Cuenta del conductor ${driverName} eliminada`);
+      setDrivers(prev => prev.filter((driver) => driver.id !== driverId));
+      setSelectedDriver(null);
+    } catch (err) {
+      console.error('deleteDriverAccount error:', err);
+      toast.error('Error al eliminar la cuenta del conductor');
+    } finally {
+      setActionLoading(false);
+      setOpenMenu(null);
+    }
   };
 
   /* ═════════════════════════════════════════════════════════
@@ -868,32 +970,52 @@ export default function DriversPage() {
 
                           <div className="h-px bg-white/10 my-1" />
 
+                          {!driver.vehicleVerified && (
+                            <button
+                              onClick={() => verifyVehicle(driver.id, driver.userId, driver.name)}
+                              className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+                              disabled={actionLoading}
+                            >
+                              <ShieldCheck className="w-4 h-4" /> Verificar vehículo
+                            </button>
+                          )}
+
                           {(driver.status === 'pending' || driver.status === 'rejected') && (
                             <button
                               onClick={() => quickApprove(driver.id, driver.name)}
                               className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors"
                             >
-                              <ShieldCheck className="w-4 h-4" /> Aprobar rapido
+                              <ShieldCheck className="w-4 h-4" /> Aprobar rápido
                             </button>
                           )}
 
                           {(driver.status === 'online' || driver.status === 'offline' || driver.status === 'busy' || driver.status === 'verified') && (
                             <button
-                              onClick={() => toggleSuspend(driver.id, driver.name, driver.status)}
+                              onClick={() => toggleSuspend(driver.id, driver.userId, driver.name, driver.status)}
                               className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                              disabled={actionLoading}
                             >
-                              <ShieldX className="w-4 h-4" /> Suspender
+                              <ShieldX className="w-4 h-4" /> Bloquear cuenta
                             </button>
                           )}
 
                           {driver.status === 'suspended' && (
                             <button
-                              onClick={() => toggleSuspend(driver.id, driver.name, driver.status)}
+                              onClick={() => toggleSuspend(driver.id, driver.userId, driver.name, driver.status)}
                               className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                              disabled={actionLoading}
                             >
-                              <ShieldCheck className="w-4 h-4" /> Reactivar
+                              <ShieldCheck className="w-4 h-4" /> Reactivar cuenta
                             </button>
                           )}
+
+                          <button
+                            onClick={() => deleteDriverAccount(driver.id, driver.userId, driver.name)}
+                            className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                            disabled={actionLoading}
+                          >
+                            <XCircle className="w-4 h-4" /> Eliminar cuenta
+                          </button>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -977,16 +1099,52 @@ export default function DriversPage() {
                       </div>
                     </div>
 
-                    {(selectedDriver.status === 'pending' || selectedDriver.status === 'rejected') && (
-                      <div className="mt-4">
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {!selectedDriver.vehicleVerified && (
+                        <button
+                          onClick={() => verifyVehicle(selectedDriver.id, selectedDriver.userId, selectedDriver.name)}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/15 text-cyan-200 border border-cyan-500/20 text-sm hover:bg-cyan-500/20 transition"
+                          disabled={actionLoading}
+                        >
+                          <ShieldCheck className="w-4 h-4" /> Verificar vehículo
+                        </button>
+                      )}
+
+                      {(selectedDriver.status === 'pending' || selectedDriver.status === 'rejected') && (
                         <button
                           onClick={() => quickApprove(selectedDriver.id, selectedDriver.name)}
                           className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/15 text-emerald-200 border border-emerald-500/20 text-sm hover:bg-emerald-500/20 transition"
                         >
                           <ShieldCheck className="w-4 h-4" /> Verificar cuenta
                         </button>
-                      </div>
-                    )}
+                      )}
+
+                      {selectedDriver.status !== 'suspended' ? (
+                        <button
+                          onClick={() => toggleSuspend(selectedDriver.id, selectedDriver.userId, selectedDriver.name, selectedDriver.status)}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/15 text-red-200 border border-red-500/20 text-sm hover:bg-red-500/20 transition"
+                          disabled={actionLoading}
+                        >
+                          <ShieldX className="w-4 h-4" /> Bloquear cuenta
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => toggleSuspend(selectedDriver.id, selectedDriver.userId, selectedDriver.name, selectedDriver.status)}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/15 text-emerald-200 border border-emerald-500/20 text-sm hover:bg-emerald-500/20 transition"
+                          disabled={actionLoading}
+                        >
+                          <ShieldCheck className="w-4 h-4" /> Reactivar cuenta
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => deleteDriverAccount(selectedDriver.id, selectedDriver.userId, selectedDriver.name)}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/15 text-red-200 border border-red-500/20 text-sm hover:bg-red-500/20 transition"
+                        disabled={actionLoading}
+                      >
+                        <XCircle className="w-4 h-4" /> Eliminar cuenta
+                      </button>
+                    </div>
 
                     {/* Info Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

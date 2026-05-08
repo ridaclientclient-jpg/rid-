@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import GoogleMap from '@/components/GoogleMap';
 import RideChat, { ChatToggleButton } from '@/components/RideChat';
+import { useSoundStore } from '@/store/soundStore';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const statusLabels: Record<string, string> = {
@@ -90,24 +91,6 @@ interface ScheduledRide {
 
 const ACCEPT_TIMEOUT = 15; // seconds
 
-function playIncomingSound() {
-  try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    // Two-tone notification
-    [800, 1000, 800, 1000].forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.value = freq;
-      gain.gain.value = 0.25;
-      osc.start(audioCtx.currentTime + i * 0.15);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.15 + 0.12);
-      osc.stop(audioCtx.currentTime + i * 0.15 + 0.15);
-    });
-  } catch {}
-}
-
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -133,7 +116,8 @@ export default function DriverRides() {
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const { isMuted, volume, toggleMute, setVolume, play } = useSoundStore();
+  const soundEnabled = !isMuted;
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const searchChannelRef = useRef<RealtimeChannel | null>(null);
@@ -312,7 +296,7 @@ export default function DriverRides() {
           const ride = payload.new as Ride;
           if (!ride) return;
           if (ride.status === 'assigned' && !activeRide && !incomingRide) {
-            if (soundEnabled) playIncomingSound();
+            if (soundEnabled) play('ride_assigned');
             setActiveRide(ride);
             if (ride.rider_id) fetchRiderProfile(ride.rider_id);
           } else if (ride.status === 'completed' || ride.status === 'cancelled') {
@@ -374,7 +358,7 @@ export default function DriverRides() {
             surge_multiplier: ride.surge_multiplier,
           });
 
-          if (soundEnabled) playIncomingSound();
+          if (soundEnabled) play('new_ride_request');
           toast.success('Nuevo viaje disponible!', { duration: 3000 });
         }
       )
@@ -409,7 +393,7 @@ export default function DriverRides() {
               distance_km: Math.round(dist * 10) / 10,
               surge_multiplier: ride.surge_multiplier,
             });
-            if (soundEnabled) playIncomingSound();
+            if (soundEnabled) play('new_ride_request');
             break; // Show only one at a time
           }
         }).catch(() => {});
@@ -581,25 +565,45 @@ export default function DriverRides() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-white">Viajes</h1>
-            <p className="text-sm text-gray-400 mt-1">{activeRide ? 'Tienes un viaje activo' : incomingRide ? 'Tienes una solicitud!' : isOnline ? 'Buscando solicitudes...' : 'Conectate para recibir viajes'}</p>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Panel de conductor</h1>
+              <p className="text-sm text-gray-400 mt-1">{activeRide ? 'Tienes un viaje activo' : incomingRide ? 'Tienes una solicitud!' : isOnline ? 'Buscando solicitudes...' : 'Conectate para recibir viajes'}</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[auto_auto] items-center">
+              <button onClick={toggleMute} className="rounded-3xl border border-white/10 bg-slate-950/70 p-3 text-cyan-300 transition hover:bg-slate-900/90">
+                {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              </button>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-3">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-2">
+                  <span>Volumen</span>
+                  <span>{Math.round(volume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(e) => setVolume(Number(e.target.value))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+            </div>
           </div>
-          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 rounded-xl glass hover:bg-white/5 transition-colors">
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-gray-400" /> : <VolumeX className="w-4 h-4 text-gray-500" />}
-          </button>
         </motion.div>
 
         {/* Online Toggle */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-          <button onClick={handleToggleOnline} disabled={isToggling || !!activeRide || !!incomingRide} className="w-full flex items-center gap-4 glass rounded-2xl p-4 disabled:opacity-50">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${isOnline ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
-              {isOnline ? <Power className="w-7 h-7 text-emerald-400" /> : <PowerOff className="w-7 h-7 text-red-400" />}
+          <button onClick={handleToggleOnline} disabled={isToggling || !!activeRide || !!incomingRide} className="w-full flex items-center gap-4 glass-strong rounded-[2rem] p-5 disabled:opacity-50 disabled:cursor-not-allowed transition-shadow hover:shadow-xl">
+            <div className={`w-16 h-16 rounded-3xl flex items-center justify-center transition-all ${isOnline ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+              {isOnline ? <Power className="w-8 h-8 text-emerald-400" /> : <PowerOff className="w-8 h-8 text-red-400" />}
             </div>
             <div className="text-left flex-1">
-              <p className="text-lg font-semibold text-white">{isOnline ? 'En Linea' : 'Fuera de Linea'}</p>
-              <p className="text-xs text-gray-400">{activeRide ? 'Viaje activo' : incomingRide ? 'Revisando solicitud...' : isOnline ? 'Recibiendo solicitudes' : 'No recibiras solicitudes'}</p>
+              <p className="text-lg font-semibold text-white">{isOnline ? 'Finalizar jornada' : 'Iniciar jornada'}</p>
+              <p className="text-xs text-gray-400">{activeRide ? 'Viaje activo' : incomingRide ? 'Revisando solicitud...' : isOnline ? 'Recibiendo solicitudes...' : 'Recibirás solicitudes cuando te conectes.'}</p>
             </div>
             {isToggling ? <Loader2 className="w-5 h-5 text-gray-400 animate-spin" /> : (
               <div className={`w-12 h-7 rounded-full transition-colors flex items-center ${isOnline ? 'bg-emerald-500 justify-end' : 'bg-gray-600 justify-start'}`}>
