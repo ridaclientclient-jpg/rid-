@@ -22,19 +22,30 @@ function ClientResetPasswordForm() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // First check if we have a session
+        const { data: { session } } = await supabase.auth.getSession();
 
-        // Also check URL hash for access_token (Supabase password reset sends token in URL fragment)
+        // Check URL hash for access_token (Supabase password reset)
         const hash = window.location.hash;
         let hashSession = false;
 
         if (hash && hash.includes('access_token')) {
-          // Supabase client should auto-extract this when detectSessionInUrl is true
-          // Give it a moment to process
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const retrySession = await supabase.auth.getSession();
-          if (retrySession.data.session) {
-            hashSession = true;
+          // Extract tokens from URL hash and set session manually
+          const hashParams = new URLSearchParams(hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (!error) {
+              hashSession = true;
+              // Clean up URL
+              window.history.replaceState(null, '', window.location.pathname);
+            }
           }
         }
 
@@ -69,24 +80,38 @@ function ClientResetPasswordForm() {
 
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      // Use API endpoint instead of direct Supabase call
+      const res = await fetch('/api/auth/update-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: newPassword }),
+      });
 
-      if (error) {
-        // Common errors
-        if (error.message.includes('session') || error.message.includes('expired')) {
-          toast.error('El enlace expiro. Solicita uno nuevo.');
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error?.includes('session') || data.error?.includes('expired') || data.error?.includes('JWT')) {
+          toast.error('El enlace expiro o es invalido. Solicita uno nuevo.');
           setTimeout(() => router.push('/client/recovery'), 2000);
           return;
         }
-        toast.error(error.message || 'Error al actualizar contrasena');
+        toast.error(data.error || 'Error al actualizar contrasena');
         return;
       }
 
       setIsSuccess(true);
       toast.success('Contrasena actualizada correctamente');
+
+      // Redirect to login after success
+      setTimeout(() => router.push('/client/login'), 2000);
     } catch {
       toast.error('Error de conexion. Intenta de nuevo.');
     } finally {
+      setIsLoading(false);
+    }
+  };
       setIsLoading(false);
     }
   };
