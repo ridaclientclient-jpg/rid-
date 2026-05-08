@@ -472,7 +472,7 @@ export const useRideStore = create<RideState>((set, get) => ({
     try {
       const { data } = await supabase
         .from('drivers')
-        .select('id, rating, current_lat, current_lng, profiles(name, phone), vehicles(model, color, plate)')
+        .select('id, rating, current_lat, current_lng, profiles(name, phone), vehicles(model, color, plate, verified)')
         .eq('status', 'online')
         .eq('is_verified', true)
         .not('current_lat', 'is', null)
@@ -480,7 +480,9 @@ export const useRideStore = create<RideState>((set, get) => ({
 
       if (data && data.length > 0) {
         const R = 6371;
-        const driversWithDist = data.map((d: any) => {
+        const driversWithDist = data
+          .filter((d: any) => d.vehicles?.verified === true) // Only drivers with verified vehicles
+          .map((d: any) => {
           const dLat = ((d.current_lat - lat) * Math.PI) / 180;
           const dLng = ((d.current_lng - lng) * Math.PI) / 180;
           const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((d.current_lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;

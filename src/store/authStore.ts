@@ -138,7 +138,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (error) {
       console.error('Auth init error:', error);
-      set({ isLoading: false });
+      if (isInvalidRefreshTokenError(error)) {
+        console.warn('[AuthStore] Invalid refresh token detected, clearing local auth session');
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutErr) {
+          console.warn('[AuthStore] Failed to sign out during refresh token cleanup:', signOutErr);
+        }
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('rida-auth-token');
+        }
+        set({ user: null, supaUser: null, session: null, isAuthenticated: false, isLoading: false });
+      } else {
+        set({ isLoading: false });
+      }
     }
 
     // Only set up the auth state change listener ONCE

@@ -4,7 +4,7 @@ const apiKey = process.env.OPENROUTER_API_KEY;
 const client = new OpenRouter(apiKey);
 
 const API_CONFIG = {
-  model: 'openrouter/free',
+  model: 'liquid/lfm-2.5-1.2b-instruct:free',
   maxTokens: 1024,
   apiKey,
   provider: 'openai/gpt-oss-120b:free'

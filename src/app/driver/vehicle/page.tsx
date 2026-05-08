@@ -94,7 +94,7 @@ export default function VehicleManagement() {
       if (!driverId && user?.id) {
         const { data: newDriver } = await supabase
           .from('drivers')
-          .insert({ user_id: user.id, status: 'offline' })
+          .insert({ user_id: user.id, status: 'pending', is_verified: false })
           .select()
           .single();
         driverId = newDriver?.id;
