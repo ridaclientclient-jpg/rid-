@@ -30,6 +30,8 @@ export async function POST(request: Request) {
     const updateData: Record<string, unknown> = { status, last_online_at: new Date().toISOString() };
 
     if (latitude && longitude) {
+      updateData.current_lat = latitude;
+      updateData.current_lng = longitude;
       updateData.current_location = `SRID=4326;POINT(${longitude} ${latitude})`;
     }
 

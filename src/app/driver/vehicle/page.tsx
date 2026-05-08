@@ -335,6 +335,43 @@ export default function VehicleManagement() {
         </motion.div>
       )}
 
+      {/* Driver Verification Status */}
+      {driver && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="glass-strong rounded-2xl p-4 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+              <span className="text-sm font-semibold text-white">Estado de verificacion</span>
+            </div>
+            <span className={`text-xs px-2 py-1 rounded-full ${
+              driver.is_verified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+            }`}>
+              {driver.is_verified ? 'Verificado' : 'Pendiente'}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500">
+            {driver.is_verified
+              ? 'Tu cuenta esta verificada. Ya puedes recibir viajes.'
+              : 'Para recibir viajes, necesitas verificar tu identidad y vehiculo.'
+            }
+          </p>
+          {!driver.is_verified && (
+            <button
+              onClick={() => router.push('/driver/verification')}
+              className="w-full py-3 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-sm font-medium flex items-center justify-center gap-2 hover:bg-cyan-500/30 transition-colors"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Ir a verificacion
+            </button>
+          )}
+        </motion.div>
+      )}
+
       {/* Add / Edit Vehicle Form */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
