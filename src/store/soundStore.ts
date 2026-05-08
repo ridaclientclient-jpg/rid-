@@ -38,6 +38,9 @@ interface SoundState {
 // CRITICAL events that can never be muted
 const CRITICAL_EVENTS: SoundEvent[] = ['sos'];
 
+const savedVolume = typeof window !== 'undefined' ? Math.max(0, Math.min(1, Number(localStorage.getItem('rida-sound-volume') || '0.85'))) : 0.85;
+const savedMuted = typeof window !== 'undefined' ? localStorage.getItem('rida-sound-muted') === 'true' : false;
+
 // Audio context singleton
 let audioCtx: AudioContext | null = null;
 
@@ -196,15 +199,18 @@ function executeToneSequence(sequences: ToneSequence[], volume: number) {
 }
 
 export const useSoundStore = create<SoundState>((set, get) => ({
-  isMuted: false,
-  volume: 0.7,
+  isMuted: savedMuted,
+  volume: savedVolume,
 
-  toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
+  toggleMute: () => set((state) => {
+    const next = !state.isMuted;
+    try { localStorage.setItem('rida-sound-muted', String(next)); } catch { /* Ignore */ }
+    return { isMuted: next };
+  }),
 
   setVolume: (volume: number) => {
     const clamped = Math.max(0, Math.min(1, volume));
     set({ volume: clamped });
-    // Save to localStorage
     try { localStorage.setItem('rida-sound-volume', String(clamped)); } catch { /* Ignore */ }
   },
 

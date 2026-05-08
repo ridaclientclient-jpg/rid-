@@ -396,12 +396,23 @@ export default function DriverHome() {
     }
   }, [isOnline, session?.access_token, userCoords, sendLocation, checkBreakStatus]);
 
-  // Open Google Maps navigation
+  // Open navigation with preferred map provider
   const openNavigation = useCallback(() => {
+    const provider = typeof window !== 'undefined' ? localStorage.getItem('rida-map-provider') : 'google';
+    const chosen = provider === 'waze' ? 'waze' : 'google';
+
     if (userCoords) {
-      window.open(`https://www.google.com/maps/dir/?api=1&origin=${userCoords.lat},${userCoords.lng}`, '_blank');
+      if (chosen === 'waze') {
+        window.open(`https://www.waze.com/ul?ll=${userCoords.lat}%2C${userCoords.lng}&navigate=yes`, '_blank');
+      } else {
+        window.open(`https://www.google.com/maps/dir/?api=1&origin=${userCoords.lat},${userCoords.lng}`, '_blank');
+      }
     } else {
-      window.open('https://www.google.com/maps', '_blank');
+      if (chosen === 'waze') {
+        window.open('https://www.waze.com', '_blank');
+      } else {
+        window.open('https://www.google.com/maps', '_blank');
+      }
     }
   }, [userCoords]);
 

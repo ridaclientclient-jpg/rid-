@@ -119,10 +119,24 @@ export default function DriverRides() {
   const { isMuted, volume, toggleMute, setVolume, play } = useSoundStore();
   const soundEnabled = !isMuted;
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapProvider, setMapProvider] = useState<'google' | 'waze'>('google');
   const channelRef = useRef<RealtimeChannel | null>(null);
   const searchChannelRef = useRef<RealtimeChannel | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const provider = localStorage.getItem('rida-map-provider');
+    if (provider === 'waze' || provider === 'google') {
+      setMapProvider(provider);
+    }
+  }, []);
+
+  const saveMapProvider = (provider: 'google' | 'waze') => {
+    setMapProvider(provider);
+    try { localStorage.setItem('rida-map-provider', provider); } catch { /* ignore */ }
+  };
 
   // Feature 4: Surge zones
   const [surgeZones, setSurgeZones] = useState<SurgeZone[]>([]);
@@ -296,7 +310,7 @@ export default function DriverRides() {
           const ride = payload.new as Ride;
           if (!ride) return;
           if (ride.status === 'assigned' && !activeRide && !incomingRide) {
-            if (soundEnabled) play('ride_assigned');
+            if (soundEnabled) play('new_ride_request');
             setActiveRide(ride);
             if (ride.rider_id) fetchRiderProfile(ride.rider_id);
           } else if (ride.status === 'completed' || ride.status === 'cancelled') {
@@ -533,9 +547,23 @@ export default function DriverRides() {
     if (!activeRide) return;
     const lat = activeRide.status === 'started' ? activeRide.dest_lat : activeRide.origin_lat;
     const lng = activeRide.status === 'started' ? activeRide.dest_lng : activeRide.origin_lng;
-    if (lat && lng) window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
-    else window.open(`https://www.google.com/maps/search/${encodeURIComponent((activeRide.status === 'started' ? activeRide.destination : activeRide.origin) + ', Costa Rica')}`, '_blank');
-  }, [activeRide]);
+    const query = encodeURIComponent((activeRide.status === 'started' ? activeRide.destination : activeRide.origin) + ', Costa Rica');
+
+    if (mapProvider === 'waze') {
+      if (lat && lng) {
+        window.open(`https://www.waze.com/ul?ll=${lat}%2C${lng}&navigate=yes`, '_blank');
+      } else {
+        window.open(`https://www.waze.com/search/${query}`, '_blank');
+      }
+      return;
+    }
+
+    if (lat && lng) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+    } else {
+      window.open(`https://www.google.com/maps/search/${query}`, '_blank');
+    }
+  }, [activeRide, mapProvider]);
 
   // Map markers
   const mapMarkers: { lat: number; lng: number; label: string; color: string }[] = [];
@@ -595,6 +623,32 @@ export default function DriverRides() {
           </div>
         </motion.div>
 
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <div className="glass rounded-2xl p-4 border border-white/10">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Navegación preferida</p>
+                <p className="text-[10px] text-gray-400">Elige tu app de mapas predeterminada</p>
+              </div>
+              <span className="text-[10px] text-cyan-400 uppercase tracking-[0.18em] font-semibold">{mapProvider === 'waze' ? 'Waze' : 'Google'}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => saveMapProvider('google')}
+                className={`rounded-2xl p-3 text-sm font-medium transition ${mapProvider === 'google' ? 'bg-cyan-500 text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+              >
+                Google Maps
+              </button>
+              <button
+                onClick={() => saveMapProvider('waze')}
+                className={`rounded-2xl p-3 text-sm font-medium transition ${mapProvider === 'waze' ? 'bg-cyan-500 text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+              >
+                Waze
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
         {/* Online Toggle */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
           <button onClick={handleToggleOnline} disabled={isToggling || !!activeRide || !!incomingRide} className="w-full flex items-center gap-4 glass-strong rounded-[2rem] p-5 disabled:opacity-50 disabled:cursor-not-allowed transition-shadow hover:shadow-xl">
@@ -606,9 +660,7 @@ export default function DriverRides() {
               <p className="text-xs text-gray-400">{activeRide ? 'Viaje activo' : incomingRide ? 'Revisando solicitud...' : isOnline ? 'Recibiendo solicitudes...' : 'Recibirás solicitudes cuando te conectes.'}</p>
             </div>
             {isToggling ? <Loader2 className="w-5 h-5 text-gray-400 animate-spin" /> : (
-              <div className={`w-12 h-7 rounded-full transition-colors flex items-center ${isOnline ? 'bg-emerald-500 justify-end' : 'bg-gray-600 justify-start'}`}>
-                <motion.div className="w-5 h-5 rounded-full bg-white mx-1" layout transition={{ type: 'spring', stiffness: 500, damping: 30 }} />
-              </div>
+              <span className={`text-sm font-semibold ${isOnline ? 'text-emerald-300' : 'text-red-300'}`}>{isOnline ? 'Desconectar' : 'Conectar'}</span>
             )}
           </button>
         </motion.div>

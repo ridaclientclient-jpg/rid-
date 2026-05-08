@@ -7,7 +7,7 @@ import { supabase, type Driver } from '@/lib/supabase';
 import {
   Zap, Award, Shield, Trophy, Diamond, Star, Car,
   Wallet, Target, ChevronUp, Lock, CheckCircle2,
-  Lightbulb, TrendingUp, Loader2, Percent, CircleDollarSign,
+  Lightbulb, TrendingUp, Loader2, CircleDollarSign,
   Rocket, Timer, Heart, ThumbsUp, MapPin, Sparkles,
 } from 'lucide-react';
 
@@ -48,12 +48,42 @@ interface RewardLevel {
 
 // Tips data
 const LEVEL_UP_TIPS = [
-  { icon: Star, text: 'Mantén tu calificación arriba de 4.85', color: 'text-amber-400' },
-  { icon: Car, text: 'Completa más viajes para subir de nivel', color: 'text-cyan-400' },
-  { icon: ThumbsUp, text: 'Evita cancelaciones para mantener tu progreso', color: 'text-emerald-400' },
-  { icon: Timer, text: 'Conduce en horarios pico para más solicitudes', color: 'text-blue-400' },
-  { icon: Heart, text: 'Mantén una buena actitud con los pasajeros', color: 'text-pink-400' },
-  { icon: MapPin, text: 'Conduce en zonas de alta demanda', color: 'text-orange-400' },
+  {
+    icon: Star,
+    text: 'Mantén tu calificación arriba de 4.85',
+    color: 'text-amber-400',
+    details: 'Pide al pasajero que revise el viaje, evita faltas de respeto y completa cada viaje con atención. Un rating alto abre más solicitudes y mejores ganancias.',
+  },
+  {
+    icon: Car,
+    text: 'Completa más viajes para subir de nivel',
+    color: 'text-cyan-400',
+    details: 'Acepta viajes cortos y rápidos cuando puedas, especialmente en horas de alta demanda. Cada viaje suma para tu próximo nivel.',
+  },
+  {
+    icon: ThumbsUp,
+    text: 'Evita cancelaciones para mantener tu progreso',
+    color: 'text-emerald-400',
+    details: 'Cancelaciones y rechazos afectan tu calificación. Si el pasajero no aparece, comunica primero y elige cancelar solo cuando sea necesario.',
+  },
+  {
+    icon: Timer,
+    text: 'Conduce en horarios pico para más solicitudes',
+    color: 'text-blue-400',
+    details: 'Trabaja en las mañanas y tardes de mayor demanda. En esos períodos hay más viajes y mejores bonos por hora pico.',
+  },
+  {
+    icon: Heart,
+    text: 'Mantén una buena actitud con los pasajeros',
+    color: 'text-pink-400',
+    details: 'Saluda con respeto, ayuda con el equipaje si es necesario y ofrece un viaje cómodo. Buen trato se traduce en mejores reseñas.',
+  },
+  {
+    icon: MapPin,
+    text: 'Conduce en zonas de alta demanda',
+    color: 'text-orange-400',
+    details: 'Quédate cerca de centros comerciales, estaciones y zonas con restaurantes. Más pasajeros buscando viajes significa más oportunidades.',
+  },
 ];
 
 function getDriverLevel(totalRides: number) {
@@ -113,6 +143,7 @@ export default function DriverRewards() {
   const [loading, setLoading] = useState(true);
   const [driver, setDriver] = useState<Driver | null>(null);
   const [dbLevels, setDbLevels] = useState<RewardLevel[]>([]);
+  const [selectedTipIndex, setSelectedTipIndex] = useState<number | null>(null);
 
   const totalRides = driver?.total_rides || 0;
   const rating = driver?.rating || 0;
@@ -255,11 +286,6 @@ export default function DriverRewards() {
           {/* Current benefits preview */}
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-white/5 rounded-xl p-2.5 text-center">
-              <Percent className="w-3.5 h-3.5 text-emerald-400 mx-auto mb-1" />
-              <p className="text-sm font-bold text-white">{currentBenefits.commissionDiscount}%</p>
-              <p className="text-[9px] text-gray-500">Desc. comisión</p>
-            </div>
-            <div className="bg-white/5 rounded-xl p-2.5 text-center">
               <CircleDollarSign className="w-3.5 h-3.5 text-amber-400 mx-auto mb-1" />
               <p className="text-sm font-bold text-white">+₡{currentBenefits.bonusPerRide}</p>
               <p className="text-[9px] text-gray-500">Bono/viaje</p>
@@ -267,9 +293,14 @@ export default function DriverRewards() {
             <div className="bg-white/5 rounded-xl p-2.5 text-center">
               <Rocket className={`w-3.5 h-3.5 mx-auto mb-1 ${currentBenefits.priorityMatching ? 'text-cyan-400' : 'text-gray-500'}`} />
               <p className={`text-sm font-bold ${currentBenefits.priorityMatching ? 'text-white' : 'text-gray-500'}`}>
-                {currentBenefits.priorityMatching ? 'Si' : 'No'}
+                {currentBenefits.priorityMatching ? 'Activo' : 'En espera'}
               </p>
               <p className="text-[9px] text-gray-500">Prioridad</p>
+            </div>
+            <div className="bg-white/5 rounded-xl p-2.5 text-center">
+              <TrendingUp className="w-3.5 h-3.5 text-purple-300 mx-auto mb-1" />
+              <p className="text-sm font-bold text-white">{tripsToNext > 0 ? `${tripsToNext} viajes` : 'Top nivel'}</p>
+              <p className="text-[9px] text-gray-500">Para siguiente nivel</p>
             </div>
           </div>
         </div>
@@ -325,22 +356,6 @@ export default function DriverRewards() {
           </div>
         </div>
         <div className="space-y-2.5">
-          {/* Commission */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-                <Percent className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-white">Comisión reducida</p>
-                <p className="text-[10px] text-gray-500">Normal es 15%</p>
-              </div>
-            </div>
-            <span className={`text-sm font-bold ${currentBenefits.commissionDiscount > 0 ? 'text-emerald-400' : 'text-gray-400'}`}>
-              {15 - currentBenefits.commissionDiscount}%
-            </span>
-          </div>
-          {/* Bonus per ride */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
@@ -460,11 +475,6 @@ export default function DriverRewards() {
 
                     {/* Mini benefits row */}
                     <div className="flex items-center gap-3 mt-1.5">
-                      {levelBenefits.commissionDiscount > 0 && (
-                        <span className={`text-[10px] font-medium ${isLocked ? 'text-gray-600' : 'text-emerald-400'}`}>
-                          -{levelBenefits.commissionDiscount}% comisión
-                        </span>
-                      )}
                       {levelBenefits.bonusPerRide > 0 && (
                         <span className={`text-[10px] font-medium ${isLocked ? 'text-gray-600' : 'text-amber-400'}`}>
                           +₡{levelBenefits.bonusPerRide}/viaje
@@ -475,7 +485,7 @@ export default function DriverRewards() {
                           Prioridad
                         </span>
                       )}
-                      {!levelBenefits.commissionDiscount && !levelBenefits.bonusPerRide && !levelBenefits.priorityMatching && (
+                      {!levelBenefits.bonusPerRide && !levelBenefits.priorityMatching && (
                         <span className="text-[10px] text-gray-600">Sin beneficios especiales</span>
                       )}
                     </div>
@@ -500,19 +510,34 @@ export default function DriverRewards() {
           <Lightbulb className="w-4 h-4 text-amber-400" />
           <span className="text-sm font-bold text-white">Tips para Subir de Nivel</span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {LEVEL_UP_TIPS.map((tip, index) => (
             <motion.div
               key={index}
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.6 + index * 0.06 }}
-              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white/5 hover:bg-white/8 transition-colors"
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10"
             >
-              <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
-                <tip.icon className={`w-3.5 h-3.5 ${tip.color}`} />
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center flex-shrink-0">
+                  <tip.icon className={`w-4 h-4 ${tip.color}`} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-white">{tip.text}</p>
+                    <button
+                      onClick={() => setSelectedTipIndex(selectedTipIndex === index ? null : index)}
+                      className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-400 hover:text-white"
+                    >
+                      {selectedTipIndex === index ? 'Ocultar' : 'Ver ejemplo'}
+                    </button>
+                  </div>
+                  {selectedTipIndex === index && (
+                    <p className="mt-2 text-[10px] text-gray-400 leading-5">{tip.details}</p>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-gray-300">{tip.text}</p>
             </motion.div>
           ))}
         </div>

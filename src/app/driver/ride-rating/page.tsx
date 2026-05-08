@@ -240,6 +240,9 @@ function DriverRideRatingContent() {
                   Califica a {ride.rider_name}
                 </p>
               )}
+              <p className="text-[10px] text-gray-500 mt-2">
+                Tu calificación es anónima. El pasajero no verá tu nombre, solo tu feedback.
+              </p>
             </div>
 
             {/* Star selector */}
