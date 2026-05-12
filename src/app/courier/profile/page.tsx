@@ -106,11 +106,11 @@ export default function CourierProfile() {
   const deliveriesToNext = nextLevel ? nextLevel.minDeliveries - totalDeliveries : 0;
 
   const menuItems = [
-    { icon: FileText, label: 'Editar perfil', desc: 'Actualizar datos personales', action: () => toast.info('Funcion de edicion proximamente'), color: 'text-purple-400 bg-purple-500/20' },
-    { icon: Bike, label: 'Vehiculo', desc: `${VEHICLE_LABELS[vehicleType]} - Configuracion`, action: () => toast.info('Configuracion de vehiculo proximamente'), color: 'text-orange-400 bg-orange-500/20' },
-    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', action: () => toast.info('Notificaciones configuradas'), color: 'text-amber-400 bg-amber-500/20' },
-    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', action: () => toast.info('Funcion de seguridad'), color: 'text-emerald-400 bg-emerald-500/20' },
-    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', action: () => toast.info('Mostrando terminos...'), color: 'text-purple-400 bg-purple-500/20' },
+    { icon: FileText, label: 'Editar perfil', desc: 'Actualizar datos personales', action: () => router.push('/courier/profile'), color: 'text-purple-400 bg-purple-500/20' },
+    { icon: Bike, label: 'Vehiculo', desc: `${VEHICLE_LABELS[vehicleType]} - Configuracion`, action: () => toast.info('Configuracion de vehiculo disponible pronto'), color: 'text-orange-400 bg-orange-500/20' },
+    { icon: Bell, label: 'Notificaciones', desc: 'Configuracion de alertas', action: () => router.push('/courier/notifications'), color: 'text-amber-400 bg-amber-500/20' },
+    { icon: Lock, label: 'Seguridad', desc: 'Cambiar contrasena', action: () => router.push('/courier/support'), color: 'text-emerald-400 bg-emerald-500/20' },
+    { icon: FileText, label: 'Terminos', desc: 'Terminos y condiciones', action: () => toast.info('Consulta nuestros terminos en ridaapp.com/terminos'), color: 'text-purple-400 bg-purple-500/20' },
     { icon: HelpCircle, label: 'Ayuda', desc: 'Soporte 24/7', action: () => router.push('/courier/support'), color: 'text-pink-400 bg-pink-500/20' },
   ];
 
@@ -138,7 +138,7 @@ export default function CourierProfile() {
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center text-2xl font-bold text-white">
               {user?.name?.charAt(0) || 'R'}
             </div>
-            <button onClick={() => toast.info('Funcion de camara no disponible en demo')} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center border-2 border-rida-dark">
+            <button onClick={() => toast.info('Foto de perfil disponible pronto')} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center border-2 border-rida-dark">
               <Camera className="w-3 h-3 text-white" />
             </button>
           </div>
@@ -155,7 +155,7 @@ export default function CourierProfile() {
             <div className="flex items-center gap-1.5 mt-1">
               <div className="flex items-center gap-0.5 bg-black/40 px-2 py-0.5 rounded-full">
                 <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                <span className="text-xs font-bold text-white">{rating > 0 ? rating.toFixed(2) : '5.00'}</span>
+                <span className="text-xs font-bold text-white">{rating > 0 ? rating.toFixed(2) : '—'}</span>
               </div>
               {user?.isVerified && (
                 <span className="flex items-center gap-0.5 text-[10px] text-emerald-400">
@@ -189,7 +189,7 @@ export default function CourierProfile() {
           <div className="flex items-center justify-between mt-1.5">
             <span className="text-[10px] text-gray-500">Manten tu calificacion 4.85+</span>
             <button
-              onClick={() => toast.info('Funcion de beneficios proximamente')}
+              onClick={() => router.push('/courier/earnings')}
               className="text-[10px] text-orange-400 font-medium hover:underline"
             >
               Ver beneficios

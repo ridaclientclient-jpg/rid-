@@ -33,7 +33,7 @@ export async function GET(request: Request) {
         plate: d.vehicle_plate,
         total_rides: d.total_rides || 0,
         total_earnings: Number(d.total_earnings || 0),
-        avg_rating: Number(d.avg_rating || 5.0),
+        avg_rating: Number(d.avg_rating || 0),
         acceptance_rate: Number(d.acceptance_rate || 100),
         level: d.level_name || 'Basico',
       })),

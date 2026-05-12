@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     const todayRatings = completedToday.filter(r => r.rating > 0);
     const avgRatingToday = todayRatings.length > 0
       ? todayRatings.reduce((sum, r) => sum + r.rating, 0) / todayRatings.length
-      : driver.rating || 5.0;
+      : driver.rating || 0;
 
     // Calculate average ride duration today
     const durationsToday = completedToday
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       success: true,
       driver: {
         id: driver.id,
-        overall_rating: driver.rating || 5.0,
+        overall_rating: driver.rating || 0,
         today_rating: Number(avgRatingToday.toFixed(2)),
         total_rides: driver.total_rides || 0,
         total_earnings: driver.total_earnings || 0,
@@ -93,7 +93,7 @@ export async function GET(request: Request) {
       weekly: {
         rides: driver.weekly_rides || 0,
         earnings: driver.weekly_earnings || 0,
-        rating: driver.weekly_rating || 5.0,
+        rating: driver.weekly_rating || 0,
         acceptance_rate: driver.weekly_acceptance_rate || 100,
         active_days: uniqueDays.size,
       },

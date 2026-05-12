@@ -491,7 +491,7 @@ export const useRideStore = create<RideState>((set, get) => ({
             id: d.id,
             name: d.profiles?.name || 'Conductor',
             vehicle: d.vehicles ? `${d.vehicles.model} ${d.vehicles.color}` : 'Vehiculo',
-            rating: d.rating || 5.0,
+            rating: d.rating || 0,
             distance: Math.round(dist * 10) / 10,
             eta: Math.max(1, Math.round((dist / 30) * 60)),
           };

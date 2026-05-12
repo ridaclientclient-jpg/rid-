@@ -17,7 +17,7 @@ interface SecurityState {
   fraudAlerts: number;
 
   /** Enforce DB-level lockout: sync authStore state with DB */
-  checkAccountLock: (email: string) => Promise<{ locked: boolean; lockedUntil: string | null; attempts: number }>;
+  checkAccountLock: (email: string) => Promise<{ locked: boolean; lockedUntil: string | null; attempts: number; userId: string | null }>;
   /** Record failed login attempt in DB */
   recordFailedAttempt: (userId: string, ipAddress?: string, userAgent?: string) => Promise<void>;
   /** Record successful login */
@@ -43,26 +43,29 @@ export const useSecurityStore = create<SecurityState>((set) => ({
     try {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('login_attempts, locked_until, is_active')
+        .select('id, login_attempts, locked_until, is_active')
         .eq('email', email)
         .single();
 
-      if (!profile) return { locked: false, lockedUntil: null, attempts: 0 };
+      if (!profile) return { locked: false, lockedUntil: null, attempts: 0, userId: null };
 
       const isLocked = profile.locked_until && new Date(profile.locked_until) > new Date();
+      const isActuallyLocked = !!isLocked || profile.is_active === false;
+
       return {
-        locked: !!isLocked,
+        locked: isActuallyLocked,
         lockedUntil: profile.locked_until,
         attempts: profile.login_attempts || 0,
+        userId: profile.id,
       };
     } catch {
-      return { locked: false, lockedUntil: null, attempts: 0 };
+      return { locked: false, lockedUntil: null, attempts: 0, userId: null };
     }
   },
 
   recordFailedAttempt: async (userId: string, ipAddress?: string, userAgent?: string) => {
     try {
-      // Increment login_attempts in DB
+      // 1. Increment login_attempts in DB
       const { data: profile } = await supabase
         .from('profiles')
         .select('login_attempts')
@@ -71,41 +74,41 @@ export const useSecurityStore = create<SecurityState>((set) => ({
 
       const attempts = (profile?.login_attempts || 0) + 1;
 
-      // Fetch max attempts from settings
+      // 2. Fetch max attempts and duration from settings (with defaults)
       const { data: settings } = await supabase
         .from('settings')
-        .select('value')
-        .eq('key', 'max_login_attempts')
-        .single();
-      const maxAttempts = Number(settings?.value) || 5;
-
-      // Fetch lockout duration from settings
-      const { data: durationSettings } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'lockout_duration_minutes')
-        .single();
-      const lockoutMinutes = Number(durationSettings?.value) || 15;
+        .select('key, value')
+        .in('key', ['max_login_attempts', 'lockout_duration_minutes']);
+      
+      const maxAttempts = Number(settings?.find(s => s.key === 'max_login_attempts')?.value) || 5;
+      const lockoutMinutes = Number(settings?.find(s => s.key === 'lockout_duration_minutes')?.value) || 15;
 
       const shouldLock = attempts >= maxAttempts;
       const lockedUntil = shouldLock ? new Date(Date.now() + lockoutMinutes * 60 * 1000).toISOString() : null;
 
+      // 3. Update profile
+      const updateData: any = { login_attempts: attempts };
+      if (shouldLock) {
+        updateData.locked_until = lockedUntil;
+        // Optional: you might not want to set is_active=false for a temporary lockout
+        // but the current logic does it. I'll keep it but maybe we should only use locked_until.
+        // updateData.is_active = false; 
+      }
+
       await supabase
         .from('profiles')
-        .update({
-          login_attempts: attempts,
-          locked_until: lockedUntil,
-          is_active: shouldLock ? false : undefined,
-        })
+        .update(updateData)
         .eq('id', userId);
 
-      // Log the security event
+      // 4. Log the security event
       await supabase.from('security_logs').insert({
         user_id: userId,
         event_type: shouldLock ? 'account_locked' : 'login_failed',
         ip_address: ipAddress || null,
         user_agent: userAgent || null,
-        details: shouldLock ? `Cuenta bloqueada tras ${attempts} intentos fallidos` : `Intento fallido #${attempts}`,
+        details: shouldLock 
+          ? `Cuenta bloqueada temporalmente tras ${attempts} intentos fallidos` 
+          : `Intento fallido #${attempts}`,
       });
     } catch (err: any) {
       console.error('[Security] Record failed attempt error:', err?.message);
@@ -114,24 +117,32 @@ export const useSecurityStore = create<SecurityState>((set) => ({
 
   recordSuccessLogin: async (userId: string, ipAddress?: string, userAgent?: string) => {
     try {
-      // Reset login attempts
+      // 1. Get current profile to increment count
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('login_count')
+        .eq('id', userId)
+        .single();
+
+      // 2. Reset login attempts and update last login
       await supabase
         .from('profiles')
         .update({
           login_attempts: 0,
           locked_until: null,
           is_active: true,
-          last_login: new Date().toISOString(),
+          last_login_at: new Date().toISOString(),
+          login_count: (profile?.login_count || 0) + 1,
         })
         .eq('id', userId);
 
-      // Log success
+      // 3. Log success
       await supabase.from('security_logs').insert({
         user_id: userId,
         event_type: 'login_success',
         ip_address: ipAddress || null,
         user_agent: userAgent || null,
-        details: 'Inicio de sesion exitoso',
+        details: 'Inicio de sesión exitoso',
       });
     } catch (err: any) {
       console.error('[Security] Record success login error:', err?.message);

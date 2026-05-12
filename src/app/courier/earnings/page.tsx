@@ -47,16 +47,7 @@ function formatCurrency(amount: number): string {
   return `₡${Math.round(amount).toLocaleString()}`;
 }
 
-// Hardcoded weekly data for initial display
-const HARDCODED_WEEKLY: WeeklyDay[] = [
-  { day: 'Lun', amount: 12500, color: 'from-purple-600 to-orange-500' },
-  { day: 'Mar', amount: 18300, color: 'from-purple-600 to-orange-500' },
-  { day: 'Mie', amount: 9800, color: 'from-purple-600 to-orange-500' },
-  { day: 'Jue', amount: 22100, color: 'from-purple-600 to-orange-500' },
-  { day: 'Vie', amount: 15600, color: 'from-purple-600 to-orange-500' },
-  { day: 'Sab', amount: 28000, color: 'from-purple-600 to-orange-500' },
-  { day: 'Dom', amount: 8200, color: 'from-purple-600 to-orange-500' },
-];
+// No hardcoded data — weekly chart is built from real deliveries only
 
 export default function CourierEarnings() {
   const { user } = useAuthStore();
@@ -65,7 +56,7 @@ export default function CourierEarnings() {
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [totalDeliveries, setTotalDeliveries] = useState(0);
   const [todayDeliveries, setTodayDeliveries] = useState(0);
-  const [weeklyData, setWeeklyData] = useState<WeeklyDay[]>(HARDCODED_WEEKLY);
+  const [weeklyData, setWeeklyData] = useState<WeeklyDay[]>([]);
   const [totalWeekly, setTotalWeekly] = useState(0);
   const [rating, setRating] = useState(0);
 
@@ -145,8 +136,9 @@ export default function CourierEarnings() {
         });
         setWeeklyData(builtWeeklyData);
       } else {
-        // Use hardcoded data
-        setTotalWeekly(HARDCODED_WEEKLY.reduce((acc, d) => acc + d.amount, 0));
+        // No deliveries this week — leave empty
+        setWeeklyData([]);
+        setTotalWeekly(0);
       }
     } catch (err) {
       console.error('Error fetching earnings data:', err);
@@ -171,14 +163,8 @@ export default function CourierEarnings() {
 
   const goalPercent = Math.min((todayEarnings / dailyGoal) * 100, 100);
 
-  // Recent transactions (sample based on deliveries for now)
-  const recentTransactions: TxDisplay[] = [
-    { id: '1', desc: 'Entrega #4821 - Mall San Pedro', amount: 2500, time: 'Hace 2h', type: 'delivery' },
-    { id: '2', desc: 'Entrega #4820 - Multiplaza', amount: 3200, time: 'Hace 4h', type: 'delivery' },
-    { id: '3', desc: 'Retiro a banco', amount: -15000, time: 'Ayer', type: 'withdraw' },
-    { id: '4', desc: 'Entrega #4819 - Hospital Calderon', amount: 1800, time: 'Ayer', type: 'delivery' },
-    { id: '5', desc: 'Entrega #4818 - C.C. La Union', amount: 2100, time: 'Hace 2 dias', type: 'delivery' },
-  ];
+  // No fake transactions — show empty state until real transaction history is implemented
+  const recentTransactions: TxDisplay[] = [];
 
   return (
     <div className="p-4 space-y-4">
@@ -240,7 +226,7 @@ export default function CourierEarnings() {
           </div>
           <p className="text-lg font-bold text-white">{formatCurrency(totalEarnings)}</p>
           <button
-            onClick={() => toast.info('Funcion de retiro proximamente')}
+            onClick={() => toast.info('La funcion de retiro estara disponible pronto')}
             className="mt-2 w-full py-1.5 rounded-lg bg-white/5 text-[10px] text-gray-300 font-medium hover:bg-white/10 transition-colors"
           >
             Retirar
@@ -274,7 +260,7 @@ export default function CourierEarnings() {
         </div>
         <div className="glass rounded-xl p-3 text-center">
           <Star className="w-4 h-4 text-amber-400 mx-auto mb-1" />
-          <p className="text-sm font-bold text-white">{rating > 0 ? rating.toFixed(2) : '5.00'}</p>
+          <p className="text-sm font-bold text-white">{rating > 0 ? rating.toFixed(2) : '—'}</p>
           <p className="text-[10px] text-gray-500">Calificacion</p>
         </div>
         <div className="glass rounded-xl p-3 text-center">

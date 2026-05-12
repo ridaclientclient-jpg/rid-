@@ -218,7 +218,7 @@ export default function CourierHome() {
                 Manten tu calificacion 4.85+ para subir de nivel
               </p>
               <button
-                onClick={() => toast.info('Funcion de beneficios proximamente')}
+                onClick={() => router.push('/courier/earnings')}
                 className="mt-2 w-full py-1.5 rounded-lg bg-white/5 text-xs text-gray-300 font-medium hover:bg-white/10 transition-colors"
               >
                 Ver beneficios
@@ -244,7 +244,7 @@ export default function CourierHome() {
             <div className="text-right">
               <div className="flex items-center gap-1.5">
                 <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span className="text-sm font-bold text-white">{rating > 0 ? rating.toFixed(2) : '5.00'}</span>
+                <span className="text-sm font-bold text-white">{rating > 0 ? rating.toFixed(2) : '—'}</span>
               </div>
               <p className="text-[10px] text-gray-500 mt-0.5">{courier?.total_deliveries || 0} entregas totales</p>
             </div>
@@ -424,7 +424,7 @@ export default function CourierHome() {
             </div>
           </button>
           <button
-            onClick={() => toast.info('Navegando con GPS...')}
+            onClick={() => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition((pos) => { window.open(`https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`, '_blank'); }, () => toast.error('No se pudo obtener tu ubicacion')); } else { toast.error('GPS no disponible'); } }}
             className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
           >
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
@@ -436,7 +436,7 @@ export default function CourierHome() {
             </div>
           </button>
           <button
-            onClick={() => toast.info('Reportando incidencia...')}
+            onClick={() => router.push('/courier/support')}
             className="glass rounded-xl p-3 flex items-center gap-2.5 hover:bg-white/5 transition-colors"
           >
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">

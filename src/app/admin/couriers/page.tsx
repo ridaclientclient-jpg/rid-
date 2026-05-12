@@ -360,7 +360,7 @@ export default function AdminCouriersPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Star className="w-3 h-3 text-amber-400" />
-                          {Number(courier.rating) > 0 ? Number(courier.rating).toFixed(1) : '5.0'}
+                          {Number(courier.rating) > 0 ? Number(courier.rating).toFixed(1) : '—'}
                         </span>
                       </div>
 
@@ -521,7 +521,7 @@ export default function AdminCouriersPage() {
                     <p className="text-xs text-gray-500">Rating</p>
                     <div className="flex items-center gap-1.5 mt-1">
                       <Star className="w-4 h-4 text-amber-400" />
-                      <span className="text-sm font-medium text-white">{Number(selectedCourier.rating) > 0 ? Number(selectedCourier.rating).toFixed(1) : '5.0'}</span>
+                      <span className="text-sm font-medium text-white">{Number(selectedCourier.rating) > 0 ? Number(selectedCourier.rating).toFixed(1) : '—'}</span>
                     </div>
                   </div>
                   <div className="bg-white/5 rounded-xl p-3">

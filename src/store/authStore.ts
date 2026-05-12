@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase, type Profile } from '@/lib/supabase';
 import type { User as SupaUser, Session } from '@supabase/supabase-js';
+import { useSecurityStore } from './securityStore';
 
 interface AuthUser {
   id: string;
@@ -257,13 +258,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (email: string, password: string) => {
-    const state = get();
-    if (state.isLocked) {
+    const security = useSecurityStore.getState();
+    
+    // 1. Check DB-level lockout first
+    const lockStatus = await security.checkAccountLock(email);
+    
+    if (lockStatus.locked) {
       const now = new Date();
-      if (state.lockedUntil && now < state.lockedUntil) {
-        return { success: false, error: `Cuenta bloqueada. Intenta en ${Math.ceil((state.lockedUntil.getTime() - now.getTime()) / 60000)} minutos.` };
+      const lockedUntil = lockStatus.lockedUntil ? new Date(lockStatus.lockedUntil) : null;
+      
+      if (lockedUntil && now < lockedUntil) {
+        const diff = Math.ceil((lockedUntil.getTime() - now.getTime()) / 60000);
+        set({ isLocked: true, lockedUntil });
+        return { 
+          success: false, 
+          error: `Cuenta bloqueada temporalmente. Intenta en ${diff} minutos.` 
+        };
       }
-      set({ isLocked: false, lockedUntil: null, loginAttempts: 0 });
+      
+      // If it was locked but time expired, we can proceed, but checkAccountLock should have reset it if it was just a timer.
+      // However, if is_active is false, it stays locked.
+      if (lockStatus.userId) {
+        // If still locked (e.g. is_active is false), return error
+        set({ isLocked: true });
+        return { success: false, error: 'Esta cuenta ha sido desactivada o bloqueada permanentemente.' };
+      }
     }
 
     set({ isLoading: true });
@@ -271,33 +290,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        const newAttempts = state.loginAttempts + 1;
-        if (newAttempts >= 5) {
-          set({
-            loginAttempts: newAttempts,
-            isLocked: true,
-            lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
-            isLoading: false,
+        // 2. Record failed attempt in DB if user exists
+        if (lockStatus.userId) {
+          await security.recordFailedAttempt(lockStatus.userId);
+          // Re-fetch lock status to update local state
+          const newLock = await security.checkAccountLock(email);
+          set({ 
+            isLocked: newLock.locked, 
+            lockedUntil: newLock.lockedUntil ? new Date(newLock.lockedUntil) : null,
+            loginAttempts: newLock.attempts 
           });
-          // Log blocked attempt
-          supabase.from('login_logs').insert({
-            email,
-            method: 'email',
-            status: 'blocked',
-          }).then(() => {}).catch(() => {});
-          return { success: false, error: 'Cuenta bloqueada por 15 minutos. Demasiados intentos.' };
+          
+          if (newLock.locked) {
+            set({ isLoading: false });
+            return { success: false, error: 'Demasiados intentos fallidos. Cuenta bloqueada.' };
+          }
+          
+          set({ isLoading: false });
+          return { 
+            success: false, 
+            error: `Credenciales incorrectas. Intentos restantes: ${5 - newLock.attempts}` 
+          };
         }
-        set({ loginAttempts: newAttempts, isLoading: false });
-        // Log failed attempt
-        supabase.from('login_logs').insert({
-          email,
-          method: 'email',
-          status: 'failed',
-        }).then(() => {}).catch(() => {});
-        return { success: false, error: error.message === 'Invalid login credentials'
-          ? `Credenciales incorrectas. Intentos restantes: ${5 - newAttempts}`
-          : error.message
-        };
+
+        set({ isLoading: false });
+        return { success: false, error: 'Credenciales incorrectas' };
       }
 
       if (data.session?.user) {
@@ -346,19 +363,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isAuthenticated: true,
             isLoading: false,
             loginAttempts: 0,
+            isLocked: false,
+            lockedUntil: null
           });
-          // Update last_login_at and login_count
-          supabase.from('profiles').update({
-            last_login_at: new Date().toISOString(),
-            login_count: (profile.login_count || 0) + 1,
-          }).eq('id', sessionUser.id).then(() => {}).catch(() => {});
-          // Log successful login
-          supabase.from('login_logs').insert({
-            user_id: sessionUser.id,
-            email,
-            method: 'email',
-            status: 'success',
-          }).then(() => {}).catch(() => {});
+          
+          // 3. Record success in security system
+          await security.recordSuccessLogin(sessionUser.id);
+          
           return { success: true };
         }
       }

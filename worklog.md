@@ -259,3 +259,25 @@ Stage Summary:
 - Zero broken links (all 21 routes verified)
 - Zero non-functional buttons remaining
 - Build passes cleanly
+
+---
+Task ID: 3
+Agent: Antigravity
+Task: Implement Persistent Account Lockout and fix Hydration Mismatch
+
+Work Log:
+- Modified `securityStore.ts` to include `userId` in `checkAccountLock` and improved `recordSuccessLogin`/`recordFailedAttempt` with robust DB updates (increments `login_count`, updates `last_login_at`).
+- Integrated `useSecurityStore` into `authStore.ts`:
+  - Login now validates account status against the database before attempting Supabase Auth.
+  - Failed attempts are logged in `security_logs` and trigger DB-level lockouts.
+  - Successful logins reset attempt counters and log the event.
+- Created `sql/setup-security-system.sql` migration to prepare `profiles` columns and `security_logs` table with RLS policies.
+- Added `check_user_blocked` RPC to the security migration for use by `AuthGuard`.
+- Fixed Hydration Mismatch error in `src/app/layout.tsx` by adding `suppressHydrationWarning` to the `<body>` tag (addressing attributes injected by browser extensions like Grammarly).
+- Verified app entry points (Client, Driver, Courier) via browser preview.
+
+Stage Summary:
+- Security: Persistent, DB-backed account lockout system is now active.
+- Bug Fix: Hydration mismatch on root layout resolved.
+- Build: Successful, dev server running at http://localhost:3000.
+- Documentation: Migration SQL provided for database setup.

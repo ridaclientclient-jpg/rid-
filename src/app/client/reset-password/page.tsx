@@ -112,9 +112,7 @@ function ClientResetPasswordForm() {
       setIsLoading(false);
     }
   };
-      setIsLoading(false);
-    }
-  };
+
 
   // Loading state while validating token
   if (isValidating) {
