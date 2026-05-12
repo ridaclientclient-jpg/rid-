@@ -132,6 +132,50 @@ export default function DriverRides() {
   const [loadingScheduled, setLoadingScheduled] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'scheduled'>('current');
 
+  // Toggle online/offline via API
+  const handleToggleOnline = useCallback(async () => {
+    if (!session?.access_token) return;
+
+    setIsToggling(true);
+    const newStatus = isOnline ? 'offline' : 'online';
+    
+    // Fallback coords if geolocation not ready
+    const lat = userCoords?.lat || 9.9281;
+    const lng = userCoords?.lng || -84.0907;
+
+    try {
+      const res = await fetch('/api/drivers/toggle-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          latitude: lat,
+          longitude: lng,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setIsOnline(!isOnline);
+        if (!isOnline) {
+          toast.success('¡Estas en linea! Buscando viajes...');
+        } else {
+          toast.success('Has pasado a fuera de linea.');
+        }
+      } else {
+        toast.error(data.error || 'Error al cambiar estado');
+      }
+    } catch {
+      toast.error('Error de conexion');
+    } finally {
+      setIsToggling(false);
+    }
+  }, [isOnline, session?.access_token, userCoords]);
+
   // Fetch driver
   const fetchDriver = useCallback(async () => {
     if (!user?.id) return;
@@ -612,10 +656,34 @@ export default function DriverRides() {
 
         {/* Online Status Indicator (Simplified) */}
         {!activeRide && !incomingRide && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`p-4 rounded-2xl text-center border ${isOnline ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-800/40 border-white/5'}`}>
-            <p className={`text-sm font-medium ${isOnline ? 'text-emerald-400' : 'text-gray-400'}`}>
-              {isOnline ? '🟢 Estas en linea y buscando viajes' : '⚪ Fuera de linea. Conectate en el mapa para empezar.'}
-            </p>
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${isOnline ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-800/40 border-white/5'}`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+              <p className={`text-sm font-medium ${isOnline ? 'text-emerald-400' : 'text-gray-400'}`}>
+                {isOnline ? 'En linea y buscando viajes' : 'Fuera de linea'}
+              </p>
+            </div>
+            <button
+              onClick={handleToggleOnline}
+              disabled={isToggling}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                isOnline
+                  ? 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
+                  : 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20 hover:brightness-110'
+              } disabled:opacity-50`}
+            >
+              {isToggling ? (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto" />
+              ) : isOnline ? (
+                'Finalizar jornada'
+              ) : (
+                'Ingresar'
+              )}
+            </button>
           </motion.div>
         )}
 

@@ -99,7 +99,7 @@ export default function DriverLogin() {
             disabled={isLoading}
             className="mt-5 w-full rounded-3xl bg-gradient-to-r from-cyan-400 to-sky-500 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isLoading ? 'Cargando...' : 'Conectarse'}
+            {isLoading ? 'Cargando...' : 'Login'}
           </button>
 
           <div className="mt-6 border-t border-white/10 pt-5 text-center text-sm text-gray-400">
