@@ -136,9 +136,16 @@ export default function DriverRides() {
   const fetchDriver = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const { data } = await supabase.from('drivers').select('*').eq('user_id', user.id).single();
-      if (data) { setDriver(data); setIsOnline(data.status === 'online' || data.status === 'busy'); }
-    } catch (err) { console.error('Error fetching driver:', err); }
+      const { data, error } = await supabase.from('drivers').select('*').eq('user_id', user.id).single();
+      if (error) throw error;
+      if (data) { 
+        setDriver(data); 
+        setIsOnline(data.status === 'online' || data.status === 'busy'); 
+      }
+    } catch (err) { 
+      console.error('Error fetching driver:', err);
+      // Ensure we don't stay in an inconsistent state
+    }
   }, [user?.id]);
 
   // Fetch rider profile
@@ -230,9 +237,17 @@ export default function DriverRides() {
   }, [driver?.id]);
 
   // Initial load
-  useEffect(() => { fetchDriver(); }, [fetchDriver]);
+  useEffect(() => { 
+    if (user?.id) fetchDriver(); 
+  }, [user?.id, fetchDriver]);
+
   useEffect(() => {
-    if (driver?.id) { fetchActiveRide(); fetchCompletedRides(); fetchScheduledRides(); }
+    if (driver?.id) { 
+      // Fetch in parallel without blocking each other
+      fetchActiveRide(); 
+      fetchCompletedRides(); 
+      fetchScheduledRides(); 
+    }
   }, [driver?.id, fetchActiveRide, fetchCompletedRides, fetchScheduledRides]);
 
   // Fetch surge zones when online
