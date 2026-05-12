@@ -423,16 +423,21 @@ export default function DriverRides() {
   const handleToggleOnline = useCallback(async () => {
     if (!session?.access_token) return;
     setIsToggling(true);
+
+    const newStatus = isOnline ? 'offline' : 'online';
+    const lat = userCoords?.lat || 9.9281;
+    const lng = userCoords?.lng || -84.0907;
+
     try {
       const res = await fetch('/api/drivers/toggle-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ status: isOnline ? 'offline' : 'online', latitude: userCoords?.lat, longitude: userCoords?.lng }),
+        body: JSON.stringify({ status: newStatus, latitude: lat, longitude: lng }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setIsOnline(!isOnline);
-        toast.success(isOnline ? 'Fuera de linea' : 'En linea! Recibiras solicitudes.');
+        toast.success(isOnline ? 'Has pasado a fuera de linea.' : '¡Estas en linea! Recibiras solicitudes.');
         if (!isOnline) fetchDriver();
       } else { toast.error(data.error || 'Error al cambiar estado'); }
     } catch { toast.error('Error de conexion'); }

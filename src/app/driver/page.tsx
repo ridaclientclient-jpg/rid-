@@ -405,8 +405,10 @@ export default function DriverHome() {
     setIsToggling(true);
 
     const newStatus = isOnline ? 'offline' : 'online';
-    const lat = userCoords?.lat;
-    const lng = userCoords?.lng;
+    
+    // Fallback coords if geolocation not ready (San José, CR as center)
+    const lat = userCoords?.lat || 9.9281;
+    const lng = userCoords?.lng || -84.0907;
 
     try {
       const res = await fetch('/api/drivers/toggle-status', {
@@ -427,21 +429,25 @@ export default function DriverHome() {
       if (res.ok && data.success) {
         setIsOnline(!isOnline);
         if (!isOnline) {
-          toast.success('Estas en linea! Recibiras solicitudes de viaje.');
-          // Immediately send current location
-          if (lat && lng) sendLocation(lat, lng);
+          toast.success('¡Estas en linea! Recibiras solicitudes de viaje.');
+          // Update local driver state to reflect online status
+          if (driver) setDriver({ ...driver, status: 'online' } as any);
+          // Immediately send location
+          sendLocation(lat, lng);
         } else {
           toast.success('Has pasado a fuera de linea.');
+          if (driver) setDriver({ ...driver, status: 'offline' } as any);
         }
       } else {
         toast.error(data.error || 'Error al cambiar estado. Intenta de nuevo.');
       }
-    } catch {
+    } catch (err) {
+      console.error('Toggle error:', err);
       toast.error('Error de conexion. Verifica tu internet.');
     } finally {
       setIsToggling(false);
     }
-  }, [isOnline, session?.access_token, userCoords, sendLocation, checkBreakStatus]);
+  }, [isOnline, session?.access_token, userCoords, sendLocation, checkBreakStatus, driver]);
 
   // Open Google Maps navigation
   const openNavigation = useCallback(() => {
