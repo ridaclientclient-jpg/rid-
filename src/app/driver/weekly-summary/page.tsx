@@ -233,9 +233,18 @@ export default function WeeklySummaryPage() {
       setCurrentWeek(currentData);
       setPreviousWeek(previousData);
 
-      // Daily earnings: only show if there are real daily breakdowns from the API
-      // Currently the API returns a weekly total, so we show the total without faking daily data
-      setDailyEarnings([]);
+      // Daily earnings: map from API daily_earnings array (Mon-Sun)
+      if (currentData && (currentData as any).daily_earnings) {
+        const days = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+        const mapped = ((currentData as any).daily_earnings as number[]).map((val, i) => ({
+          day: days[i],
+          shortDay: days[i],
+          earnings: val
+        }));
+        setDailyEarnings(mapped);
+      } else {
+        setDailyEarnings([]);
+      }
     } finally {
       setLoading(false);
     }

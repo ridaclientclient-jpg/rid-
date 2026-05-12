@@ -59,7 +59,24 @@ export async function GET(request: Request) {
       console.error('Error al obtener resumen persistido:', summaryError.message);
     }
 
-    // ── Build response ──────────────────────────────────────────
+    // ── Calculate Daily Breakdown ──────────────────────────────
+    // We fetch the last 7 days of completed rides to build the chart
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const { data: recentRides } = await supabase
+      .from('rides')
+      .select('driver_earnings, completed_at')
+      .eq('driver_id', driver.id)
+      .eq('status', 'completed')
+      .gte('completed_at', sevenDaysAgo.toISOString());
+
+    const dailyBreakdown = [0, 0, 0, 0, 0, 0, 0]; // Mon-Sun
+    recentRides?.forEach(ride => {
+      const day = (new Date(ride.completed_at).getDay() + 6) % 7; // Map Sun=0 to index 6, Mon=0
+      dailyBreakdown[day] += ride.driver_earnings || 0;
+    });
+
     const summary = rpcSummary || persistedSummary || {};
 
     return NextResponse.json({
@@ -75,6 +92,7 @@ export async function GET(request: Request) {
         cancellation_rate: summary.cancellation_rate ?? 0,
         active_days: summary.active_days ?? 0,
         peak_hours_rides: summary.peak_hours_rides ?? 0,
+        daily_earnings: dailyBreakdown,
       },
       persisted: persistedSummary
         ? {
