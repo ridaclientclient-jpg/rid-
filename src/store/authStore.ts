@@ -444,7 +444,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isLoading: false,
       loginAttempts: 0,
     });
-    // Clear flag after a short delay so onAuthStateChange doesn't fire a second redirect
+    
+    // Clear any persistent storage that might cause hydration issues
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('rida-auth-token');
+      // Force redirect to login/home page and reload to clear all state/cache
+      window.location.href = '/';
+    }
+
+    // Clear flag after a short delay
     setTimeout(() => { (get() as any)._isLoggingOut = false; }, 500);
   },
 
