@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
     // ── Parse body ──────────────────────────────────────────────
     const body = await request.json();
-    const { amount, method: rawMethod } = body;
+    const { amount, method: rawMethod, reference } = body;
 
     // Validate amount
     if (amount === undefined || amount === null) {
@@ -90,6 +90,7 @@ export async function POST(request: Request) {
         p_user_id: user.id,
         p_amount: numericAmount,
         p_method: method,
+        p_reference: reference || null,
       },
     );
 
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
     // ── Build response ──────────────────────────────────────────
     return NextResponse.json({
       success: true,
-      message: `Recarga de ₡${numericAmount.toLocaleString('es-CR')} realizada con éxito`,
+      message: `Solicitud de recarga por ₡${numericAmount.toLocaleString('es-CR')} enviada. Pendiente de aprobacion por el administrador.`,
       currency: 'CRC',
       recharge: {
         amount: numericAmount,

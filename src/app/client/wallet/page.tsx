@@ -300,145 +300,15 @@ export default function ClientWallet() {
     }
   }, [user?.id, hasWithdrawnToday, fetchData]);
 
-  const processNextInQueue = useCallback(async () => {
-    try {
-      const { data: currentProcessing } = await supabase
-        .from('withdrawal_queue')
-        .select('id')
-        .eq('status', 'processing')
-        .limit(1)
-        .maybeSingle();
-      if (currentProcessing) return;
-
-      const { data: nextItem } = await supabase
-        .from('withdrawal_queue')
-        .select('*')
-        .eq('status', 'queued')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (!nextItem) return;
-
-      const { data: claimed, error: claimErr } = await supabase
-        .from('withdrawal_queue')
-        .update({ status: 'processing' })
-        .eq('id', nextItem.id)
-        .eq('status', 'queued')
-        .select()
-        .single();
-      if (claimErr || !claimed) return;
-
-      const isCurrentUser = claimed.user_id === user?.id;
-
-      try {
-        const { data: qWallet } = await supabase
-          .from('wallets')
-          .select('*')
-          .eq('id', claimed.wallet_id)
-          .single();
-
-        if (!qWallet || qWallet.balance < claimed.amount) {
-          await supabase
-            .from('withdrawal_queue')
-            .update({
-              status: 'failed',
-              error_message: !qWallet ? 'Billetera no encontrada' : 'Saldo insuficiente',
-              processed_at: new Date().toISOString(),
-            })
-            .eq('id', claimed.id);
-          if (isCurrentUser) {
-            toast.error('No se pudo procesar: saldo insuficiente');
-            setQueueInfo(null);
-            fetchData(user.id);
-          }
-          return;
-        }
-
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const { data: todayTx } = await supabase
-          .from('transactions')
-          .select('id')
-          .eq('wallet_id', claimed.wallet_id)
-          .eq('type', 'withdrawal')
-          .gte('created_at', todayStr + 'T00:00:00')
-          .limit(1);
-        if (todayTx && todayTx.length > 0) {
-          await supabase
-            .from('withdrawal_queue')
-            .update({
-              status: 'failed',
-              error_message: 'Ya existe un retiro hoy',
-              processed_at: new Date().toISOString(),
-            })
-            .eq('id', claimed.id);
-          if (isCurrentUser) {
-            toast.error('Ya tienes un retiro procesado hoy');
-            setQueueInfo(null);
-          }
-          return;
-        }
-
-        const { error: txErr } = await supabase
-          .from('transactions')
-          .insert({
-            wallet_id: claimed.wallet_id,
-            amount: claimed.amount,
-            type: 'withdrawal',
-            status: 'processing',
-            description: 'Retiro a banco - ' + formatCurrency(claimed.amount) + ' (24h)',
-          });
-        if (txErr) throw txErr;
-
-        const { error: updateErr } = await supabase
-          .from('wallets')
-          .update({
-            balance: qWallet.balance - claimed.amount,
-            total_withdrawn: (qWallet.total_withdrawn || 0) + claimed.amount,
-          })
-          .eq('id', claimed.wallet_id);
-        if (updateErr) throw updateErr;
-
-        await supabase
-          .from('withdrawal_queue')
-          .update({ status: 'completed', processed_at: new Date().toISOString() })
-          .eq('id', claimed.id);
-
-        if (isCurrentUser) {
-          toast.success('Retiro de ' + formatCurrency(claimed.amount) + ' procesado exitosamente');
-          setQueueInfo(null);
-          setHasWithdrawnToday(true);
-          setWalletBalance(qWallet.balance - claimed.amount);
-          fetchData(user.id);
-        }
-      } catch (err: any) {
-        const msg = err?.message || 'Error desconocido';
-        await supabase
-          .from('withdrawal_queue')
-          .update({
-            status: 'failed',
-            error_message: msg,
-            processed_at: new Date().toISOString(),
-          })
-          .eq('id', claimed.id);
-        if (isCurrentUser) {
-          toast.error('Error al procesar retiro. Intenta de nuevo.');
-          setQueueInfo(null);
-          fetchData(user.id);
-        }
-      }
-    } catch (err) {
-      console.error('Queue processing error:', err);
-    }
   }, [user?.id, fetchData]);
 
   useEffect(() => {
     checkQueueStatus();
     const interval = setInterval(() => {
       checkQueueStatus();
-      processNextInQueue();
     }, 10000);
     return () => clearInterval(interval);
-  }, [checkQueueStatus, processNextInQueue]);
+  }, [checkQueueStatus]);
 
   // ─── Recargar Handler ─────────────────────────────
   const handleRecargar = async () => {
@@ -464,23 +334,17 @@ export default function ClientWallet() {
           wallet_id: wallet.id,
           amount: amount,
           type: 'credit',
-          status: 'completed',
-          description: 'Recarga - ' + cardLabel + ' - ' + formatCurrency(amount),
+          status: 'pending', // <--- Cambiado a pendiente
+          description: 'Recarga - ' + cardLabel + ' - ' + formatCurrency(amount) + ' (En verificacion)',
         });
       if (txErr) throw txErr;
 
-      const newBalance = wallet.balance + amount;
-      const { error: updateErr } = await supabase
-        .from('wallets')
-        .update({ balance: newBalance })
-        .eq('id', wallet.id);
-      if (updateErr) throw updateErr;
+      // ELIMINADO: Ya no actualizamos el balance aquí. 
+      // El admin lo hará después.
 
-      setWallet({ ...wallet, balance: newBalance });
-      setWalletBalance(newBalance);
       setShowRecargar(false);
       setRecargarAmount('');
-      toast.success('Recarga exitosa: +' + formatCurrency(amount));
+      toast.success('Solicitud de recarga enviada. Pendiente de aprobacion.');
       fetchData(user!.id);
     } catch (err: any) {
       toast.error('Error al recargar. Intenta de nuevo.');

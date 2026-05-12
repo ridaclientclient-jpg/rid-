@@ -595,23 +595,14 @@ export default function DriverRides() {
           </div>
         </motion.div>
 
-        {/* Online Toggle */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-          <button onClick={handleToggleOnline} disabled={isToggling || !!activeRide || !!incomingRide} className="w-full flex items-center gap-4 glass-strong rounded-[2rem] p-5 disabled:opacity-50 disabled:cursor-not-allowed transition-shadow hover:shadow-xl">
-            <div className={`w-16 h-16 rounded-3xl flex items-center justify-center transition-all ${isOnline ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
-              {isOnline ? <Power className="w-8 h-8 text-emerald-400" /> : <PowerOff className="w-8 h-8 text-red-400" />}
-            </div>
-            <div className="text-left flex-1">
-              <p className="text-lg font-semibold text-white">{isOnline ? 'Finalizar jornada' : 'Iniciar jornada'}</p>
-              <p className="text-xs text-gray-400">{activeRide ? 'Viaje activo' : incomingRide ? 'Revisando solicitud...' : isOnline ? 'Recibiendo solicitudes...' : 'Recibirás solicitudes cuando te conectes.'}</p>
-            </div>
-            {isToggling ? <Loader2 className="w-5 h-5 text-gray-400 animate-spin" /> : (
-              <div className={`w-12 h-7 rounded-full transition-colors flex items-center ${isOnline ? 'bg-emerald-500 justify-end' : 'bg-gray-600 justify-start'}`}>
-                <motion.div className="w-5 h-5 rounded-full bg-white mx-1" layout transition={{ type: 'spring', stiffness: 500, damping: 30 }} />
-              </div>
-            )}
-          </button>
-        </motion.div>
+        {/* Online Status Indicator (Simplified) */}
+        {!activeRide && !incomingRide && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`p-4 rounded-2xl text-center border ${isOnline ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-800/40 border-white/5'}`}>
+            <p className={`text-sm font-medium ${isOnline ? 'text-emerald-400' : 'text-gray-400'}`}>
+              {isOnline ? '🟢 Estas en linea y buscando viajes' : '⚪ Fuera de linea. Conectate en el mapa para empezar.'}
+            </p>
+          </motion.div>
+        )}
 
         {/* Feature 4: Surge Pricing Banner */}
         <AnimatePresence>

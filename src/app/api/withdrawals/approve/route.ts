@@ -48,6 +48,14 @@ export async function POST(request: Request) {
       .eq('id', withdrawal_id);
 
     if (updateErr) throw updateErr;
+ 
+    // Update linked transaction
+    if (withdrawal.transaction_id) {
+      await supabase
+        .from('transactions')
+        .update({ status: 'completed', description: `Retiro completado exitosamente` })
+        .eq('id', withdrawal.transaction_id);
+    }
 
     // Notify the user
     await supabase.from('notifications').insert({

@@ -50,7 +50,7 @@ export async function POST(request: Request) {
 
     if (updateErr) throw updateErr;
 
-    // Refund the amount back to wallet
+    // Refund the amount back to wallet and update transaction status
     if (withdrawal.wallet_id) {
       const { data: wallet } = await supabase
         .from('wallets')
@@ -63,6 +63,14 @@ export async function POST(request: Request) {
           .from('wallets')
           .update({ balance: wallet.balance + withdrawal.amount })
           .eq('id', withdrawal.wallet_id);
+      }
+
+      // Update linked transaction
+      if (withdrawal.transaction_id) {
+        await supabase
+          .from('transactions')
+          .update({ status: 'failed', description: `Retiro rechazado: ${reason || 'Decision administrativa'}` })
+          .eq('id', withdrawal.transaction_id);
       }
     }
 

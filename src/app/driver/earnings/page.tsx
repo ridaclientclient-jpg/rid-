@@ -486,146 +486,6 @@ export default function DriverEarnings() {
     }
   }, [user?.id, hasWithdrawnToday, fetchData]);
 
-  const processNextInQueue = useCallback(async () => {
-    try {
-      // Check if something is already being processed
-      const { data: currentProcessing } = await supabase
-        .from('withdrawal_queue')
-        .select('id')
-        .eq('status', 'processing')
-        .limit(1)
-        .maybeSingle();
-      if (currentProcessing) return; // Someone is already processing
-
-      // Get next queued item (FIFO)
-      const { data: nextItem } = await supabase
-        .from('withdrawal_queue')
-        .select('*')
-        .eq('status', 'queued')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (!nextItem) return; // Queue is empty
-
-      // Atomically claim it (optimistic lock — prevents race conditions)
-      const { data: claimed, error: claimErr } = await supabase
-        .from('withdrawal_queue')
-        .update({ status: 'processing' })
-        .eq('id', nextItem.id)
-        .eq('status', 'queued')
-        .select()
-        .single();
-      if (claimErr || !claimed) return; // Someone else claimed it
-
-      const isCurrentUser = claimed.user_id === user?.id;
-
-      try {
-        // Get wallet for this withdrawal
-        const { data: wallet } = await supabase
-          .from('wallets')
-          .select('*')
-          .eq('id', claimed.wallet_id)
-          .single();
-
-        if (!wallet || wallet.balance < claimed.amount) {
-          await supabase
-            .from('withdrawal_queue')
-            .update({
-              status: 'failed',
-              error_message: !wallet ? 'Billetera no encontrada' : 'Saldo insuficiente',
-              processed_at: new Date().toISOString(),
-            })
-            .eq('id', claimed.id);
-          if (isCurrentUser) {
-            toast.error('No se pudo procesar: saldo insuficiente');
-            setQueueInfo(null);
-            fetchData();
-          }
-          return;
-        }
-
-        // Check daily limit for this wallet
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const { data: todayTx } = await supabase
-          .from('transactions')
-          .select('id')
-          .eq('wallet_id', claimed.wallet_id)
-          .eq('type', 'withdrawal')
-          .gte('created_at', todayStr + 'T00:00:00')
-          .limit(1);
-        if (todayTx && todayTx.length > 0) {
-          await supabase
-            .from('withdrawal_queue')
-            .update({
-              status: 'failed',
-              error_message: 'Ya existe un retiro hoy',
-              processed_at: new Date().toISOString(),
-            })
-            .eq('id', claimed.id);
-          if (isCurrentUser) {
-            toast.error('Ya tienes un retiro procesado hoy');
-            setQueueInfo(null);
-          }
-          return;
-        }
-
-        // Create withdrawal transaction
-        const { error: txErr } = await supabase
-          .from('transactions')
-          .insert({
-            wallet_id: claimed.wallet_id,
-            amount: claimed.amount,
-            type: 'withdrawal',
-            status: 'processing',
-            description: 'Retiro a banco - ' + formatCurrency(claimed.amount) + ' (24h)',
-          });
-        if (txErr) throw txErr;
-
-        // Update wallet balance
-        const { error: updateErr } = await supabase
-          .from('wallets')
-          .update({
-            balance: wallet.balance - claimed.amount,
-            total_withdrawn: (wallet.total_withdrawn || 0) + claimed.amount,
-          })
-          .eq('id', claimed.wallet_id);
-        if (updateErr) throw updateErr;
-
-        // Mark as completed in queue
-        await supabase
-          .from('withdrawal_queue')
-          .update({
-            status: 'completed',
-            processed_at: new Date().toISOString(),
-          })
-          .eq('id', claimed.id);
-
-        if (isCurrentUser) {
-          toast.success('Retiro de ' + formatCurrency(claimed.amount) + ' procesado exitosamente');
-          setQueueInfo(null);
-          setHasWithdrawnToday(true);
-          setWalletBalance(wallet.balance - claimed.amount);
-          fetchData();
-        }
-      } catch (err: any) {
-        const msg = err?.message || 'Error desconocido';
-        await supabase
-          .from('withdrawal_queue')
-          .update({
-            status: 'failed',
-            error_message: msg,
-            processed_at: new Date().toISOString(),
-          })
-          .eq('id', claimed.id);
-        if (isCurrentUser) {
-          toast.error('Error al procesar retiro. Intenta de nuevo.');
-          setQueueInfo(null);
-          fetchData();
-        }
-      }
-    } catch (err) {
-      console.error('Queue processing error:', err);
-    }
   }, [user?.id, fetchData]);
 
   // ─── Queue Polling ────────────────────────────────
@@ -633,10 +493,9 @@ export default function DriverEarnings() {
     checkQueueStatus();
     const interval = setInterval(() => {
       checkQueueStatus();
-      processNextInQueue();
     }, 10000);
     return () => clearInterval(interval);
-  }, [checkQueueStatus, processNextInQueue]);
+  }, [checkQueueStatus]);
 
   // ─── Withdraw Handler (Queue-based) ──────────────
   const handleWithdraw = async () => {

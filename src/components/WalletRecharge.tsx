@@ -99,7 +99,7 @@ function SuccessAnimation({ amount, newBalance, onDone }: {
         transition={{ delay: 0.3 }}
         className="text-lg font-bold text-white mb-1"
       >
-        Recarga exitosa
+        Solicitud enviada
       </motion.h3>
 
       <motion.p
@@ -108,7 +108,7 @@ function SuccessAnimation({ amount, newBalance, onDone }: {
         transition={{ delay: 0.4 }}
         className="text-2xl font-extrabold text-emerald-400 mb-4"
       >
-        +{formatCRC(amount)}
+        En verificacion: {formatCRC(amount)}
       </motion.p>
 
       <motion.div
@@ -118,7 +118,7 @@ function SuccessAnimation({ amount, newBalance, onDone }: {
         className="glass-strong rounded-2xl px-6 py-3 w-full"
       >
         <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Nuevo saldo</p>
-        <p className="text-xl font-extrabold text-white">{formatCRC(newBalance)}</p>
+        <p className="text-xl font-extrabold text-white">{formatCRC(currentBalance)}</p>
       </motion.div>
 
       <motion.p
@@ -185,6 +185,7 @@ export function WalletRecharge({
   const [errorMsg, setErrorMsg] = useState('');
   const [processedAmount, setProcessedAmount] = useState(0);
   const [newBalance, setNewBalance] = useState(0);
+  const [referenceNumber, setReferenceNumber] = useState('');
 
   /* Reset form when opening */
   useEffect(() => {
@@ -198,6 +199,7 @@ export function WalletRecharge({
       setErrorMsg('');
       setProcessedAmount(0);
       setNewBalance(0);
+      setReferenceNumber('');
     }
   }, [open]);
 
@@ -222,6 +224,11 @@ export function WalletRecharge({
       if (digits.length < 8) {
         setErrorMsg('Ingresa un numero de telefono SINPE valido (8 digitos)');
         toast.error('Numero SINPE invalido');
+        return;
+      }
+      if (!referenceNumber.trim()) {
+        setErrorMsg('Ingresa el numero de comprobante o referencia bancaria');
+        toast.error('Falta el comprobante');
         return;
       }
     }
@@ -252,6 +259,7 @@ export function WalletRecharge({
       const body: Record<string, unknown> = {
         amount: numericAmount,
         method: paymentMethod,
+        reference: referenceNumber,
       };
 
       if (paymentMethod === 'sinpe') {
@@ -280,16 +288,15 @@ export function WalletRecharge({
         throw new Error(data.error || 'Error al procesar la recarga');
       }
 
-      const calculatedBalance = currentBalance + numericAmount;
       setProcessedAmount(numericAmount);
-      setNewBalance(data.new_balance ?? calculatedBalance);
+      setNewBalance(currentBalance); // Balance doesn't change yet
       setStep('success');
 
-      toast.success(`Recarga de ${formatCRC(numericAmount)} exitosa`);
+      toast.info(`Solicitud de recarga enviada. Pendiente de verificacion.`);
 
       // Notify parent after a short delay
       setTimeout(() => {
-        onRecharged(data.new_balance ?? calculatedBalance);
+        onRecharged(currentBalance);
       }, 800);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error de conexion. Intenta de nuevo.';
@@ -693,6 +700,20 @@ export function WalletRecharge({
                   </motion.div>
                 )}
               </AnimatePresence>
+ 
+              {/* ── Reference number input ───────────────────── */}
+              <div className="pt-2">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mb-2">
+                  Numero de comprobante / Referencia
+                </p>
+                <input
+                  type="text"
+                  placeholder="Ej: 123456789"
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-gray-600 outline-none focus:border-cyan-500/40 transition-colors"
+                />
+              </div>
 
               {/* ── Submit button ─────────────────────────── */}
               <motion.button

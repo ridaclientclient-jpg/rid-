@@ -58,28 +58,46 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Create withdrawal transaction
-    const { error: txError } = await supabase
+    // Create transaction (processing/pending)
+    const { data: tx, error: txError } = await supabase
       .from('transactions')
       .insert({
         wallet_id: wallet.id,
         amount: -amount,
         type: 'withdrawal',
         status: 'processing',
-        description: `Retiro de ₡${amount.toLocaleString()} - Procesando en 24h`,
-      });
+        description: `Retiro de ₡${amount.toLocaleString()} (Pendiente de aprobación)`,
+      })
+      .select()
+      .single();
 
     if (txError) throw txError;
 
-    // Update wallet balance
+    // Insert into withdrawal_queue for Admin visibility
+    const { error: queueError } = await supabase
+      .from('withdrawal_queue')
+      .insert({
+        wallet_id: wallet.id,
+        user_id: user.id,
+        amount: amount,
+        status: 'queued',
+        transaction_id: tx.id // Linking to the transaction
+      });
+
+    if (queueError) throw queueError;
+
+    // Update wallet balance (Reserve the money)
     await supabase
       .from('wallets')
-      .update({ balance: wallet.balance - amount })
+      .update({ 
+        balance: wallet.balance - amount,
+        total_withdrawn: (wallet.total_withdrawn || 0) + amount 
+      })
       .eq('id', wallet.id);
 
     return NextResponse.json({
       success: true,
-      message: 'Retiro iniciado. Procesando en 24 horas.'
+      message: 'Solicitud de retiro enviada. El administrador revisará tu solicitud en breve.'
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error';

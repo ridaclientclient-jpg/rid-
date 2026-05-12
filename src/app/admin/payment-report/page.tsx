@@ -38,6 +38,7 @@ interface TransactionRow {
   type: string;
   status: string;
   description?: string;
+  reference_number?: string;
   user_name?: string;
 }
 
@@ -308,6 +309,7 @@ export default function PaymentReportPage() {
           type: t.type,
           status: t.status,
           description: t.description,
+          reference_number: t.reference_number,
           user_name: txUserMap[walletToUser[t.wallet_id] || '']?.name || 'Desconocido',
         }));
         setTransactions(mappedTx);
@@ -433,6 +435,30 @@ export default function PaymentReportPage() {
       toast.error(`Error al rechazar retiro: ${msg}`);
     }
   }, [rejectingId, rejectReason, session, fetchWithdrawals]);
+
+  const approveRecharge = useCallback(async (id: string) => {
+    try {
+      const token = session?.access_token;
+      if (!token) { toast.error('Sesion no valida'); return; }
+
+      const res = await fetch('/api/admin/approve-recharge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ transaction_id: id }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+
+      toast.success('Recarga aprobada exitosamente');
+      fetchData(); // Refresh all financial data
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error';
+      toast.error(`Error al aprobar recarga: ${msg}`);
+    }
+  }, [session, fetchData]);
 
   /* ── Effects ──────────────────────────────────────────────────────── */
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -836,6 +862,7 @@ export default function PaymentReportPage() {
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Fecha</th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Usuario</th>
                     <th className="text-right px-5 py-3 text-xs font-medium text-gray-400 uppercase">Monto</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Referencia</th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Tipo</th>
                     <th className="text-left px-5 py-3 text-xs font-medium text-gray-400 uppercase">Estado</th>
                   </tr>
@@ -849,17 +876,32 @@ export default function PaymentReportPage() {
                         {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
                       </td>
                       <td className="px-5 py-3">
+                        <span className="text-xs text-cyan-400 font-mono select-all">
+                          {tx.reference_number || '—'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
                         <span className="text-xs text-gray-400 capitalize">{tx.type}</span>
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                          tx.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' :
-                          tx.status === 'processing' ? 'bg-amber-500/15 text-amber-400' :
-                          tx.status === 'failed' ? 'bg-red-500/15 text-red-400' :
-                          'bg-gray-500/15 text-gray-400'
-                        }`}>
-                          {tx.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            tx.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' :
+                            tx.status === 'pending' || tx.status === 'processing' ? 'bg-amber-500/15 text-amber-400' :
+                            tx.status === 'failed' ? 'bg-red-500/15 text-red-400' :
+                            'bg-gray-500/15 text-gray-400'
+                          }`}>
+                            {tx.status === 'pending' ? 'Pendiente' : tx.status}
+                          </span>
+                          {tx.status === 'pending' && tx.type === 'credit' && (
+                            <button
+                              onClick={() => approveRecharge(tx.id)}
+                              className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 text-[10px] hover:bg-cyan-500/30 transition-all font-bold"
+                            >
+                              Aprobar
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
