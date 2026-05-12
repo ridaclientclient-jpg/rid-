@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Car, Bike, Truck, Check, Plus, Pencil, Trash2, Save, X, Shield, CheckCircle, Loader2 } from 'lucide-react';
+import { Car, Bike, Truck, Check, Plus, Pencil, Trash2, Save, X, Shield, CheckCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { supabase, type Vehicle, type Driver } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';

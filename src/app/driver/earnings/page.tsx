@@ -486,7 +486,7 @@ export default function DriverEarnings() {
     }
   }, [user?.id, hasWithdrawnToday, fetchData]);
 
-  }, [user?.id, fetchData]);
+
 
   // ─── Queue Polling ────────────────────────────────
   useEffect(() => {

@@ -300,7 +300,7 @@ export default function ClientWallet() {
     }
   }, [user?.id, hasWithdrawnToday, fetchData]);
 
-  }, [user?.id, fetchData]);
+
 
   useEffect(() => {
     checkQueueStatus();

@@ -90,8 +90,15 @@ export default function DriverVerification() {
   const startCamera = useCallback(async () => {
     setCameraError(null);
     try {
+      // Determine facing mode based on step: Selfie (1) uses front camera
+      const mode = currentStep === 1 ? 'user' : 'environment';
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { 
+          facingMode: mode, 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 } 
+        },
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -103,9 +110,10 @@ export default function DriverVerification() {
       console.error('Camera error:', err);
       setCameraError('No se pudo acceder a la camara. Usa la opcion de subir imagen.');
       setCameraOpen(false);
+      // Fallback: trigger file input
       setTimeout(() => fileInputRef.current?.click(), 500);
     }
-  }, []);
+  }, [currentStep]);
 
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -155,41 +163,48 @@ export default function DriverVerification() {
     try {
       /* 1. Convert dataURL → Blob */
       const blob = dataURLtoBlob(imageData);
+      // Small check to ensure blob is valid
+      if (blob.size < 100) throw new Error('Imagen invalida');
+
       const filePath = `${user.id}/${docType}_${Date.now()}.jpg`;
 
       /* 2. Upload to Supabase Storage */
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+        .upload(filePath, blob, { 
+          contentType: 'image/jpeg', 
+          upsert: true,
+          cacheControl: '3600'
+        });
 
       if (uploadError) {
-        console.error('Storage upload error:', uploadError.message);
-        toast.error('Error al subir imagen: ' + uploadError.message);
-        setIsUploading(false);
-        return false;
+        throw uploadError;
       }
 
       /* 3. Insert / upsert into documents table */
       const { error: insertError } = await supabase
         .from('documents')
         .upsert(
-          { user_id: user.id, type: docType, url: filePath, status: 'pending' },
-          { onConflict: 'user_id,type' },
+          { 
+            user_id: user.id, 
+            type: docType, 
+            url: filePath, 
+            status: 'pending',
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'user_id,type' }
         );
 
       if (insertError) {
-        console.error('DB insert error:', insertError.message);
-        toast.error('Error al guardar registro: ' + insertError.message);
-        setIsUploading(false);
-        return false;
+        throw insertError;
       }
 
       setUploadedDocs((prev) => new Set([...prev, docType]));
       setIsUploading(false);
       return true;
     } catch (err: any) {
-      console.error('Upload exception:', err);
-      toast.error('Error de conexion al subir documento');
+      console.error('Upload error:', err);
+      toast.error('Fallo al subir: ' + (err.message || 'Error desconocido'));
       setIsUploading(false);
       return false;
     }

@@ -13,8 +13,9 @@ import { PinVerification } from '@/components/PinVerification';
 import {
   Power, Star, Car, Clock, TrendingUp, ChevronRight,
   Shield, Trophy, Diamond, Target, Wallet,
-  Navigation, BarChart3, Zap, Award, Eye, Bell, AlertTriangle, Coffee,
+  Navigation, BarChart3, Zap, Award, Eye, Bell, AlertTriangle, Coffee, Volume2, VolumeX,
 } from 'lucide-react';
+import { useSoundStore } from '@/store/soundStore';
 
 // Level system
 const LEVELS = [
@@ -98,6 +99,8 @@ export default function DriverHome() {
   const [showFullMap, setShowFullMap] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showDestMode, setShowDestMode] = useState(false);
+  const { isMuted, play } = useSoundStore();
+  const soundEnabled = !isMuted;
   const [destAddress, setDestAddress] = useState('');
   const [destCoords, setDestCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destSetting, setDestSetting] = useState(false);
@@ -341,6 +344,43 @@ export default function DriverHome() {
       }
     }
   }, [currentRide?.status, currentRide?.id, (currentRide as any)?.pin_verified]);
+
+  // ─── Ride Notifications & Sounds ────────────────────
+  useEffect(() => {
+    if (!isOnline || !driver?.id) return;
+
+    // Listen for NEW searching rides
+    const channel = supabase
+      .channel(`driver-ride-notifications-${driver.id}`)
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'rides', filter: 'status=eq.searching' },
+        (payload) => {
+          if (soundEnabled) {
+            play('new_ride_request');
+            toast.info('¡Nuevo viaje disponible! Ve a la seccion de viajes para aceptarlo.', {
+              duration: 5000,
+              action: {
+                label: 'Ver Viaje',
+                onClick: () => router.push('/driver/rides')
+              }
+            });
+          }
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rides', filter: `driver_id=eq.${driver.id}` },
+        (payload) => {
+          const ride = payload.new as Ride;
+          if (ride.status === 'assigned') {
+            if (soundEnabled) play('ride_assigned');
+            toast.success('¡Viaje asignado correctamente!');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isOnline, driver?.id, soundEnabled, play, router]);
 
   // Toggle online/offline via API
   const handleToggleOnline = useCallback(async () => {
