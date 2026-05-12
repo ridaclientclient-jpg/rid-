@@ -132,50 +132,6 @@ export default function DriverRides() {
   const [loadingScheduled, setLoadingScheduled] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'scheduled'>('current');
 
-  // Toggle online/offline via API
-  const handleToggleOnline = useCallback(async () => {
-    if (!session?.access_token) return;
-
-    setIsToggling(true);
-    const newStatus = isOnline ? 'offline' : 'online';
-    
-    // Fallback coords if geolocation not ready
-    const lat = userCoords?.lat || 9.9281;
-    const lng = userCoords?.lng || -84.0907;
-
-    try {
-      const res = await fetch('/api/drivers/toggle-status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          status: newStatus,
-          latitude: lat,
-          longitude: lng,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setIsOnline(!isOnline);
-        if (!isOnline) {
-          toast.success('¡Estas en linea! Buscando viajes...');
-        } else {
-          toast.success('Has pasado a fuera de linea.');
-        }
-      } else {
-        toast.error(data.error || 'Error al cambiar estado');
-      }
-    } catch {
-      toast.error('Error de conexion');
-    } finally {
-      setIsToggling(false);
-    }
-  }, [isOnline, session?.access_token, userCoords]);
-
   // Fetch driver
   const fetchDriver = useCallback(async () => {
     if (!user?.id) return;
