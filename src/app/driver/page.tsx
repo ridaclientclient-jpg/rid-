@@ -346,6 +346,9 @@ export default function DriverHome() {
       if (!(currentRide as any).pin_verified) {
         setShowPinVerify(true);
       }
+    } else {
+      // Clear PIN window if there is no active ride or ride is already started/completed
+      setShowPinVerify(false);
     }
   }, [currentRide?.status, currentRide?.id, (currentRide as any)?.pin_verified]);
 
