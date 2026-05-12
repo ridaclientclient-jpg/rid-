@@ -144,6 +144,9 @@ export default function DriverHome() {
       if (driverData) {
         setDriver(driverData);
         setIsOnline(driverData.status === 'online' || driverData.status === 'busy');
+      } else {
+        // Fallback or create driver record if missing to prevent "infinite loading"
+        setIsOnline(false);
       }
 
       if (driverData?.id) {
@@ -674,12 +677,12 @@ export default function DriverHome() {
                   animate={{ scale: [1, 1.3, 1] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
                 />
-                Desconectarse
+                Finalizar jornada
               </>
             ) : (
               <>
                 <Power className="w-5 h-5" />
-                Conectarse
+                Ingresar
               </>
             )}
           </motion.button>
