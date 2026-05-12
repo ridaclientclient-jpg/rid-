@@ -35,7 +35,7 @@ export default function ClientHome() {
   return (
     <div className="p-4 space-y-6">
       {/* Greeting */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
         <h1 className="text-2xl font-bold text-white">Hola, {user?.name?.split(' ')[0] || 'Usuario'}</h1>
         <p className="text-sm text-gray-400 mt-1">A donde vas hoy?</p>
       </motion.div>
@@ -43,8 +43,9 @@ export default function ClientHome() {
       {/* Active Ride Banner */}
       {currentRide && (
         <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
           className="glass-strong rounded-2xl p-4 border border-cyan-500/30 glow-cyan"
         >
           <div className="flex items-center justify-between mb-2">
@@ -61,9 +62,9 @@ export default function ClientHome() {
 
       {/* Search Bar */}
       <motion.div 
-        initial={{ opacity: 0, y: 10 }} 
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, delay: 0.05 }}
         className="glass rounded-2xl p-4"
       >
         <button 
@@ -78,9 +79,9 @@ export default function ClientHome() {
 
       {/* Quick Actions */}
       <motion.div 
-        initial={{ opacity: 0, y: 10 }} 
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, delay: 0.1 }}
       >
         <h2 className="text-sm font-semibold text-gray-400 mb-3">Acciones Rapidas</h2>
         <div className="grid grid-cols-2 gap-3">
@@ -90,7 +91,7 @@ export default function ClientHome() {
               onClick={() => router.push(action.href)}
               className="glass rounded-2xl p-4 text-left hover:glow-cyan transition-all group"
             >
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${action.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${action.color} flex items-center justify-center mb-3 group-hover:scale-105 transition-transform`}>
                 <action.icon className="w-5 h-5 text-white" />
               </div>
               <p className="text-sm font-semibold text-white">{action.label}</p>
@@ -102,9 +103,9 @@ export default function ClientHome() {
 
       {/* Recent Places */}
       <motion.div 
-        initial={{ opacity: 0, y: 10 }} 
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, delay: 0.15 }}
       >
         <h2 className="text-sm font-semibold text-gray-400 mb-3">Lugares Frecuentes</h2>
         {recentPlaces.length > 0 ? (
@@ -150,9 +151,9 @@ export default function ClientHome() {
 
       {/* Safety Banner */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2, delay: 0.2 }}
         className="glass rounded-2xl p-4 border border-emerald-500/20"
       >
         <div className="flex items-center gap-3">

@@ -169,10 +169,11 @@ export default function DriverHome() {
 
   useEffect(() => {
     fetchData();
-    const refreshInterval = setInterval(fetchData, 60000);
-    // Fetch driver metrics
+    // Reduce refresh frequency to 5 minutes instead of 1 minute to save battery/performance
+    const refreshInterval = setInterval(fetchData, 300000); 
+    
     const fetchMetrics = async () => {
-      if (!session?.access_token) return;
+      if (!session?.access_token || !isOnline) return; // Only fetch metrics if online
       try {
         const res = await fetch('/api/drivers/metrics', {
           headers: { Authorization: `Bearer ${session.access_token}` },
@@ -181,10 +182,11 @@ export default function DriverHome() {
         if (data.success) setMetrics(data);
       } catch { /* ignore */ }
     };
+    
     fetchMetrics();
-    const metricsInterval = setInterval(fetchMetrics, 120000);
+    const metricsInterval = setInterval(fetchMetrics, 300000);
     return () => { clearInterval(refreshInterval); clearInterval(metricsInterval); };
-  }, [fetchData, session?.access_token]);
+  }, [fetchData, session?.access_token, isOnline]);
 
   // Get user GPS coordinates
   const getUserLocation = useCallback(() => {
@@ -195,10 +197,9 @@ export default function DriverHome() {
         setUserCoords(coords);
       },
       () => {
-        // GPS not available or denied
         setUserCoords({ lat: 9.9281, lng: -84.0907 });
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 } 
     );
   }, []);
 

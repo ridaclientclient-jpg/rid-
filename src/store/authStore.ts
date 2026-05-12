@@ -58,13 +58,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   lockedUntil: null,
 
   initAuth: async () => {
-    // If initAuth is already running, return the same promise (prevents lock contention)
+    // If initAuth is already running or user is already fully authenticated, skip redundant work
     if (_initAuthPromise) return _initAuthPromise;
+    const currentState = get();
+    if (currentState.isAuthenticated && currentState.user && currentState.session) {
+      return;
+    }
 
     _initAuthPromise = (async () => {
-      // Always fetch current session and profile
-      const alreadyAuthed = get().isAuthenticated;
-      if (!alreadyAuthed) {
+      // Avoid flickering loading screen if we think we might be authenticated
+      const maybeAuthed = typeof window !== 'undefined' && !!window.localStorage.getItem('sb-rida-auth-token');
+      if (!get().isAuthenticated && !maybeAuthed) {
         set({ isLoading: true });
       }
 
