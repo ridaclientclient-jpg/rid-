@@ -8,7 +8,7 @@ interface AuthUser {
   name: string;
   email: string;
   phone?: string;
-  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier';
+  role: 'client' | 'driver' | 'admin' | 'vendor' | 'courier' | 'super_admin';
   avatar?: string;
   isVerified?: boolean;
 }
