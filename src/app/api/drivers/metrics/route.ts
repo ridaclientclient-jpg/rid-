@@ -62,12 +62,12 @@ export async function GET(request: Request) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const { data: weekRides } = await supabase
       .from('rides')
-      .select('created_at::date as ride_date')
+      .select('created_at')
       .eq('driver_id', driver.id)
       .eq('status', 'completed')
       .gte('created_at', weekAgo.toISOString());
 
-    const uniqueDays = new Set(weekRides?.map(r => r.ride_date) || []);
+    const uniqueDays = new Set(weekRides?.map(r => new Date(r.created_at).toISOString().split('T')[0]) || []);
 
     return NextResponse.json({
       success: true,

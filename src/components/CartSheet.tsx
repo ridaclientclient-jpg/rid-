@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ShoppingCart, Minus, Plus, Trash2,
-  Truck, ShoppingBag, ChevronRight, MapPin, Loader2,
+  Truck, ShoppingBag, ChevronRight, MapPin, Loader2, DollarSign
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -94,6 +94,7 @@ export default function CartSheet() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [checkingOut, setCheckingOut] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'billetera'>('efectivo');
 
   // Load persisted delivery address from localStorage (shared with market page)
   useEffect(() => {
@@ -141,68 +142,118 @@ export default function CartSheet() {
 
     setCheckingOut(true);
     try {
-      const deliveryItems = items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        price: i.price,
-        qty: i.quantity,
-        category: i.category,
-      }));
+      const totalToPay = total + fee;
+      const itemsByVendor: Record<string, CartItem[]> = {};
+      items.forEach(item => {
+        if (!itemsByVendor[item.vendor_id]) itemsByVendor[item.vendor_id] = [];
+        itemsByVendor[item.vendor_id].push(item);
+      });
 
-      // Insert the delivery and get back the row
-      const { data: newDelivery, error } = await supabase
-        .from('deliveries')
-        .insert({
-          customer_id: user.id,
-          vendor_id: items[0]?.vendor_id, // Link to the vendor of the first item
-          status: 'pending',
-          delivery_address: deliveryAddress.trim(),
-          items: deliveryItems,
-          subtotal: sub,
-          delivery_fee: fee,
-          total: tot,
-          payment_method: 'efectivo',
-        })
-        .select()
-        .single();
+      // 1. Process Payment if Wallet selected
+      if (paymentMethod === 'billetera') {
+        const { data: paymentResult, error: paymentError } = await supabase
+          .rpc('process_marketplace_payment', {
+            p_user_id: user.id,
+            p_amount: totalToPay,
+            p_description: `Compra Marketplace - ${items.length} productos`
+          });
 
-      if (error) {
-        toast.error('Error al crear pedido: ' + error.message);
-        return;
-      }
+        if (paymentError) {
+          toast.error(`Error de pago: ${paymentError.message}`);
+          setCheckingOut(false);
+          return;
+        }
 
-      // Auto-assign an available courier
-      if (newDelivery) {
-        try {
-          const { data: courier } = await supabase
-            .from('couriers')
-            .select('id')
-            .eq('status', 'online')
-            .limit(1)
-            .single();
-
-          if (courier) {
-            await supabase
-              .from('deliveries')
-              .update({ courier_id: courier.id, status: 'assigned' })
-              .eq('id', newDelivery.id);
-
-            await supabase
-              .from('couriers')
-              .update({ status: 'busy' })
-              .eq('id', courier.id);
-          }
-        } catch {
-          // Courier assignment is optional — continue without it
+        const result = paymentResult[0];
+        if (!result.success) {
+          toast.error(`Pago fallido: ${result.message}`);
+          setCheckingOut(false);
+          return;
         }
       }
 
-      toast.success('¡Pedido realizado con exito!', {
-        description: `${count} producto(s) — Total: ₡${tot.toLocaleString()}`,
-        duration: 4000,
-      });
-      clearCart();
-      closeCart();
+      const vendorIds = Object.keys(itemsByVendor);
+      let successCount = 0;
+
+      // 2. Create a delivery for each vendor
+      for (const vId of vendorIds) {
+        const vendorItems = itemsByVendor[vId];
+        const vSubtotal = vendorItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+        const vFee = fee / vendorIds.length; 
+        const vTotal = vSubtotal + vFee;
+
+        // Fetch vendor address for pickup
+        const { data: vendorData } = await supabase
+          .from('vendors')
+          .select('address')
+          .eq('id', vId)
+          .single();
+
+        const { data: newDelivery, error } = await supabase
+          .from('deliveries')
+          .insert({
+            customer_id: user.id,
+            vendor_id: vId,
+            status: 'pending',
+            delivery_address: deliveryAddress.trim(),
+            pickup_address: vendorData?.address || '',
+            items: vendorItems.map(i => ({
+              id: i.id,
+              name: i.name,
+              price: i.price,
+              qty: i.quantity,
+              category: i.category,
+            })),
+            subtotal: vSubtotal,
+            delivery_fee: vFee,
+            total: vTotal,
+            payment_method: paymentMethod,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error(`Error creating delivery for vendor ${vId}:`, error.message);
+          continue;
+        }
+
+        successCount++;
+
+        // 3. Auto-assign courier for this specific delivery
+        if (newDelivery) {
+          try {
+            const { data: courier } = await supabase
+              .from('couriers')
+              .select('id')
+              .eq('status', 'online')
+              .limit(1)
+              .single();
+
+            if (courier) {
+              await supabase
+                .from('deliveries')
+                .update({ courier_id: courier.id, status: 'assigned' })
+                .eq('id', newDelivery.id);
+
+              await supabase
+                .from('couriers')
+                .update({ status: 'busy' })
+                .eq('id', courier.id);
+            }
+          } catch { /* ignore assignment error */ }
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(successCount === 1 ? '¡Pedido realizado con exito!' : `¡${successCount} pedidos realizados con exito!`, {
+          description: `Total: ₡${tot.toLocaleString()}`,
+          duration: 4000,
+        });
+        clearCart();
+        closeCart();
+      } else {
+        toast.error('No se pudo crear ningun pedido. Intenta de nuevo.');
+      }
     } catch (err: any) {
       toast.error('Error al procesar el pedido: ' + (err?.message || 'intenta de nuevo'));
     } finally {
@@ -302,6 +353,38 @@ export default function CartSheet() {
                       placeholder="Ej: San Jose, Barrio Escalante, casa azul..."
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-orange-500/40 transition-colors"
                     />
+                  </div>
+
+                  {/* Payment Method Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-gray-400 flex items-center gap-1.5">
+                      <DollarSign className="w-3 h-3 text-emerald-400" />
+                      Metodo de pago
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('efectivo')}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all ${
+                          paymentMethod === 'efectivo'
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                            : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                        }`}
+                      >
+                        Efectivo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('billetera')}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all ${
+                          paymentMethod === 'billetera'
+                            ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400'
+                            : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                        }`}
+                      >
+                        Billetera RIDA
+                      </button>
+                    </div>
                   </div>
 
                   {/* Totals */}

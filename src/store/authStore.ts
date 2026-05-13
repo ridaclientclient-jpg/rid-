@@ -24,7 +24,7 @@ interface AuthState {
   lockedUntil: Date | null;
 
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, phone: string, password: string, role: string) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, phone: string, password: string, role: string, extraData?: any) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   initAuth: () => Promise<void>;
   setLoading: (loading: boolean) => void;
@@ -386,7 +386,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (name: string, email: string, phone: string, password: string, role: string) => {
+  register: async (name: string, email: string, phone: string, password: string, role: string, extraData?: any) => {
     set({ isLoading: true });
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -407,6 +407,100 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (data.user) {
+        // If role is driver, courier, both or vendor, we need to create extra records
+        if (role === 'driver' || role === 'courier' || role === 'ambos' || role === 'conductor' || role === 'repartidor' || role === 'vendor') {
+          const isDriver = role === 'driver' || role === 'ambos' || role === 'conductor';
+          const isCourier = role === 'courier' || role === 'ambos' || role === 'repartidor';
+          const isVendor = role === 'vendor';
+
+          // 1. Create Profile
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            name,
+            email,
+            phone,
+            role: isVendor ? 'vendor' : (isDriver ? 'driver' : 'courier'),
+            is_verified: false
+          });
+
+          let driverRecordId = null;
+
+          // 2. Create Driver record if applicable
+          if (isDriver) {
+            const { data: driverRecord, error: driverError } = await supabase
+              .from('drivers')
+              .insert({
+                user_id: data.user.id,
+                status: 'offline',
+                rating: 5.0,
+                total_rides: 0,
+                total_earnings: 0
+              })
+              .select()
+              .single();
+
+            if (driverError) console.error('Error creating driver record:', driverError);
+            if (driverRecord) driverRecordId = driverRecord.id;
+          }
+
+          // 3. Create Courier record if applicable
+          if (isCourier) {
+            const { error: courierError } = await supabase
+              .from('couriers')
+              .insert({
+                user_id: data.user.id,
+                status: 'offline',
+                vehicle_type: extraData?.vehicleType || 'moto',
+                rating: 5.0,
+                total_deliveries: 0,
+                total_earnings: 0
+              });
+
+            if (courierError) console.error('Error creating courier record:', courierError);
+          }
+
+          // 4. Create Vendor record if applicable
+          if (isVendor) {
+            const { data: vendorRecord, error: vendorError } = await supabase
+              .from('vendors')
+              .insert({
+                user_id: data.user.id,
+                store_name: name,
+                category: 'other', // Default
+                is_approved: false,
+                rating: 5.0
+              })
+              .select()
+              .single();
+
+            if (vendorError) {
+              console.error('Error creating vendor record:', vendorError);
+            } else if (vendorRecord) {
+              // Create vendor wallet
+              await supabase.from('vendor_wallets').insert({
+                vendor_id: vendorRecord.id,
+                balance: 0,
+                total_earned: 0
+              });
+            }
+          }
+
+          // 5. Create Vehicle record if driver record exists and plate is provided
+          if (driverRecordId && extraData?.plate) {
+            const { error: vehicleError } = await supabase
+              .from('vehicles')
+              .insert({
+                driver_id: driverRecordId,
+                plate: extraData.plate,
+                model: extraData.model || '',
+                color: extraData.color || '',
+                verified: false
+              });
+            
+            if (vehicleError) console.error('Error creating vehicle record:', vehicleError);
+          }
+        }
+
         set({
           user: {
             id: data.user.id,

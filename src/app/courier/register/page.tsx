@@ -48,7 +48,11 @@ export default function CourierRegister() {
       return;
     }
 
-    const result = await register(form.name, form.email, form.phone, form.password, 'courier');
+    const extraData = {
+      vehicleType: form.vehicleType,
+    };
+
+    const result = await register(form.name, form.email, form.phone, form.password, 'courier', extraData);
     if (result.success) {
       toast.success('Cuenta de repartidor creada exitosamente!');
       router.push('/courier');

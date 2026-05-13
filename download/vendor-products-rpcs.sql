@@ -7,6 +7,7 @@
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  1. GET VENDOR PRODUCTS                                      ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.get_vendor_products(UUID);
 CREATE OR REPLACE FUNCTION public.get_vendor_products(p_vendor_id UUID)
 RETURNS TABLE (
   id UUID,
@@ -53,11 +54,12 @@ $$;
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  2. INSERT VENDOR PRODUCT                                    ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.insert_vendor_product(UUID, TEXT, TEXT, NUMERIC, TEXT, BOOLEAN, INT, BOOLEAN);
 CREATE OR REPLACE FUNCTION public.insert_vendor_product(
   p_vendor_id UUID,
   p_name TEXT,
-  p_description TEXT DEFAULT NULL,
   p_price NUMERIC,
+  p_description TEXT DEFAULT NULL,
   p_category TEXT DEFAULT 'General',
   p_in_stock BOOLEAN DEFAULT TRUE,
   p_stock_quantity INT DEFAULT 0,
@@ -100,6 +102,7 @@ $$;
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  3. UPDATE VENDOR PRODUCT                                    ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.update_vendor_product(UUID, UUID, TEXT, TEXT, NUMERIC, TEXT, BOOLEAN, INT, BOOLEAN, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.update_vendor_product(
   p_product_id UUID,
   p_vendor_id UUID,
@@ -156,6 +159,7 @@ $$;
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  4. TOGGLE STOCK (quick toggle)                              ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.toggle_vendor_product_stock(UUID, UUID);
 CREATE OR REPLACE FUNCTION public.toggle_vendor_product_stock(
   p_product_id UUID,
   p_vendor_id UUID
@@ -184,6 +188,7 @@ $$;
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  5. TOGGLE FEATURED                                         ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.toggle_vendor_product_featured(UUID, UUID);
 CREATE OR REPLACE FUNCTION public.toggle_vendor_product_featured(
   p_product_id UUID,
   p_vendor_id UUID
@@ -208,23 +213,27 @@ $$;
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  6. DELETE VENDOR PRODUCT                                    ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.delete_vendor_product(UUID, UUID);
 CREATE OR REPLACE FUNCTION public.delete_vendor_product(
   p_product_id UUID,
   p_vendor_id UUID
 )
 RETURNS BOOLEAN
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 VOLATILE
 AS $$
+BEGIN
   DELETE FROM public.products
   WHERE id = p_product_id AND vendor_id = p_vendor_id;
-  SELECT FOUND();
+  RETURN FOUND;
+END;
 $$;
 
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  7. BULK INSERT (para CSV)                                   ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.bulk_insert_vendor_products(UUID, JSONB);
 CREATE OR REPLACE FUNCTION public.bulk_insert_vendor_products(
   p_vendor_id UUID,
   p_products JSONB DEFAULT '[]'::JSONB
@@ -291,6 +300,7 @@ $$;
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║  8. BULK UPDATE STOCK/FEATURED/DELETE                       ║
 -- ╚══════════════════════════════════════════════════════════════╝
+DROP FUNCTION IF EXISTS public.bulk_vendor_product_action(UUID, UUID[], TEXT);
 CREATE OR REPLACE FUNCTION public.bulk_vendor_product_action(
   p_vendor_id UUID,
   p_product_ids UUID[],

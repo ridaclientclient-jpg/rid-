@@ -24,10 +24,9 @@ export async function loadGoogleMaps(): Promise<typeof google> {
     if (existing) existing.remove();
 
     const script = document.createElement('script');
-    // Only load libraries we use: places (autocomplete), geometry (distance calc)
-    // No 'marker' library — we use classic google.maps.Marker
+    // Only load libraries we use: places (autocomplete), geometry (distance calc), marker (advanced markers)
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry,visualization`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry,visualization,marker&loading=async`;
     script.async = true;
     script.defer = true;
 

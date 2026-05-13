@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Store, LayoutDashboard, Package, Grid3X3, ShoppingCart,
-  Upload, User, LogOut, Menu, X, ChevronRight, Zap
+  Upload, User, LogOut, Menu, X, ChevronRight, Zap, DollarSign
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import AuthGuard from '@/components/AuthGuard';
@@ -16,6 +16,7 @@ const navItems = [
   { label: 'Productos', href: '/marketplace/products', icon: Package },
   { label: 'Categorías', href: '/marketplace/categories', icon: Grid3X3 },
   { label: 'Pedidos', href: '/marketplace/orders', icon: ShoppingCart },
+  { label: 'Billetera', href: '/marketplace/wallet', icon: DollarSign },
   { label: 'CSV Import', href: '/marketplace/import', icon: Upload },
   { label: 'Perfil', href: '/marketplace/profile', icon: User },
 ];

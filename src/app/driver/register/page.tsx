@@ -74,7 +74,14 @@ export default function DriverRegister() {
       return;
     }
 
-    const result = await register(form.name, form.email, form.phone, form.password, 'driver');
+    const extraData = {
+      vehicleType,
+      plate: form.plate,
+      model: form.model,
+      color: form.color,
+    };
+
+    const result = await register(form.name, form.email, form.phone, form.password, serviceMode, extraData);
     if (result.success) {
       toast.success('Cuenta creada exitosamente!');
       router.push('/driver');
