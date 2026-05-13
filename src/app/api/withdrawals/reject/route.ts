@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
@@ -13,10 +14,21 @@ export async function POST(request: Request) {
     if (!authHeader) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    // Create a fresh client for this request, authenticated with the user's token
+    const supabaseClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { 
+        auth: { persistSession: false },
+        global: { headers: { Authorization: `Bearer ${token}` } }
+      }
+    );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
-    const { data: admin } = await supabase
+    const { data: admin } = await supabaseClient
       .from('profiles')
       .select('role')
       .eq('id', user.id)
@@ -27,7 +39,7 @@ export async function POST(request: Request) {
     }
 
     // Get withdrawal details
-    const { data: withdrawal, error: fetchErr } = await supabase
+    const { data: withdrawal, error: fetchErr } = await supabaseClient
       .from('withdrawal_queue')
       .select('*')
       .eq('id', withdrawal_id)
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
     }
 
     // Update withdrawal status
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await supabaseClient
       .from('withdrawal_queue')
       .update({
         status: 'failed',
@@ -52,14 +64,14 @@ export async function POST(request: Request) {
 
     // Refund the amount back to wallet and update transaction status
     if (withdrawal.wallet_id) {
-      const { data: wallet } = await supabase
+      const { data: wallet } = await supabaseClient
         .from('wallets')
         .select('balance')
         .eq('id', withdrawal.wallet_id)
         .single();
 
       if (wallet) {
-        await supabase
+        await supabaseClient
           .from('wallets')
           .update({ balance: wallet.balance + withdrawal.amount })
           .eq('id', withdrawal.wallet_id);
@@ -67,7 +79,7 @@ export async function POST(request: Request) {
 
       // Update linked transaction
       if (withdrawal.transaction_id) {
-        await supabase
+        await supabaseClient
           .from('transactions')
           .update({ status: 'failed', description: `Retiro rechazado: ${reason || 'Decision administrativa'}` })
           .eq('id', withdrawal.transaction_id);
@@ -75,7 +87,7 @@ export async function POST(request: Request) {
     }
 
     // Notify the user
-    await supabase.from('notifications').insert({
+    await supabaseClient.from('notifications').insert({
       user_id: withdrawal.user_id,
       title: 'Retiro Rechazado',
       message: `Tu solicitud de retiro de ₡${withdrawal.amount.toLocaleString()} ha sido rechazada. Motivo: ${reason || 'Decision administrativa'}. El monto ha sido devuelto a tu billetera.`,
