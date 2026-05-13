@@ -9,7 +9,7 @@ import {
   BarChart3, FileText, Settings, LogOut, ChevronLeft, Zap,
   Menu, X, Store, Package, ShoppingCart, Truck, MessageSquare,
   Receipt, Star, AlertTriangle, Trophy, Building2, MapPinned,
-  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren, ShieldAlert, BookOpen, HelpCircle
+  Tag, CarFront, Grid3X3, Image, Eye, Flame, Map, UserCog, Siren, ShieldAlert, BookOpen, HelpCircle, Banknote
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/authStore';
@@ -27,6 +27,7 @@ const navItems = [
   { href: '/admin/marketplace/vendors', label: 'Vendedores', icon: Users },
   { href: '/admin/marketplace/products', label: 'Productos', icon: Package },
   { href: '/admin/marketplace/orders', label: 'Pedidos MKT', icon: ShoppingCart },
+  { href: '/admin/marketplace/withdrawals', label: 'Retiros MKT', icon: Banknote },
   { href: '/admin/payment-report', label: 'Reporte Pagos', icon: Receipt },
   { href: '/admin/reviews', label: 'Resenas', icon: Star },
   { href: '/admin/driver-alerts', label: 'SOS Alertas', icon: Siren },
