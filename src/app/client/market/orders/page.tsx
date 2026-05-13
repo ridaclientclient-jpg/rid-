@@ -182,7 +182,7 @@ export default function ClientOrders() {
                       <div className="absolute top-4 left-4 right-4 h-0.5 bg-gray-800" />
                       <div 
                         className="absolute top-4 left-4 h-0.5 bg-cyan-400 transition-all duration-500" 
-                        style={{ width: \`\${(normalizedStepIdx / (STATUS_STEPS.length - 1)) * 100}%\` }} 
+                        style={{ width: `${(normalizedStepIdx / (STATUS_STEPS.length - 1)) * 100}%` }} 
                       />
                       <div className="relative flex justify-between">
                         {STATUS_STEPS.map((step, idx) => {
@@ -191,10 +191,10 @@ export default function ClientOrders() {
                           const isActive = idx === normalizedStepIdx;
                           return (
                             <div key={step.id} className="flex flex-col items-center gap-2">
-                              <div className={\`w-8 h-8 rounded-full flex items-center justify-center z-10 transition-colors duration-500 \${isCompleted ? 'bg-cyan-500 text-white' : 'bg-gray-800 text-gray-500 border border-gray-700'}\`}>
-                                <Icon className={\`w-4 h-4 \${isActive ? 'animate-pulse' : ''}\`} />
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 transition-colors duration-500 ${isCompleted ? 'bg-cyan-500 text-white' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>
+                                <Icon className={`w-4 h-4 ${isActive ? 'animate-pulse' : ''}`} />
                               </div>
-                              <span className={\`text-[10px] font-medium \${isCompleted ? 'text-cyan-400' : 'text-gray-500'}\`}>
+                              <span className={`text-[10px] font-medium ${isCompleted ? 'text-cyan-400' : 'text-gray-500'}`}>
                                 {step.label}
                               </span>
                             </div>
@@ -234,13 +234,13 @@ export default function ClientOrders() {
               <div className="space-y-3">
                 {pastDeliveries.map((delivery) => (
                   <div key={delivery.id} className="glass rounded-2xl p-4 flex items-center gap-4 hover:bg-white/5 transition-colors border border-white/5 cursor-pointer">
-                    <div className={\`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 \${delivery.status === 'delivered' ? 'bg-emerald-500/10' : 'bg-red-500/10'}\`}>
-                      <Package className={\`w-6 h-6 \${delivery.status === 'delivered' ? 'text-emerald-400' : 'text-red-400'}\`} />
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${delivery.status === 'delivered' ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                      <Package className={`w-6 h-6 ${delivery.status === 'delivered' ? 'text-emerald-400' : 'text-red-400'}`} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
                         <p className="text-sm font-bold text-white truncate">{delivery.vendors?.business_name || 'Marketplace'}</p>
-                        <span className={\`text-[10px] font-bold px-2 py-0.5 rounded-md \${delivery.status === 'delivered' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}\`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${delivery.status === 'delivered' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
                           {delivery.status === 'delivered' ? 'Entregado' : 'Cancelado'}
                         </span>
                       </div>
