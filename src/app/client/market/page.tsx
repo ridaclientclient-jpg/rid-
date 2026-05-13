@@ -1653,17 +1653,26 @@ export default function ClientMarketPage() {
             Pedido con entrega a tu puerta
           </p>
         </div>
-        <motion.button
-          type="button"
-          onClick={() => loadData(true)}
-          disabled={loading || refreshing}
-          className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-50"
-          whileTap={{ scale: 0.95 }}
-        >
-          <RefreshCw
-            className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
-          />
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push('/client/market/orders')}
+            className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-colors border border-orange-500/20"
+            title="Mis Pedidos"
+          >
+            <Package className="w-5 h-5" />
+          </button>
+          <motion.button
+            type="button"
+            onClick={() => loadData(true)}
+            disabled={loading || refreshing}
+            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-50"
+            whileTap={{ scale: 0.95 }}
+          >
+            <RefreshCw
+              className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`}
+            />
+          </motion.button>
+        </div>
       </motion.div>
 
       {/* ── Search Bar ──────────────────────────────────────────────── */}

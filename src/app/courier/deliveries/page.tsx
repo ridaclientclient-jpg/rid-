@@ -9,8 +9,9 @@ import {
   Package, MapPin, Clock, ChevronRight, CheckCircle2,
   ArrowRight, Truck, Phone, MessageSquare, AlertTriangle,
   ShoppingBag, DollarSign, Loader2, X as XIcon,
-  Navigation,
+  Navigation, Map as MapIcon,
 } from 'lucide-react';
+import GoogleMap from '@/components/GoogleMap';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pendiente',
@@ -64,6 +65,7 @@ export default function CourierDeliveries() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [hasNewOrder, setHasNewOrder] = useState(false);
+  const [courierLocation, setCourierLocation] = useState<{lat: number, lng: number} | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const activeDelivery = deliveries.find(
@@ -271,12 +273,39 @@ export default function CourierDeliveries() {
             style={{ boxShadow: '0 0 20px rgba(249, 115, 22, 0.15)' }}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-orange-400">
+              <span className="text-sm font-semibold text-orange-400 flex items-center gap-2">
+                <Truck className="w-5 h-5" />
                 Entrega Activa
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[activeDelivery.status]}`}>
+              <span className={`text-xs font-bold px-3 py-1 rounded-full ${STATUS_COLORS[activeDelivery.status]}`}>
                 {STATUS_LABELS[activeDelivery.status]}
               </span>
+            </div>
+
+            {/* Interactive Map */}
+            <div className="h-64 rounded-xl overflow-hidden border border-white/10 relative mt-4 mb-2">
+              {activeDelivery.pickup_lat && activeDelivery.delivery_lat ? (
+                <GoogleMap
+                  center={courierLocation || { lat: activeDelivery.pickup_lat, lng: activeDelivery.pickup_lng }}
+                  zoom={15}
+                  showUserLocation={true}
+                  onUserLocation={setCourierLocation}
+                  showRoute={{
+                    origin: activeDelivery.status === 'assigned' 
+                      ? (courierLocation || { lat: activeDelivery.pickup_lat, lng: activeDelivery.pickup_lng }) 
+                      : { lat: activeDelivery.pickup_lat, lng: activeDelivery.pickup_lng },
+                    destination: activeDelivery.status === 'assigned'
+                      ? { lat: activeDelivery.pickup_lat, lng: activeDelivery.pickup_lng }
+                      : { lat: activeDelivery.delivery_lat, lng: activeDelivery.delivery_lng }
+                  }}
+                  showDirections={true}
+                />
+              ) : (
+                <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center">
+                  <MapIcon className="w-8 h-8 text-gray-500 mb-2" />
+                  <p className="text-xs text-gray-400">Coordenadas no disponibles</p>
+                </div>
+              )}
             </div>
 
             {/* Status Flow */}
@@ -348,66 +377,73 @@ export default function CourierDeliveries() {
             </div>
 
             {/* Actions */}
-            <div className="space-y-2">
-              {(activeDelivery.status === 'assigned') && (
+            <div className="space-y-3 mt-4">
+              {activeDelivery.status === 'assigned' && (
                 <button
                   onClick={() => updateDeliveryStatus(activeDelivery.id, 'picked_up')}
                   disabled={updatingId === activeDelivery.id}
-                  className="w-full bg-emerald-500 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                  className="w-full bg-orange-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-orange-500/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
                 >
                   {updatingId === activeDelivery.id ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-6 h-6 animate-spin" />
                   ) : (
-                    <><Package className="w-5 h-5" /> Recoger Paquete</>
+                    <><Package className="w-6 h-6" /> Confirmar Recogida en Local</>
                   )}
                 </button>
               )}
 
-              {(activeDelivery.status === 'picked_up') && (
+              {activeDelivery.status === 'picked_up' && (
                 <button
                   onClick={() => updateDeliveryStatus(activeDelivery.id, 'in_transit')}
                   disabled={updatingId === activeDelivery.id}
-                  className="w-full font-medium py-3 rounded-xl flex items-center justify-center gap-2 text-white disabled:opacity-50"
+                  className="w-full font-black py-4 rounded-2xl flex items-center justify-center gap-3 text-white shadow-lg hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
                   style={{
                     background: 'linear-gradient(135deg, #9333ea, #f97316)',
-                    boxShadow: '0 0 20px rgba(249, 115, 22, 0.3)',
+                    boxShadow: '0 0 30px rgba(249, 115, 22, 0.3)',
                   }}
                 >
                   {updatingId === activeDelivery.id ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-6 h-6 animate-spin" />
                   ) : (
-                    <><Navigation className="w-5 h-5" /> En Camino</>
+                    <><Navigation className="w-6 h-6" /> Iniciar Viaje al Cliente</>
                   )}
                 </button>
               )}
 
-              {(activeDelivery.status === 'in_transit') && (
+              {activeDelivery.status === 'in_transit' && (
                 <button
                   onClick={() => updateDeliveryStatus(activeDelivery.id, 'delivered')}
                   disabled={updatingId === activeDelivery.id}
-                  className="w-full bg-emerald-500 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors disabled:opacity-50"
-                  style={{ boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)' }}
+                  className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-emerald-500/30 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
                 >
                   {updatingId === activeDelivery.id ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-6 h-6 animate-spin" />
                   ) : (
-                    <><CheckCircle2 className="w-5 h-5" /> Entregado</>
+                    <><CheckCircle2 className="w-6 h-6" /> Marcar como Entregado</>
                   )}
                 </button>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <button
-                  onClick={() => toast.info('Navegando...')}
-                  className="flex-1 border border-white/10 text-gray-300 font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-white/5 transition-colors"
+                  onClick={() => {
+                    const lat = activeDelivery.status === 'assigned' ? activeDelivery.pickup_lat : activeDelivery.delivery_lat;
+                    const lng = activeDelivery.status === 'assigned' ? activeDelivery.pickup_lng : activeDelivery.delivery_lng;
+                    if (lat && lng) {
+                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                    } else {
+                      toast.error('Coordenadas no disponibles');
+                    }
+                  }}
+                  className="flex-[2] border border-white/10 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 transition-all active:scale-95"
                 >
-                  <Navigation className="w-4 h-4" /> GPS
+                  <Navigation className="w-5 h-5 text-cyan-400" /> Abrir en Waze / Maps
                 </button>
                 <button
-                  onClick={() => toast.error('SOS activado. Ayuda en camino.')}
-                  className="bg-red-500/20 border border-red-500/30 text-red-400 font-medium px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-red-500/30 transition-colors"
+                  onClick={() => toast.error('SOS activado. Equipo de seguridad notificado.')}
+                  className="flex-1 bg-red-500/10 border border-red-500/20 text-red-400 font-bold px-4 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-red-500/20 transition-all active:scale-95"
                 >
-                  <AlertTriangle className="w-4 h-4" />
+                  <AlertTriangle className="w-5 h-5" /> SOS
                 </button>
               </div>
             </div>
