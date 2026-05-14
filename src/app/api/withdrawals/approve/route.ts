@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
@@ -14,21 +13,10 @@ export async function POST(request: Request) {
     if (!authHeader) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
     const token = authHeader.replace('Bearer ', '');
-    
-    // Create a fresh client for this request, authenticated with the user's token
-    const supabaseClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { 
-        auth: { persistSession: false },
-        global: { headers: { Authorization: `Bearer ${token}` } }
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
-    const { data: admin } = await supabaseClient
+    const { data: admin } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
@@ -39,7 +27,7 @@ export async function POST(request: Request) {
     }
 
     // Get withdrawal details
-    const { data: withdrawal, error: fetchErr } = await supabaseClient
+    const { data: withdrawal, error: fetchErr } = await supabase
       .from('withdrawal_queue')
       .select('*')
       .eq('id', withdrawal_id)
@@ -51,7 +39,7 @@ export async function POST(request: Request) {
     }
 
     // Update withdrawal status
-    const { error: updateErr } = await supabaseClient
+    const { error: updateErr } = await supabase
       .from('withdrawal_queue')
       .update({
         status: 'completed',
@@ -63,14 +51,14 @@ export async function POST(request: Request) {
  
     // Update linked transaction
     if (withdrawal.transaction_id) {
-      await supabaseClient
+      await supabase
         .from('transactions')
         .update({ status: 'completed', description: `Retiro completado exitosamente` })
         .eq('id', withdrawal.transaction_id);
     }
 
     // Notify the user
-    await supabaseClient.from('notifications').insert({
+    await supabase.from('notifications').insert({
       user_id: withdrawal.user_id,
       title: 'Retiro Aprobado',
       message: `Tu retiro de ₡${withdrawal.amount.toLocaleString()} ha sido aprobado y procesado exitosamente.`,
