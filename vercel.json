@@ -1,6 +1,10 @@
 {
   "name": "rid-app",
   "framework": "nextjs",
+<<<<<<< HEAD
+=======
+  
+>>>>>>> 80f01b3c9d7d3236e8504fbf100f6b14bd18f150
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "${NEXT_PUBLIC_SUPABASE_URL}",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
