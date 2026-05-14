@@ -1,10 +1,6 @@
 {
   "name": "rid-app",
   "framework": "nextjs",
-  "build": {
-    "command": "next build",
-    "output": "out"
-  },
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "${NEXT_PUBLIC_SUPABASE_URL}",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
